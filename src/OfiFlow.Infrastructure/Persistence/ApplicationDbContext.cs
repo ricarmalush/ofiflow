@@ -5,6 +5,7 @@ using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
+using OfiFlow.Domain.Jobs;
 using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Identity;
 
@@ -23,6 +24,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<User> Users => Set<User>();
 
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
+
+    public DbSet<Job> Jobs => Set<Job>();
 
     /// <summary>
     /// Not part of IApplicationDbContext on purpose — only IIdentityService/ITokenService

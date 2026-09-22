@@ -20,6 +20,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             ValidationException validation => (StatusCodes.Status400BadRequest, "Error de validación",
                 string.Join("; ", validation.Errors.Select(e => e.ErrorMessage))),
             IdentityOperationException identity => (StatusCodes.Status400BadRequest, "Error de registro", identity.Message),
+            BusinessRuleException businessRule => (StatusCodes.Status400BadRequest, "Regla de negocio violada", businessRule.Message),
             _ => (StatusCodes.Status500InternalServerError, "Error interno", "Ha ocurrido un error inesperado.")
         };
 

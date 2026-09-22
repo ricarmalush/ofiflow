@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
+using OfiFlow.Domain.Jobs;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Common.Persistence;
@@ -18,6 +19,8 @@ public interface IApplicationDbContext
     DbSet<User> Users { get; }
 
     DbSet<TenantUser> TenantUsers { get; }
+
+    DbSet<Job> Jobs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

@@ -27,5 +27,6 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapCustomerEndpoints();
+app.MapJobEndpoints();
 
 app.Run();

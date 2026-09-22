@@ -3,6 +3,7 @@ using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
+using OfiFlow.Domain.Jobs;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Tests.Common;
@@ -20,6 +21,8 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
     public DbSet<User> Users => Set<User>();
 
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
+
+    public DbSet<Job> Jobs => Set<Job>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
