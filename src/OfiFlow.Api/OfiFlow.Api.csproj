@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OfiFlow.Application\OfiFlow.Application.csproj" />
+    <ProjectReference Include="..\OfiFlow.Infrastructure\OfiFlow.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

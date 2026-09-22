@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OfiFlow.Api/OfiFlow.Api.csproj" />
+    <Project Path="src/OfiFlow.Application/OfiFlow.Application.csproj" />
+    <Project Path="src/OfiFlow.Domain/OfiFlow.Domain.csproj" />
+    <Project Path="src/OfiFlow.Infrastructure/OfiFlow.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OfiFlow.Api.Tests/OfiFlow.Api.Tests.csproj" />
+    <Project Path="tests/OfiFlow.Application.Tests/OfiFlow.Application.Tests.csproj" />
+    <Project Path="tests/OfiFlow.Domain.Tests/OfiFlow.Domain.Tests.csproj" />
+    <Project Path="tests/OfiFlow.Infrastructure.Tests/OfiFlow.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

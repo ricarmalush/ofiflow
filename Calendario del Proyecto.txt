@@ -1,0 +1,34 @@
+ADR significa Architecture Decision Record (Registro de Decisión Arquitectónica) — es un documento corto que guarda por escrito una decisión técnica importante, 
+para que dentro de seis meses (o dentro de dos años) tú mismo, u otra persona que se incorpore al proyecto, entienda por qué se decidió algo así y no de otra forma, 
+sin tener que reconstruir elrazonamiento de memoria.
+
+Con los dos meses extra (enero-febrero) antes de la fecha original de la primera versión técnica, así quedaría el calendario ajustado — manteniendo los hitos de tu documento 
+pero dándoles más colchón en vez of adelantarlos:
+
+Enero - Febrero 2027 — Fundamentos (nuevo, gracias al inicio adelantado)
+
+ADR-001 a ADR-005 documentados (SQL Server, Multi-Tenancy, CQRS, Identity, Modular Monolith)
+Esqueleto de solución: Domain / Application / Infrastructure / Api + proyectos de tests
+Modelo User / Tenant / TenantUser + TenantContext
+Autenticación base con ASP.NET Core Identity y roles iniciales (Owner, Admin, Manager, Technician, Employee)
+
+Marzo 2027 — Primera versión técnica funcional (fecha original, ahora con base ya asentada en vez de arrancar de cero)
+
+API mínima funcionando, EF Core + SQL Server conectados, aislamiento de tenant verificado con tests
+
+Junio 2027 — Primer flujo: Customer → Job → Schedule
+
+Entidades Customer y Job, Commands/Queries básicos, primera vista en Angular o MAUI para ver trabajos de hoy
+
+Septiembre 2027 — Flujo: Customer → Job → Quote → Invoice
+
+Presupuestos y facturación básica, sin todavía IA ni WhatsApp
+
+Diciembre 2027 — MVP usable
+
+Los dos flujos anteriores integrados y usables por un piloto real, aunque sea sin pagar
+
+2028 — Validación y negocio (sin cambios respecto al documento)
+
+Buscar 10 empresas piloto durante 2027 se convierte en la base para pasar a pricing, onboarding, soporte y billing real en 2028
+Objetivo orientativo a cierre de 2028: 100-500 empresas de pago, priorizando retención sobre cantidad de funcionalidades

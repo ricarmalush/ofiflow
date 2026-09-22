@@ -1,0 +1,20 @@
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using OfiFlow.Application.Common.Exceptions;
+using OfiFlow.Application.Common.Persistence;
+using OfiFlow.Domain.Customers;
+
+namespace OfiFlow.Application.Customers.Commands.DeleteCustomer;
+
+public sealed class DeleteCustomerCommandHandler(IApplicationDbContext dbContext) : IRequestHandler<DeleteCustomerCommand>
+{
+    public async Task Handle(DeleteCustomerCommand request, CancellationToken cancellationToken)
+    {
+        var customer = await dbContext.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken)
+            ?? throw new NotFoundException(nameof(Customer), request.Id);
+
+        dbContext.Customers.Remove(customer);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+}
