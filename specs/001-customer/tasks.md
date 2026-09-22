@@ -49,7 +49,7 @@
 ### Tests de integración (`tests/OfiFlow.Infrastructure.Tests`, `tests/OfiFlow.Api.Tests`)
 - [x] Sanity check del Global Query Filter con EF Core InMemory (`ApplicationDbContextTenantFilterTests`)
 - [x] **Test obligatorio verificado manualmente (2026-09-21) contra LocalDB real**, de punta a punta por HTTP: 2 tenants distintos, JWT reales, Tenant B no puede leer ni borrar un Customer de Tenant A (404 en ambos casos) — ver detalle en `specs/002-tenancy-identity/tasks.md`
-- [ ] **Pendiente:** automatizar esta verificación como test de integración real (no manual) — bloqueado por la misma decisión LocalDB vs Testcontainers de ADR-006
+- [x] **Automatizado (2026-09-22, ADR-008):** `TenantIsolationIntegrationTests.Customers_AreNotVisibleAcrossTenants`, contra LocalDB real con base de datos propia por ejecución
 - [x] Verificado manualmente: crear Customer vía API completa (JWT → Command → SQL Server) y recuperarlo
 - [x] Verificado manualmente: listar solo devuelve los Customers del tenant activo
 

@@ -54,7 +54,7 @@
 
 ### Tests
 - [x] **Verificación manual end-to-end contra LocalDB real (2026-09-22):** crear Job, intentar borrar el Customer con el Job activo (400, mensaje claro), intentar completar un Job en `New` (400), iniciar → completar el Job, borrar el Customer ya sin Jobs activos (204) — el Job completado sigue existiendo tras borrar el Customer, tal como preveía la spec
-- [ ] Test obligatorio de aislamiento de tenant para `Job` — pendiente de automatizar (misma decisión LocalDB vs Testcontainers de ADR-006 que en 001/002)
+- [x] **Automatizado (2026-09-22, ADR-008):** `TenantIsolationIntegrationTests.Jobs_AreNotVisibleAcrossTenants`, contra LocalDB real con base de datos propia por ejecución
 
 ---
 

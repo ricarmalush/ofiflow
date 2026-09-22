@@ -55,7 +55,7 @@
 ### Tests de integración
 - [x] Cubierto por `IdentityServiceTests`/`TokenServiceTests` (InMemory) — registro, login, rotación, revocación en cadena: todos verificados a nivel de servicio
 - [x] **Verificación manual end-to-end contra LocalDB real (2026-09-21):** migraciones aplicadas, API levantada, y probado por HTTP con curl: registro de 2 tenants distintos, login, creación de Customer con JWT, y **aislamiento de tenant confirmado de verdad** — el Tenant B no ve, no puede leer ni puede borrar el Customer del Tenant A (404 en ambos casos), y el Customer de A sigue intacto después del intento de borrado de B
-- [ ] Automatizar esta verificación manual como test de integración real (`WebApplicationFactory` + SQL Server) — pendiente de la decisión LocalDB vs Testcontainers (ADR-006); hoy la garantía existe pero solo se ha comprobado a mano, no en CI
+- [x] **Automatizado (2026-09-22, ADR-008):** `TenantIsolationIntegrationTests` (Customer + Job) contra LocalDB real con base de datos propia por ejecución — no cubre todavía el flujo HTTP completo con `WebApplicationFactory`, pero sí el mecanismo de aislamiento contra SQL Server real
 
 ---
 

@@ -119,7 +119,7 @@ Se decide:
 - Revisar si el enum `JobStatus` sigue siendo suficiente cuando se aborden Scheduling/Quoting/Invoicing (fases 3-4).
 - Revisar si conviene introducir IDs fuertemente tipados solo para las entidades donde históricamente se hayan producido errores de mezcla de IDs.
 - Diseñar Integration Events cuando se aborden background jobs (WhatsApp, emails) en fases posteriores — no confundir con Domain Events.
-- **Mecanismo para los tests de integración de `OfiFlow.Infrastructure.Tests` y `OfiFlow.Api.Tests` contra SQL Server real** (LocalDB vs Testcontainers `Testcontainers.MsSql`). Se decidirá al escribir el primer test de integración, previsiblemente el del aislamiento de tenant (sección 42 del prompt maestro: *"un usuario del Tenant A nunca puede acceder a información del Tenant B"*). Candidato recomendado: Testcontainers, para que el comportamiento sea idéntico en local y en el pipeline de CI/CD (sección 45).
+- ~~Mecanismo para los tests de integración... contra SQL Server real~~ — **cerrado en ADR-008** (2026-09-22): LocalDB con base de datos de nombre único por ejecución, no Testcontainers.
 
 ---
 
