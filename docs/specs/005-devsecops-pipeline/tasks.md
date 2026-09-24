@@ -26,8 +26,8 @@
 - [x] `SECURITY.md`: versiones soportadas, reporte privado de vulnerabilidades, plazos orientativos y alcance (con prioridad al aislamiento entre tenants)
 
 ### Repositorio (≈ 1 h) [externo]
-- [ ] Crear el repositorio público `ofiflow` en GitHub y hacer la primera subida de `master`
-- [ ] Activar secret scanning, push protection, Dependabot alerts y Private Vulnerability Reporting
+- [x] Repositorio público creado: https://github.com/ricarmalush/ofiflow. Solo se subió `master`. Verificado por la API de GitHub: los 8 commits con email privado (0 con el personal) y sin ficheros sensibles publicados. Después se borró la rama local `backup/pre-noreply` y se purgó el historial antiguo.
+- [x] Activados y verificados por la API: secret scanning, push protection, Dependabot alerts y Private Vulnerability Reporting. Alertas abiertas al activar: 0 de secretos y 0 de Dependabot.
 - [ ] Proteger `master`: PR obligatorio, checks `ci` y `codeql` obligatorios, sin force-push
 
 ### Workflows (≈ 4-6 h)

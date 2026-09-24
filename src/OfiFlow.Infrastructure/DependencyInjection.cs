@@ -1,6 +1,8 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using OfiFlow.Application.Common.Abstractions;
@@ -47,7 +49,8 @@ public static class DependencyInjection
         {
             throw new InvalidOperationException(
                 "Falta 'Jwt:Secret'. En local: dotnet user-secrets set \"Jwt:Secret\" \"<base64 de 32 bytes>\" " +
-                "--project src/OfiFlow.Api. En producción: variable de entorno Jwt__Secret o Key Vault (ADR-009 R8).");
+                "--project src/OfiFlow.Api. En producción: variable de entorno Jwt__Secret o Key Vault (ADR-009 R8). " +
+                DescribeSecretSources(configuration));
         }
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -67,5 +70,35 @@ public static class DependencyInjection
             });
 
         services.AddAuthorization();
+    }
+
+    /// <summary>
+    /// Para diagnosticar un secreto que no llega: qué fuentes de configuración se consultaron y
+    /// cuáles tienen 'Jwt:Secret'. Solo muestra la longitud, nunca el valor.
+    /// </summary>
+    private static string DescribeSecretSources(IConfiguration configuration)
+    {
+        if (configuration is not IConfigurationRoot root)
+        {
+            return string.Empty;
+        }
+
+        var sources = root.Providers.Select(provider =>
+        {
+            var found = provider.TryGet("Jwt:Secret", out var value);
+            var file = provider is FileConfigurationProvider fileProvider
+                ? fileProvider.Source.FileProvider?.GetFileInfo(fileProvider.Source.Path ?? string.Empty)
+                : null;
+            var location = file is null ? string.Empty : $" [{file.PhysicalPath}, existe: {file.Exists}]";
+            return $"{provider}{location} → {(found ? $"{value?.Length ?? 0} caracteres" : "no lo tiene")}";
+        });
+
+        var entry = Assembly.GetEntryAssembly();
+        var secretsId = entry?.GetCustomAttribute<UserSecretsIdAttribute>()?.UserSecretsId;
+        var secretsPath = secretsId is null ? null : PathHelper.GetSecretsPathFromSecretsId(secretsId);
+        var userSecrets = $"Ensamblado de entrada: {entry?.GetName().Name ?? "(ninguno)"}, UserSecretsId: {secretsId ?? "(ninguno)"}, " +
+            $"ruta esperada: {secretsPath ?? "-"}, carpeta existe: {(secretsPath is null ? "-" : Directory.Exists(Path.GetDirectoryName(secretsPath)).ToString())}";
+
+        return "Fuentes consultadas: " + string.Join(" | ", sources) + ". " + userSecrets;
     }
 }
