@@ -1,27 +1,30 @@
 # Ajuste de falsos positivos de OWASP ZAP (ADR-010).
 #
-# Formato: <id de regla>	<IGNORE|WARN|FAIL>	<URL opcional>
+# Formato: <id de regla>	<IGNORE|WARN|FAIL>	<patron de URL — obligatorio, 3 columnas siempre;
+# ".*" para aplicar a cualquier URL>. Sin la tercera columna, ZAP rechaza el fichero entero
+# con "Unexpected number of tokens on line - there should be at least 3, tab separated"
+# (encontrado en la primera ejecución real, ver commit de este fichero).
 #
 # Primer informe real: dast.yml, PR #1, 2026-09-24. 0 alertas High/Medium, 1 Low y 8
 # Informational. La Low (Cross-Origin-Resource-Policy, id 90004) era un hallazgo real y se
-# corrigió en SecurityHeadersMiddleware — no se ignora aquí, si reaparece es una regresión.
+# corrigio en SecurityHeadersMiddleware -- no se ignora aqui, si reaparece es una regresion.
 # Las siguientes son ruido esperado del propio escaneo sin autenticar contra una API JSON,
-# no vulnerabilidades: se documentan e ignoran para que el próximo informe muestre solo
+# no vulnerabilidades: se documentan e ignoran para que el proximo informe muestre solo
 # hallazgos nuevos de verdad.
 
 # ZAP fuzzea rutas con Ids inventados y sin token: los 401 (sin autenticar) y 404 (recurso
 # o ruta inexistente) que responde la API son el comportamiento correcto, no un fallo.
-100000	IGNORE
+100000	IGNORE	.*
 
-# Solo indica que ZAP identificó /auth/login como un endpoint de autenticación — informativo,
+# Solo indica que ZAP identifico /auth/login como un endpoint de autenticacion -- informativo,
 # no un hallazgo de seguridad.
-10111	IGNORE
+10111	IGNORE	.*
 
-# API JSON pura sin páginas HTML que cachear: si algún endpoint futuro sirviera contenido
+# API JSON pura sin paginas HTML que cachear: si algun endpoint futuro sirviera contenido
 # cacheable de verdad, revisar entonces si aplica.
-10049	IGNORE
+10049	IGNORE	.*
 
-# Cabeceras Sec-Fetch-* son una señal para navegadores que renderizan HTML/hacen fetch
-# cross-site; una API JSON sin frontend propio no tiene nada que proteger con ellas todavía
-# — revisar cuando exista un frontend real que consuma esta API (Angular, sección 30).
-90005	IGNORE
+# Cabeceras Sec-Fetch-* son una senal para navegadores que renderizan HTML/hacen fetch
+# cross-site; una API JSON sin frontend propio no tiene nada que proteger con ellas todavia
+# -- revisar cuando exista un frontend real que consuma esta API (Angular, seccion 30).
+90005	IGNORE	.*
