@@ -13,14 +13,16 @@ namespace OfiFlow.Api.Endpoints;
 
 public static class JobEndpoints
 {
+    public const string Route = "/api/v1/jobs";
+
     public static void MapJobEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/jobs").WithTags("Jobs").RequireAuthorization();
+        var group = app.MapGroup(Route).WithTags("Jobs").RequireAuthorization();
 
         group.MapPost("/", async (CreateJobCommand command, ISender sender, CancellationToken cancellationToken) =>
             {
                 var id = await sender.Send(command, cancellationToken);
-                return Results.Created($"/api/v1/jobs/{id}", new { id });
+                return Results.Created($"{Route}/{id}", new { id });
             })
             .WithName("CreateJob")
             .WithSummary("Crea un trabajo para un cliente del tenant activo.");

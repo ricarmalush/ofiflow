@@ -9,14 +9,16 @@ namespace OfiFlow.Api.Endpoints;
 
 public static class CustomerEndpoints
 {
+    public const string Route = "/api/v1/customers";
+
     public static void MapCustomerEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/customers").WithTags("Customers").RequireAuthorization();
+        var group = app.MapGroup(Route).WithTags("Customers").RequireAuthorization();
 
         group.MapPost("/", async (CreateCustomerCommand command, ISender sender, CancellationToken cancellationToken) =>
             {
                 var id = await sender.Send(command, cancellationToken);
-                return Results.Created($"/api/v1/customers/{id}", new { id });
+                return Results.Created($"{Route}/{id}", new { id });
             })
             .WithName("CreateCustomer")
             .WithSummary("Crea un nuevo cliente del tenant activo.");

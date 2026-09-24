@@ -20,7 +20,7 @@ public static class DependencyInjection
     {
         services.AddDbContext<ApplicationDbContext>(options =>
         {
-            options.UseSqlServer(configuration.GetConnectionString("Default"));
+            options.UseSqlServer(configuration.GetConnectionString(ConnectionStringNames.Default));
             options.AddInterceptors(new AuditableEntitySaveChangesInterceptor());
         });
 
@@ -85,7 +85,7 @@ public static class DependencyInjection
 
         var sources = root.Providers.Select(provider =>
         {
-            var found = provider.TryGet("Jwt:Secret", out var value);
+            var found = provider.TryGet($"{JwtOptions.SectionName}:{nameof(JwtOptions.Secret)}", out var value);
             var file = provider is FileConfigurationProvider fileProvider
                 ? fileProvider.Source.FileProvider?.GetFileInfo(fileProvider.Source.Path ?? string.Empty)
                 : null;

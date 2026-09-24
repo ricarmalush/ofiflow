@@ -1,3 +1,4 @@
+using System.Net.Mime;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -44,7 +45,7 @@ public static partial class RateLimiting
                     Detail = "Has superado el número de intentos permitidos. Inténtalo de nuevo más tarde."
                 };
 
-                await httpContext.Response.WriteAsJsonAsync(problem, options: null, contentType: "application/problem+json", cancellationToken);
+                await httpContext.Response.WriteAsJsonAsync(problem, options: null, contentType: MediaTypeNames.Application.ProblemJson, cancellationToken);
             };
         });
 

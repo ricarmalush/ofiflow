@@ -95,7 +95,7 @@ public sealed partial class TokenService(
         Claim[] claims =
         [
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
-            new Claim("tenant_id", tenantId.ToString()),
+            new Claim(OfiFlowClaimTypes.TenantId, tenantId.ToString()),
             new Claim(ClaimTypes.Role, role.ToString())
         ];
 

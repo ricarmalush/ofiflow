@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Mime;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -43,7 +44,7 @@ public sealed partial class GlobalExceptionHandler(ILogger<GlobalExceptionHandle
         var problem = new ProblemDetails { Status = statusCode, Title = title, Detail = detail };
         problem.Extensions["traceId"] = traceId;
 
-        await httpContext.Response.WriteAsJsonAsync(problem, options: null, contentType: "application/problem+json", cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(problem, options: null, contentType: MediaTypeNames.Application.ProblemJson, cancellationToken);
 
         return true;
     }
