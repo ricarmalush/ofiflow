@@ -44,6 +44,9 @@ jobs:
       - name: Instalar dotnet-ef
         run: dotnet tool install --global dotnet-ef
 
+      - name: Restore
+        run: dotnet restore OfiFlow.slnx
+
       # Efímero, generado en cada ejecución — nunca un valor fijo en el repositorio (ADR-010).
       - name: Generar Jwt__Secret efímero
         run: echo "JWT_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
