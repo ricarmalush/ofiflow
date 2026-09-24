@@ -24,7 +24,7 @@ public class SecurityArchitectureTests
     [InlineData("ExecuteSqlRaw")]
     public void SourceCode_DoesNotUseRawSqlApis(string forbiddenApi)
     {
-        var offenders = SourceFilesContaining(forbiddenApi);
+        var offenders = SourceCode.FilesContaining(forbiddenApi);
 
         Assert.True(offenders.Count == 0,
             $"'{forbiddenApi}' está prohibido (ADR-009 R1: riesgo de inyección SQL). " +
@@ -34,7 +34,7 @@ public class SecurityArchitectureTests
     [Fact]
     public void IgnoreQueryFilters_IsOnlyUsedInTheAllowList()
     {
-        var offenders = SourceFilesContaining("IgnoreQueryFilters(")
+        var offenders = SourceCode.FilesContaining("IgnoreQueryFilters(")
             .Where(file => !IgnoreQueryFiltersAllowList.Contains(Path.GetFileName(file)))
             .ToList();
 
@@ -60,30 +60,4 @@ public class SecurityArchitectureTests
     private static bool IsMediatRRequest(Type type) =>
         type == typeof(IRequest) || (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IRequest<>));
 
-    private static List<string> SourceFilesContaining(string text) =>
-        Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
-            .Where(file => !IsGenerated(file))
-            .Where(file => File.ReadAllText(file).Contains(text, StringComparison.Ordinal))
-            .Select(file => Path.GetRelativePath(RepositoryRoot(), file))
-            .ToList();
-
-    // bin/obj contienen código generado; Migrations lo genera EF Core.
-    private static bool IsGenerated(string file)
-    {
-        var separator = Path.DirectorySeparatorChar;
-        return file.Contains($"{separator}obj{separator}") ||
-               file.Contains($"{separator}bin{separator}") ||
-               file.Contains($"{separator}Migrations{separator}");
-    }
-
-    private static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OfiFlow.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ?? throw new InvalidOperationException("No se encuentra la raíz del repositorio (OfiFlow.slnx).");
-    }
 }

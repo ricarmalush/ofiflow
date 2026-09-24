@@ -42,7 +42,8 @@ Se adopta la **Opción C**, con estas reglas:
 
 ### R1 — Domain solo conoce códigos
 - Cada bounded context define sus códigos en una clase estática: `CustomerErrors`, `JobErrors`, `TenancyErrors`, `IdentityErrors`, y `CommonErrors` para el shared kernel (`Email`, `PhoneNumber`).
-- Formato del código: `{contexto}.{error}` en minúsculas y `snake_case`. Ejemplos: `customer.name_required`, `job.cannot_start`, `common.email_invalid`.
+- Formato del código: `{entidad}.{error}` en minúsculas y `snake_case`, donde el prefijo es **la entidad a la que se refiere el error** (`customer`, `job`, `tenant`, `tenant_user`, `user`) y `common` para el shared kernel. Ejemplos: `customer.name_required`, `job.cannot_start`, `common.email_invalid`.
+  - *Revisión 2026-09-24, antes de publicar ningún código:* la primera redacción decía `{contexto}.{error}`, pero en la práctica se usaba la entidad y en Identity se mezclaban ambos criterios (`user.name_required` junto a `identity.email_already_registered`). Se fija la entidad (más útil para el frontend: `customer.*` → formulario de cliente) y el código pasa a `user.email_already_registered`. La clase de códigos sigue siendo una por bounded context.
 - Domain lanza una excepción propia, **`DomainException(code, params args)`**, en lugar de `ArgumentException` o `InvalidOperationException`. Los argumentos solo pueden ser datos **no personales** (estados, Ids), nunca el valor que introdujo el usuario (ADR-009 R5).
 - Las excepciones de programación siguen siendo las de .NET (`ArgumentNullException` y similares): indican un bug, no un error de negocio, y deben acabar en 500.
 

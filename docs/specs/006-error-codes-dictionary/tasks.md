@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-011-errores-codigos-diccionario.md](../../adr/ADR-011-errores-codigos-diccionario.md)
-**Estado general:** En curso (spec aprobada 2026-09-24)
+**Estado general:** Implementada y verificada (2026-09-24)
 
 ---
 
@@ -24,9 +24,9 @@
 
 ### Application (≈ 1,5 h)
 - [x] `BusinessRuleException`, `NotFoundException` e `IdentityOperationException` con código y argumentos
-- [x] Códigos de Application: `customer.not_found`, `job.not_found`, `tenant_user.not_found`, `customer.has_active_jobs`, `identity.email_already_registered`. **Decisión:** van en las mismas clases por contexto de Domain (`CustomerErrors.NotFound`…), no en clases propias de Application: un solo vocabulario por contexto, visible desde todas las capas, y el test de diccionario recorre un único ensamblado
+- [x] Códigos de Application: `customer.not_found`, `job.not_found`, `tenant_user.not_found`, `customer.has_active_jobs`, `user.email_already_registered`. **Decisión:** van en las mismas clases por contexto de Domain (`CustomerErrors.NotFound`…), no en clases propias de Application: un solo vocabulario por contexto, visible desde todas las capas, y el test de diccionario recorre un único ensamblado
 - [x] `Start/Complete/CancelJobCommandHandler`: eliminado el `catch (InvalidOperationException)`; 0 `catch` en Application
-- [x] `IdentityService`: devuelve el código `identity.email_already_registered` en vez del texto
+- [x] `IdentityService`: devuelve el código `user.email_already_registered` en vez del texto (renombrado desde `identity.*` al unificar los prefijos por entidad, antes de publicar ningún código)
 - [x] `ValidationRules`: `.WithErrorCode(...)` en lugar de `.WithMessage("…")` (email y teléfono)
 - [x] Tests de Application adaptados: 9 aserciones de código en handlers y 2 en validadores. 53/53 en verde. Adelantado del bloque API: `DomainException` → 400 en `GlobalExceptionHandler`, para no dejar un commit intermedio en el que un error de negocio respondiera 500
 
@@ -38,13 +38,13 @@
 - [x] **Hallazgo de la verificación manual:** `GET /customers/{id}` y `GET /jobs/{id}` devolvían `Results.NotFound()` con el cuerpo vacío (sin `code`). Ahora lanzan `NotFoundException` y pasan por el `GlobalExceptionHandler` como el resto de los 404
 
 ### Tests (≈ 1,5-2 h)
-- [ ] **Diccionario completo:** todas las constantes de las clases `*Errors` (Domain y Application) tienen entrada en `ErrorMessages.resx`
-- [ ] **Arquitectura:** Domain no contiene `new ArgumentException(` ni `new InvalidOperationException(`
-- [ ] **Integración:** 400 de negocio con `code` y mensaje en español (`job.cannot_complete`)
-- [ ] **Integración:** validación con `errors[]` (campo, código, mensaje en español)
-- [ ] **Integración:** `Accept-Language: fr` → mensaje en español
-- [ ] **Integración:** 404 con `code: "customer.not_found"`
-- [ ] Regresión: todas las suites en verde (incluidos el aislamiento de tenant y los tests de seguridad de la spec 004)
+- [x] **Diccionario completo** (`Architecture/ErrorCodeArchitectureTests`): todas las constantes de las clases `*Errors`, `ApiErrors` y `ProblemTitles` tienen entrada en `ErrorMessages.resx`. Además, **ninguna entrada huérfana** y **formato** `entidad.error`
+- [x] **Arquitectura:** Domain no contiene `new ArgumentException(` ni `new InvalidOperationException(`. Verificado con una sonda: los 3 guardarraíles fallan con un mensaje que indica qué falta. La búsqueda de texto se movió a `Architecture/SourceCode.cs`, compartida con los tests de seguridad
+- [x] **Integración** (`Errors/ErrorResponseContractTests`): `DomainException`, `BusinessRuleException`, `NotFoundException` e `IdentityOperationException` → estado HTTP, `code` y mensaje del diccionario, más `traceId` (con un `ISender` falso, sin base de datos)
+- [x] **Integración:** validación real con `errors[]`: código propio (`common.email_invalid`) con mensaje del diccionario y código estándar (`NotEmptyValidator`) con mensaje de FluentValidation en español
+- [x] **Integración:** `Accept-Language: fr-FR` y `en-US` → español; una excepción genérica → 500 `server.unexpected`, nunca un error de negocio
+- [x] **Integración:** 404 con `code: "customer.not_found"`
+- [x] Regresión: **142 tests** en verde (Domain 54, Application 53, Api 23, Infrastructure 12, incluido el aislamiento de tenant con SQL Server en Docker); 0 avisos de compilación
 
 ### Verificación manual (≈ 0,5 h)
 - [x] `dotnet run` y curl: completar un Job `New` → 400 `job.cannot_complete`; nombre de 201 + teléfono inválido → `errors[]` en español (código propio y estándar); inexistente → 404 `customer.not_found`; borrar cliente con trabajo activo → 400 `customer.has_active_jobs`; 0 errores 500

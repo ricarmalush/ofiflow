@@ -31,7 +31,7 @@ Sacar del código todos los textos de error que llegan al usuario y sustituirlos
 ## Reglas / invariantes
 
 - Ningún texto para el usuario en Domain ni en Application.
-- Todo código de error sigue el formato `{contexto}.{error}` (minúsculas, `snake_case`) y tiene entrada en `ErrorMessages.resx`.
+- Todo código de error sigue el formato `{entidad}.{error}` (minúsculas, `snake_case`; prefijo = la entidad a la que se refiere el error) y tiene entrada en `ErrorMessages.resx`.
 - Un código publicado no cambia ni se reutiliza con otro significado.
 - Los argumentos de un mensaje nunca son datos personales ni el valor introducido por el usuario (ADR-009 R5).
 - Un error de negocio (`DomainException`, `BusinessRuleException`, validación) → **400**; `NotFoundException` → **404**; cualquier otra excepción → **500** con mensaje genérico.
@@ -49,7 +49,7 @@ Domain/Jobs/JobErrors              job.title_required, job.cannot_start, job.can
 Domain/Tenancy/TenancyErrors       tenant.name_required
 Domain/Identity/IdentityErrors     user.name_required
 Application (códigos propios)      customer.not_found, job.not_found, tenant_user.not_found,
-                                   customer.has_active_jobs, identity.email_already_registered
+                                   customer.has_active_jobs, user.email_already_registered
 Api/Resources/ErrorMessages.resx   código → mensaje en español (+ títulos, 500 genérico, 429)
 ```
 

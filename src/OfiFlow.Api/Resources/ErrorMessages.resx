@@ -120,7 +120,7 @@
   <data name="user.name_required" xml:space="preserve">
     <value>El nombre del usuario es obligatorio.</value>
   </data>
-  <data name="identity.email_already_registered" xml:space="preserve">
+  <data name="user.email_already_registered" xml:space="preserve">
     <value>El email ya está registrado.</value>
   </data>
 
