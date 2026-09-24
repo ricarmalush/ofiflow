@@ -45,14 +45,14 @@ Esta limitación condiciona todas las decisiones técnicas del proyecto: se prio
 - **.NET 10**, **SQL Server** + **EF Core**, **ASP.NET Core Identity** + **JWT**, **MediatR**.
 - Multi-tenant desde el primer commit: una única base de datos, aislamiento por `TenantId` + Global Query Filter de EF Core.
 
-Todas las decisiones arquitectónicas están documentadas como ADR en la raíz del repo (`ADR-001` a `ADR-007` por ahora). No se reabren sin una razón nueva y explícita — ver cada ADR para su contexto, opciones consideradas y consecuencias.
+Todas las decisiones arquitectónicas están documentadas como ADR en [`docs/adr/`](./docs/adr/); el índice con el estado de cada una está en [`docs/README.md`](./docs/README.md). No se reabren sin una razón nueva y explícita — ver cada ADR para su contexto, opciones consideradas y consecuencias.
 
 ## Roadmap por fases
 
 | Fase | Contenido |
 |---|---|
-| 0 | Arquitectura (ADRs, esqueleto de solución, Identity, Multi-tenancy) — **en curso** |
-| 1 | MVP: Tenant, User, TenantUser, Customer, Job |
+| 0 | Arquitectura (ADRs, esqueleto de solución, Identity, Multi-tenancy) — **hecha** |
+| 1 | MVP: Tenant, User, TenantUser, Customer, Job — **hecha** |
 | 2 | Agenda, estados de trabajo, asignación de técnicos |
 | 3 | Presupuestos, PDF |
 | 4 | Facturas, pagos, seguimiento |
@@ -65,27 +65,30 @@ Todas las decisiones arquitectónicas están documentadas como ADR en la raíz d
 | 11 | Internacionalización |
 | 12 | Escalabilidad avanzada |
 
-Calendario orientativo en [`Calendario del Proyecto.txt`](./Calendario%20del%20Proyecto.txt). Especificación completa del producto en [`ProyectoOFIFLOW.txt`](./ProyectoOFIFLOW.txt).
+Calendario orientativo en [`Calendario del Proyecto.txt`](./docs/producto/Calendario%20del%20Proyecto.txt). Especificación completa del producto en [`ProyectoOFIFLOW.txt`](./docs/producto/ProyectoOFIFLOW.txt).
 
 ## Cómo se trabaja (Spec-Driven Development)
 
 Cada feature nueva sigue un ciclo Specify → Plan → Tasks → Implement antes de tocar código:
 
-1. **Specify** — `specs/NNN-nombre-feature/spec.md`: objetivo, qué incluye/qué no, reglas de negocio, criterios de aceptación.
+1. **Specify** — `docs/specs/NNN-nombre-feature/spec.md`: objetivo, qué incluye/qué no, reglas de negocio, criterios de aceptación.
 2. **Plan** — se apoya en las ADR existentes, o se cierra una ADR nueva si hace falta una decisión técnica que no esté cubierta.
-3. **Tasks** — `specs/NNN-nombre-feature/tasks.md`: checklist en incrementos pequeños (Domain → Application → Infrastructure → API → Tests → Frontend).
+3. **Tasks** — `docs/specs/NNN-nombre-feature/tasks.md`: checklist en incrementos pequeños (Domain → Application → Infrastructure → API → Tests → Frontend).
 4. **Implement** — código, marcando cada tarea al completarse según la Definición de "Done".
 
-Plantillas en [`specs/TEMPLATE-spec.md`](./specs/TEMPLATE-spec.md) y [`specs/TEMPLATE-tasks.md`](./specs/TEMPLATE-tasks.md).
+Plantillas en [`docs/specs/TEMPLATE-spec.md`](./docs/specs/TEMPLATE-spec.md) y [`docs/specs/TEMPLATE-tasks.md`](./docs/specs/TEMPLATE-tasks.md).
 
 ## Estructura del repositorio
 
 ```
 OFIFLOW/
-├── ProyectoOFIFLOW.txt          # Especificación completa del producto
-├── Calendario del Proyecto.txt  # Roadmap 2027-2028
-├── ADR-00X-*.md                 # Decisiones de arquitectura
-├── specs/                       # Specify + Tasks por feature
+├── README.md
+├── docs/
+│   ├── README.md                # Índice de ADRs y specs con su estado
+│   ├── producto/                # ProyectoOFIFLOW.txt + Calendario del Proyecto.txt
+│   ├── adr/                     # ADR-00X-*.md: decisiones de arquitectura
+│   └── specs/                   # NNN-feature/spec.md + tasks.md, y plantillas
+├── Directory.Build.props        # Configuración común a todos los .csproj
 ├── OfiFlow.slnx                 # Solución .NET
 ├── src/
 │   ├── OfiFlow.Domain
@@ -101,4 +104,4 @@ OFIFLOW/
 
 ## Estado actual
 
-Fase 0 casi cerrada: 7 ADR aceptadas, esqueleto de la solución .NET creado y compilando (0 errores). Pendiente antes de pasar a Fase 1: clases base de Domain (`AggregateRoot`, `ITenantOwned`, `IAuditable`) y la primera spec (`001-customer`).
+Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT + aislamiento de tenant). ADR-001 a ADR-008 aceptadas; ADR-009 (seguridad) y la spec `004-security-hardening` están en borrador. Detalle en [`docs/README.md`](./docs/README.md).
