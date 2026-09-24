@@ -1,6 +1,6 @@
 # Spec — 004-security-hardening
 
-**Estado:** Borrador
+**Estado:** Aprobada
 **Fecha:** 2026-09-24
 **Bounded Context:** Transversal (Api + Application + Infrastructure; toca Identity, Customers y Jobs)
 **Depende de:** ADR-009 (línea base de seguridad — esta spec implementa su parte NOW), ADR-002, ADR-003, ADR-006, ADR-007, `specs/002-tenancy-identity/`
@@ -23,7 +23,8 @@ Cerrar los 5 huecos de seguridad detectados en la revisión del MVP (2026-09-24)
 
 ## Alcance — Qué NO incluye
 
-- **NOW** (necesario ahora, pero fuera de esta spec): decidir qué hacer con el secreto JWT de desarrollo commiteado (ADR-009 R8). Es una decisión del autor; si se elige `user-secrets`, es una tarea de 15 minutos que puede añadirse al final de esta misma lista.
+- ~~NOW: secreto JWT de desarrollo commiteado~~ → **resuelto al aprobar la spec (2026-09-24):** movido a `user-secrets` y rotado (ADR-009 R8). Queda como primera tarea marcada en `tasks.md`.
+- **NEXT** (fuera de esta spec, pero ya decidido): pipeline DevSecOps en CI (SAST, SCA, secretos, DAST); ver ADR-010 / spec 005.
 - **NEXT:**
   - `AuthorizationBehavior` / RBAC por rol dentro del tenant (en cuanto exista la invitación de usuarios).
   - Igualar el tiempo de respuesta del login para evitar la enumeración de emails.

@@ -1,4 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Jwt:Secret en local vive en user-secrets, nunca en appsettings (ADR-009 R8). -->
+    <UserSecretsId>950a2b04-890b-4264-b9a2-806caef42f16</UserSecretsId>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />

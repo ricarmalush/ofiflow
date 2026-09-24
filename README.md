@@ -78,6 +78,23 @@ Cada feature nueva sigue un ciclo Specify → Plan → Tasks → Implement antes
 
 Plantillas en [`docs/specs/TEMPLATE-spec.md`](./docs/specs/TEMPLATE-spec.md) y [`docs/specs/TEMPLATE-tasks.md`](./docs/specs/TEMPLATE-tasks.md).
 
+## Arrancar en local
+
+Requisitos: .NET 10 SDK, SQL Server LocalDB y la herramienta `dotnet-ef`.
+
+```bash
+# 1. Secreto JWT: nunca se guarda en el repositorio (ADR-009 R8). Hay que generarlo una vez por máquina.
+dotnet user-secrets set "Jwt:Secret" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
+
+# 2. Base de datos
+dotnet ef database update --project src/OfiFlow.Infrastructure
+
+# 3. API
+dotnet run --project src/OfiFlow.Api
+```
+
+Sin `openssl`, en PowerShell: `[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))`.
+
 ## Estructura del repositorio
 
 ```

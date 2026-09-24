@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-009-seguridad-base.md](../../adr/ADR-009-seguridad-base.md)
-**Estado general:** Pendiente (spec en Borrador, pendiente de aprobación)
+**Estado general:** En curso (spec aprobada 2026-09-24)
 
 ---
 
@@ -14,6 +14,13 @@
 - **Prerrequisito:** cerrar y commitear antes el cambio pendiente de Testcontainers (ADR-008) para no mezclar ambos trabajos en el mismo commit.
 
 ## Checklist
+
+### Secretos (ADR-009 R8), hecho al aprobar la spec
+- [x] `dotnet user-secrets init` en `OfiFlow.Api` y `Jwt:Secret` **nuevo** (32 bytes aleatorios) guardado ahí; el antiguo, que sigue en el historial de git, queda invalidado
+- [x] `Jwt:Secret` eliminado de `appsettings.Development.json`
+- [x] `AddInfrastructure()` falla al arrancar con un mensaje que indica el comando exacto si falta `Jwt:Secret`
+- [x] README: instrucciones de configuración local
+- [x] Verificado: la API arranca, y el registro y el login emiten JWT firmados con el secreto nuevo; Domain 44/44 y Application 30/30 en verde
 
 ### Guardarraíles de compilación (≈ 0,5 h)
 - [ ] `Directory.Build.props`: `<WarningsAsErrors>EF1002;NU1903;NU1904</WarningsAsErrors>` (ADR-009 R1, R7)
@@ -67,6 +74,5 @@
 
 ## Notas / bloqueos
 
-- **Decisión pendiente del autor (ADR-009 R8):** secreto JWT de desarrollo commiteado. Si se elige `dotnet user-secrets`, añadir aquí una tarea: mover el secreto, **generar uno nuevo** (el actual ya está en el historial de git) y actualizar el README con el comando de configuración local.
 - Los valores del rate limiting (5/min, 20/min, 3/h) son iniciales; se revisan con datos reales en la Beta (sección 69).
 - Estimación total: ≈ 8-12 h (unas 2-3 sesiones de 4 h).

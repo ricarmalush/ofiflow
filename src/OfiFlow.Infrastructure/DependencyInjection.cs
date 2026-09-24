@@ -43,6 +43,13 @@ public static class DependencyInjection
         var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
             ?? throw new InvalidOperationException("Falta la sección de configuración 'Jwt'.");
 
+        if (string.IsNullOrWhiteSpace(jwtOptions.Secret))
+        {
+            throw new InvalidOperationException(
+                "Falta 'Jwt:Secret'. En local: dotnet user-secrets set \"Jwt:Secret\" \"<base64 de 32 bytes>\" " +
+                "--project src/OfiFlow.Api. En producción: variable de entorno Jwt__Secret o Key Vault (ADR-009 R8).");
+        }
+
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {

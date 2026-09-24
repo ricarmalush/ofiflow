@@ -1,6 +1,6 @@
 # ADR-009 — Línea base de seguridad (Secure by Design)
 
-**Estado:** Propuesto
+**Estado:** Aceptado
 **Fecha:** 2026-09-24
 **Proyecto:** OfiFlow
 
@@ -87,7 +87,8 @@ Se adopta la **Opción 3**, con estas reglas:
 
 ### R8 — Secretos
 - En producción, `Jwt:Secret` y la cadena de conexión llegan por variables de entorno o Key Vault — nunca en `appsettings.json`. `appsettings.json` sigue sin sección `Jwt` para que un despliegue mal configurado falle al arrancar.
-- **Pendiente de decisión del autor (ver "Qué queda abierto").** Hoy `appsettings.Development.json` contiene un secreto JWT de desarrollo commiteado, lo que choca con la regla literal de la sección 35 ("Nunca guardar secretos en código").
+- En local, `Jwt:Secret` vive en **`dotnet user-secrets`** (`UserSecretsId` en `OfiFlow.Api.csproj`), fuera del repositorio. **Decidido y aplicado el 2026-09-24.** Hasta entonces, `appsettings.Development.json` contenía un secreto de desarrollo commiteado, lo que chocaba con la sección 35. Ese secreto sigue en el historial de git, así que se **rotó**: el valor actual es nuevo y nunca se ha commiteado. El antiguo no protege nada, porque solo firmó tokens de una base LocalDB de desarrollo, y por eso no se reescribe el historial.
+- Si falta `Jwt:Secret`, la aplicación no arranca y el error indica el comando exacto para configurarlo.
 
 ## Consecuencias
 
@@ -107,7 +108,6 @@ Se adopta la **Opción 3**, con estas reglas:
 - No introducir Redis ni un WAF solo por seguridad mientras haya una única instancia.
 
 ### Qué queda abierto para revisar más adelante
-- **Secreto de desarrollo commiteado (decisión del autor).** Recomendación: moverlo a `dotnet user-secrets` (≈ 15 min) y **generar uno nuevo**, porque el actual ya está en el historial de git. Alternativa: mantenerlo y anotar aquí la excepción consciente a la sección 35.
 - **NEXT — RBAC dentro del tenant:** `AuthorizationBehavior` (previsto en ADR-003, no implementado) que compruebe `TenantUser.Role` por Command. Se vuelve necesario en cuanto un tenant tenga más de un usuario (invitaciones). Sigue abierto el punto de ADR-004/007 sobre permisos granulares.
 - **NEXT — Enumeración de usuarios:** igualar el tiempo del login cuando el email no existe (verificar contra un hash ficticio) y revisar el mensaje "El email ya está registrado" del registro cuando exista confirmación de email.
 - **NEXT — CORS** restringido al origen del frontend Angular, cuando exista.
