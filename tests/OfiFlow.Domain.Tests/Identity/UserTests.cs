@@ -25,6 +25,8 @@ public class UserTests
     {
         var email = Email.Create("juan@example.com");
 
-        Assert.Throws<ArgumentException>(() => User.Create(Guid.NewGuid(), name, email));
+        var exception = Assert.Throws<DomainException>(() => User.Create(Guid.NewGuid(), name, email));
+
+        Assert.Equal(IdentityErrors.UserNameRequired, exception.Code);
     }
 }

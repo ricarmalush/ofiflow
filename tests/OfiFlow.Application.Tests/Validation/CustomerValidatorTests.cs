@@ -56,7 +56,8 @@ public class CustomerValidatorTests
     {
         // "a@b" pasaba el EmailAddress() de FluentValidation pero no la regla de Domain.
         _create.TestValidate(ValidCreate() with { Email = "a@b" })
-            .ShouldHaveValidationErrorFor(x => x.Email);
+            .ShouldHaveValidationErrorFor(x => x.Email)
+            .WithErrorCode(CommonErrors.EmailInvalid);
     }
 
     [Fact]
@@ -73,7 +74,8 @@ public class CustomerValidatorTests
     public void Phone_ThatDomainWouldReject_IsInvalid_InsteadOfFailingLaterWith500()
     {
         _create.TestValidate(ValidCreate() with { Phone = "abc" })
-            .ShouldHaveValidationErrorFor(x => x.Phone);
+            .ShouldHaveValidationErrorFor(x => x.Phone)
+            .WithErrorCode(CustomerErrors.PhoneInvalid);
     }
 
     [Fact]

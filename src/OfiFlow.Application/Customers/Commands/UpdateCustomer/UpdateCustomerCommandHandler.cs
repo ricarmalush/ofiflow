@@ -12,7 +12,7 @@ public sealed class UpdateCustomerCommandHandler(IApplicationDbContext dbContext
     public async Task Handle(UpdateCustomerCommand request, CancellationToken cancellationToken)
     {
         var customer = await dbContext.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken)
-            ?? throw new NotFoundException(nameof(Customer), request.Id);
+            ?? throw new NotFoundException(CustomerErrors.NotFound, request.Id);
 
         var email = string.IsNullOrWhiteSpace(request.Email) ? null : Email.Create(request.Email);
         var phone = string.IsNullOrWhiteSpace(request.Phone) ? null : PhoneNumber.Create(request.Phone);

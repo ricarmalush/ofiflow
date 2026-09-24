@@ -1,22 +1,26 @@
 using MediatR;
+using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Customers.Commands.CreateCustomer;
 using OfiFlow.Application.Customers.Commands.DeleteCustomer;
 using OfiFlow.Application.Customers.Commands.UpdateCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomers;
+using OfiFlow.Domain.Customers;
 
 namespace OfiFlow.Api.Endpoints;
 
 public static class CustomerEndpoints
 {
+    public const string Route = "/api/v1/customers";
+
     public static void MapCustomerEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/customers").WithTags("Customers").RequireAuthorization();
+        var group = app.MapGroup(Route).WithTags("Customers").RequireAuthorization();
 
         group.MapPost("/", async (CreateCustomerCommand command, ISender sender, CancellationToken cancellationToken) =>
             {
                 var id = await sender.Send(command, cancellationToken);
-                return Results.Created($"/api/v1/customers/{id}", new { id });
+                return Results.Created($"{Route}/{id}", new { id });
             })
             .WithName("CreateCustomer")
             .WithSummary("Crea un nuevo cliente del tenant activo.");
@@ -24,7 +28,8 @@ public static class CustomerEndpoints
         group.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
             {
                 var customer = await sender.Send(new GetCustomerQuery(id), cancellationToken);
-                return customer is null ? Results.NotFound() : Results.Ok(customer);
+                // Mismo 404 que los comandos: pasa por GlobalExceptionHandler con código y mensaje (ADR-011).
+                return Results.Ok(customer ?? throw new NotFoundException(CustomerErrors.NotFound, id));
             })
             .WithName("GetCustomer")
             .WithSummary("Consulta un cliente por Id.");

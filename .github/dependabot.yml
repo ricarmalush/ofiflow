@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Dependencias NuGet del backend .NET.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Las acciones de terceros de los workflows van fijadas por SHA (ADR-010); Dependabot
+  # abre el PR de actualización cuando sale una versión nueva, manteniendo el pin por SHA.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -93,7 +93,14 @@ dotnet ef database update --project src/OfiFlow.Infrastructure
 dotnet run --project src/OfiFlow.Api
 ```
 
-Sin `openssl`, en PowerShell: `[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))`.
+Sin `openssl`, en PowerShell (funciona también en Windows PowerShell 5.1):
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+dotnet user-secrets set "Jwt:Secret" ([Convert]::ToBase64String($b)) --project src/OfiFlow.Api
+```
+
+Si la API no arranca por falta del secreto, el mensaje de error indica qué fuentes de configuración consultó y la ruta exacta en la que buscó `secrets.json`.
 
 ## Estructura del repositorio
 

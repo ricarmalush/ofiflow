@@ -12,6 +12,9 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+// ADR-011: diccionario de mensajes e idioma de la petición.
+builder.Services.AddApiLocalization();
+
 // ADR-009 R4 y R6.
 builder.Services.AddAuthRateLimiting();
 builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
@@ -23,9 +26,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// El orden importa: las cabeceras de seguridad van primero para cubrir también los errores,
-// y el rate limiting antes de la autenticación para no gastar CPU en peticiones que se rechazan.
+// El orden importa: las cabeceras de seguridad van primero para cubrir también los errores;
+// el idioma, antes del ExceptionHandler, porque la cultura que fija solo la ven los middlewares
+// posteriores y los errores deben traducirse al idioma de la petición; y el rate limiting antes
+// de la autenticación para no gastar CPU en peticiones que se rechazan.
 app.UseMiddleware<SecurityHeadersMiddleware>();
+app.UseApiLocalization();
 app.UseExceptionHandler();
 
 if (!app.Environment.IsDevelopment())

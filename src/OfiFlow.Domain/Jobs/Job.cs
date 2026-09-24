@@ -66,7 +66,7 @@ public sealed class Job : AggregateRoot, ITenantOwned, IAuditable
     {
         if (Status != JobStatus.New)
         {
-            throw new InvalidOperationException($"No se puede iniciar un Job en estado {Status}.");
+            throw new DomainException(JobErrors.CannotStart, Status);
         }
 
         Status = JobStatus.InProgress;
@@ -76,7 +76,7 @@ public sealed class Job : AggregateRoot, ITenantOwned, IAuditable
     {
         if (Status != JobStatus.InProgress)
         {
-            throw new InvalidOperationException($"No se puede completar un Job en estado {Status}.");
+            throw new DomainException(JobErrors.CannotComplete, Status);
         }
 
         Status = JobStatus.Completed;
@@ -86,7 +86,7 @@ public sealed class Job : AggregateRoot, ITenantOwned, IAuditable
     {
         if (Status == JobStatus.Completed)
         {
-            throw new InvalidOperationException("No se puede cancelar un Job ya completado.");
+            throw new DomainException(JobErrors.CannotCancelCompleted);
         }
 
         Status = JobStatus.Cancelled;
@@ -100,7 +100,7 @@ public sealed class Job : AggregateRoot, ITenantOwned, IAuditable
     {
         if (string.IsNullOrWhiteSpace(title))
         {
-            throw new ArgumentException("El título del trabajo es obligatorio.", nameof(title));
+            throw new DomainException(JobErrors.TitleRequired);
         }
     }
 }

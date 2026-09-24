@@ -17,6 +17,9 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
             headers.XFrameOptions = "DENY";
             headers["Referrer-Policy"] = "no-referrer";
             headers.ContentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'";
+            // Ningún frontend consume esta API todavía (sin CORS configurado): el valor más
+            // restrictivo. Hallazgo real del primer escaneo DAST (ADR-010), no una suposición.
+            headers["Cross-Origin-Resource-Policy"] = "same-origin";
             return Task.CompletedTask;
         });
 

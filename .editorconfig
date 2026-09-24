@@ -1,0 +1,7 @@
+root = true
+
+[*.cs]
+
+# ADR-010: toda la categoría "Security" de los analizadores de .NET rompe la compilación,
+# no solo avisa — así una regresión de seguridad no puede colarse silenciosamente.
+dotnet_analyzer_diagnostic.category-Security.severity = error

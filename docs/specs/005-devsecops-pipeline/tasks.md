@@ -26,23 +26,23 @@
 - [x] `SECURITY.md`: versiones soportadas, reporte privado de vulnerabilidades, plazos orientativos y alcance (con prioridad al aislamiento entre tenants)
 
 ### Repositorio (≈ 1 h) [externo]
-- [ ] Crear el repositorio público `ofiflow` en GitHub y hacer la primera subida de `master`
-- [ ] Activar secret scanning, push protection, Dependabot alerts y Private Vulnerability Reporting
+- [x] Repositorio público creado: https://github.com/ricarmalush/ofiflow. Solo se subió `master`. Verificado por la API de GitHub: los 8 commits con email privado (0 con el personal) y sin ficheros sensibles publicados. Después se borró la rama local `backup/pre-noreply` y se purgó el historial antiguo.
+- [x] Activados y verificados por la API: secret scanning, push protection, Dependabot alerts y Private Vulnerability Reporting. Alertas abiertas al activar: 0 de secretos y 0 de Dependabot.
 - [ ] Proteger `master`: PR obligatorio, checks `ci` y `codeql` obligatorios, sin force-push
 
 ### Workflows (≈ 4-6 h)
-- [ ] `ci.yml`: `setup-dotnet` 10 → `dotnet build` (analizadores de seguridad como error) → `dotnet test` para todas las suites, con la de Infrastructure usando Testcontainers en el Docker del runner → paso de Gitleaks. Con `permissions: contents: read` y acciones fijadas por SHA.
-- [ ] `Directory.Build.props`: `AnalysisModeSecurity=All` y reglas de seguridad `CA2xxx`/`CA3xxx`/`CA5xxx` como error (se verificó el 2026-09-24 que hoy dan 0 avisos)
-- [ ] `codeql.yml`: C#, build manual (`dotnet build`), en push/PR y cada semana; resultados en la pestaña Security
-- [ ] `dast.yml`: SQL Server como service container → `dotnet ef database update` → API con `Jwt__Secret` generado con `openssl rand -base64 32` → esperar a que responda → `zaproxy/action-api-scan` contra `/openapi/v1.json` → subir el informe como artefacto
-- [ ] `.zap/rules.tsv`: analizar el primer informe de ZAP y documentar cada regla que se ignore con su motivo
-- [ ] `dependabot.yml`: ecosistemas `nuget` y `github-actions`, semanal
+- [x] `ci.yml`: `setup-dotnet` 10 → `dotnet build` (analizadores de seguridad como error) → `dotnet test` para todas las suites, con la de Infrastructure usando Testcontainers en el Docker del runner → paso de Gitleaks. Con `permissions: contents: read` y acciones fijadas por SHA. **Verificado en PR #1: `build-and-test` y `gitleaks` en verde.**
+- [x] `Directory.Build.props`: `AnalysisModeSecurity=All` + `.editorconfig` (`dotnet_analyzer_diagnostic.category-Security.severity = error`, mecanismo estándar para una categoría completa en vez de listar cada CA en `WarningsAsErrors`). Verificado con `bin`/`obj` limpios: 0 avisos, 0 errores.
+- [x] `codeql.yml`: C#, build manual (`dotnet build`), en push/PR y cada semana; resultados en la pestaña Security. **Verificado en PR #1: en verde, sin alertas.**
+- [x] `dast.yml`: SQL Server como service container → `dotnet ef database update` → API con `Jwt__Secret` generado con `openssl rand -base64 32` → esperar a que responda → `zaproxy/action-api-scan` contra `/openapi/v1.json` → subir el informe como artefacto. **Verificado en PR #1, con dos fallos reales corregidos por el camino:** faltaba `dotnet restore` antes de las migraciones, y `ApplicationDbContextFactory` tenía la cadena de conexión de LocalDB hardcodeada e ignoraba `ConnectionStrings__Default` (rompía en el runner Linux, que no tiene LocalDB). En verde tras corregir ambos.
+- [x] `.zap/rules.tsv`: analizado el primer informe real (PR #1) — 0 High/Medium, 1 Low real (Cross-Origin-Resource-Policy, corregido en `SecurityHeadersMiddleware`, no se ignora), 8 Informational documentadas e ignoradas por motivo (fuzzing sin autenticar, cabeceras `Sec-Fetch-*` sin sentido para una API JSON sin frontend). `continue-on-error` retirado de `dast.yml`: a partir de ahora un `FAIL` de ZAP sí bloquea.
+- [x] `dependabot.yml`: ecosistemas `nuget` y `github-actions`, semanal
 
 ### Verificación (≈ 1-2 h)
 - [ ] PR de prueba con `FromSqlRaw` interpolado → `ci` en rojo (EF1002 y test de arquitectura) → cerrar sin fusionar
 - [ ] PR de prueba con un secreto falso con formato real → push protection lo bloquea; hacer una captura como evidencia
-- [ ] `TenantIsolationIntegrationTests` en verde en el runner
-- [ ] Informe de ZAP descargado y revisado, sin riesgos altos sin analizar
+- [x] `TenantIsolationIntegrationTests` en verde en el runner (parte de `build-and-test` en PR #1, con Testcontainers en el Docker del runner de GitHub)
+- [x] Informe de ZAP descargado y revisado, sin riesgos altos sin analizar — ver detalle arriba
 - [ ] Sección "Seguridad" en el README: tabla de capas y herramientas, enlaces a ADR-009, ADR-010 y `SECURITY.md`
 
 ---

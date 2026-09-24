@@ -15,6 +15,13 @@
       NU1903/NU1904: paquete NuGet con vulnerabilidad conocida de severidad alta/crítica.
     -->
     <WarningsAsErrors>$(WarningsAsErrors);EF1002;NU1903;NU1904</WarningsAsErrors>
+    <!--
+      ADR-010: activa todas las reglas de los analizadores de .NET en la categoría "Security"
+      (CA2xxx/CA3xxx/CA5xxx), aunque estén deshabilitadas por defecto. La severidad de cada
+      regla (a error) se fija en .editorconfig, no aquí — es el mecanismo estándar para una
+      categoría completa, en vez de listar cada CA a mano en WarningsAsErrors.
+    -->
+    <AnalysisModeSecurity>All</AnalysisModeSecurity>
   </PropertyGroup>
 
 </Project>
