@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-009-seguridad-base.md](../../adr/ADR-009-seguridad-base.md)
-**Estado general:** Implementada (2026-09-24). Pendiente solo la regresión de `TenantIsolationIntegrationTests`, que depende de Docker (ADR-008).
+**Estado general:** Implementada y verificada (2026-09-24).
 
 ---
 
@@ -69,7 +69,7 @@
 - [x] **Integración:** una contraseña de 129 caracteres da 400; un JSON mal formado da 400 sin tipos internos; las respuestas de error llevan `traceId`
 - [x] **Integración:** un 500 devuelve un mensaje genérico (sin el detalle interno), mantiene las cabeceras y queda registrado como `Error` con la excepción
 - [x] Regresión: Domain 54, Application 53, Infrastructure 10 y Api 10, todos en verde (**127 tests**)
-- [ ] Regresión: `TenantIsolationIntegrationTests`, pendiente de que Docker funcione (ADR-008). Se ejecutará en CI con la spec 005.
+- [x] Regresión: `TenantIsolationIntegrationTests` en verde con Testcontainers (SQL Server real en Docker) una vez resuelto Docker en local: **129 tests** en total
 
 ### Verificación manual (API real + LocalDB)
 - [x] `Notes` de 2001 caracteres → 400; teléfono inválido → 400; `type: 999` → 400; enum como texto → 400 con `traceId`; cliente válido → 201

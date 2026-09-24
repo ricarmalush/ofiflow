@@ -7,12 +7,12 @@ namespace OfiFlow.Infrastructure.Tests.Persistence;
 
 /// <summary>
 /// El test obligatorio de la sección 42 del prompt maestro — "un usuario del Tenant A nunca
-/// puede acceder a información del Tenant B" — contra SQL Server real (LocalDB, ADR-008),
+/// puede acceder a información del Tenant B" — contra SQL Server real (Testcontainers, ADR-008),
 /// no InMemory. Verificado manualmente por HTTP en 001/002/003; esta es su automatización.
 /// </summary>
 public class TenantIsolationIntegrationTests : IAsyncLifetime
 {
-    private readonly LocalDbFixture _fixture = new();
+    private readonly SqlServerContainerFixture _fixture = new();
 
     public Task InitializeAsync() => _fixture.InitializeAsync();
 
