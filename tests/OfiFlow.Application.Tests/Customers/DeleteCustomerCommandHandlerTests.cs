@@ -29,8 +29,10 @@ public class DeleteCustomerCommandHandlerTests
         await using var db = TestDbContextFactory.Create();
         var handler = new DeleteCustomerCommandHandler(db);
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             handler.Handle(new DeleteCustomerCommand(Guid.NewGuid()), CancellationToken.None));
+
+        Assert.Equal(CustomerErrors.NotFound, exception.Code);
     }
 
     [Fact]
@@ -46,8 +48,10 @@ public class DeleteCustomerCommandHandlerTests
 
         var handler = new DeleteCustomerCommandHandler(db);
 
-        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
             handler.Handle(new DeleteCustomerCommand(customer.Id), CancellationToken.None));
+
+        Assert.Equal(CustomerErrors.HasActiveJobs, exception.Code);
 
         Assert.True(await db.Customers.AnyAsync(c => c.Id == customer.Id));
     }

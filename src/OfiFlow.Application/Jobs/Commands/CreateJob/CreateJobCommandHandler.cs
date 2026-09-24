@@ -16,7 +16,7 @@ public sealed class CreateJobCommandHandler(IApplicationDbContext dbContext, ITe
         var customerExists = await dbContext.Customers.AnyAsync(c => c.Id == request.CustomerId, cancellationToken);
         if (!customerExists)
         {
-            throw new NotFoundException(nameof(Customer), request.CustomerId);
+            throw new NotFoundException(CustomerErrors.NotFound, request.CustomerId);
         }
 
         var job = Job.Create(tenantContext.TenantId, request.CustomerId, request.Title, request.Description, request.Priority);

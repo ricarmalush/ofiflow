@@ -28,7 +28,7 @@ public sealed class Tenant : AggregateRoot, IAuditable
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new ArgumentException("El nombre de la empresa es obligatorio.", nameof(name));
+            throw new DomainException(TenancyErrors.TenantNameRequired);
         }
 
         return new Tenant(Guid.NewGuid(), name.Trim());

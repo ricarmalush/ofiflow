@@ -1,3 +1,4 @@
+using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Domain.Tests.Tenancy;
@@ -17,6 +18,8 @@ public class TenantTests
     [InlineData("   ")]
     public void Create_WithoutName_Throws(string name)
     {
-        Assert.Throws<ArgumentException>(() => Tenant.Create(name));
+        var exception = Assert.Throws<DomainException>(() => Tenant.Create(name));
+
+        Assert.Equal(TenancyErrors.TenantNameRequired, exception.Code);
     }
 }

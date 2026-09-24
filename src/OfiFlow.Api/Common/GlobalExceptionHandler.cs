@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
+using OfiFlow.Domain.Common;
 
 namespace OfiFlow.Api.Common;
 
@@ -26,6 +27,8 @@ public sealed partial class GlobalExceptionHandler(ILogger<GlobalExceptionHandle
                 string.Join("; ", validation.Errors.Select(e => e.ErrorMessage))),
             IdentityOperationException identity => (StatusCodes.Status400BadRequest, "Error de registro", identity.Message),
             BusinessRuleException businessRule => (StatusCodes.Status400BadRequest, "Regla de negocio violada", businessRule.Message),
+            // Regla de un aggregate (ADR-011). El mensaje traducido llega con el diccionario (spec 006, bloque API).
+            DomainException domain => (StatusCodes.Status400BadRequest, "Regla de negocio violada", domain.Code),
             // JSON mal formado o de tipo incorrecto: es un error del cliente (ASP.NET ya trae el 4xx),
             // no un 500. El detalle del parser no se devuelve: revela tipos internos.
             BadHttpRequestException badRequest => (badRequest.StatusCode, "Petición no válida", "El cuerpo de la petición no tiene un formato válido."),

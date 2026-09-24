@@ -81,7 +81,7 @@ public sealed class Customer : AggregateRoot, ITenantOwned, IAuditable
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new ArgumentException("El nombre del cliente es obligatorio.", nameof(name));
+            throw new DomainException(CustomerErrors.NameRequired);
         }
     }
 }

@@ -4,6 +4,7 @@ using OfiFlow.Application.Jobs.Commands.CancelJob;
 using OfiFlow.Application.Jobs.Commands.CompleteJob;
 using OfiFlow.Application.Jobs.Commands.StartJob;
 using OfiFlow.Application.Tests.Common;
+using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Jobs;
 
 namespace OfiFlow.Application.Tests.Jobs;
@@ -33,13 +34,15 @@ public class JobStatusTransitionHandlerTests
     }
 
     [Fact]
-    public async Task CompleteJob_WhenNotInProgress_ThrowsBusinessRuleException()
+    public async Task CompleteJob_WhenNotInProgress_ThrowsDomainExceptionWithCode()
     {
         var (db, job) = await SeedJobAsync();
         await using var _ = db;
 
-        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+        var exception = await Assert.ThrowsAsync<DomainException>(() =>
             new CompleteJobCommandHandler(db).Handle(new CompleteJobCommand(job.Id), CancellationToken.None));
+
+        Assert.Equal(JobErrors.CannotComplete, exception.Code);
     }
 
     [Fact]
@@ -59,7 +62,9 @@ public class JobStatusTransitionHandlerTests
     {
         await using var db = TestDbContextFactory.Create();
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             new StartJobCommandHandler(db).Handle(new StartJobCommand(Guid.NewGuid()), CancellationToken.None));
+
+        Assert.Equal(JobErrors.NotFound, exception.Code);
     }
 }

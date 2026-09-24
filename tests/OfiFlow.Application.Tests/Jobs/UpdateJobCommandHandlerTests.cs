@@ -30,9 +30,11 @@ public class UpdateJobCommandHandlerTests
     {
         await using var db = TestDbContextFactory.Create();
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             new UpdateJobCommandHandler(db).Handle(
                 new UpdateJobCommand(Guid.NewGuid(), "Título", null, JobPriority.Normal),
                 CancellationToken.None));
+
+        Assert.Equal(JobErrors.NotFound, exception.Code);
     }
 }

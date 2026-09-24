@@ -11,7 +11,7 @@ public sealed class UpdateJobCommandHandler(IApplicationDbContext dbContext) : I
     public async Task Handle(UpdateJobCommand request, CancellationToken cancellationToken)
     {
         var job = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == request.Id, cancellationToken)
-            ?? throw new NotFoundException(nameof(Job), request.Id);
+            ?? throw new NotFoundException(JobErrors.NotFound, request.Id);
 
         job.UpdateDetails(request.Title, request.Description, request.Priority);
 

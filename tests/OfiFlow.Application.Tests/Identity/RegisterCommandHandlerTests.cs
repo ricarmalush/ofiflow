@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Identity.Commands.Register;
 using OfiFlow.Application.Tests.Common;
+using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Tests.Identity;
@@ -36,8 +37,10 @@ public class RegisterCommandHandlerTests
         var identityService = new FakeIdentityService { ShouldFailCreation = true };
         var handler = new RegisterCommandHandler(db, identityService);
 
-        await Assert.ThrowsAsync<IdentityOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<IdentityOperationException>(() =>
             handler.Handle(new RegisterCommand("Empresa", "Juan", "juan@example.com", "Password123!"), CancellationToken.None));
+
+        Assert.Contains(IdentityErrors.EmailAlreadyRegistered, exception.Codes);
 
         Assert.False(await db.Tenants.AnyAsync());
     }

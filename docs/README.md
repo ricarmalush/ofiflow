@@ -25,6 +25,7 @@
 | [008](./adr/ADR-008-testing-integracion.md) | Estrategia de tests de integración contra SQL Server | Aceptado |
 | [009](./adr/ADR-009-seguridad-base.md) | Línea base de seguridad (Secure by Design) | Aceptado |
 | [010](./adr/ADR-010-pipeline-devsecops.md) | Pipeline DevSecOps y herramientas de seguridad | Aceptado |
+| [011](./adr/ADR-011-errores-codigos-diccionario.md) | Errores de dominio, códigos de error y diccionario de mensajes | Aceptado |
 
 ## Specs
 
@@ -35,6 +36,7 @@
 | [003-job](./specs/003-job/spec.md) | Trabajos y transiciones de estado | Implementada |
 | [004-security-hardening](./specs/004-security-hardening/spec.md) | Línea base de seguridad (implementa ADR-009) | Implementada |
 | [005-devsecops-pipeline](./specs/005-devsecops-pipeline/spec.md) | Repositorio público y pipeline CI de seguridad (implementa ADR-010) | Aprobada (en curso) |
+| [006-error-codes-dictionary](./specs/006-error-codes-dictionary/spec.md) | Códigos de error y diccionario de mensajes (implementa ADR-011) | Aprobada (en curso) |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 
