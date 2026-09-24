@@ -1,6 +1,6 @@
 # ADR-010 — Pipeline DevSecOps y herramientas de seguridad
 
-**Estado:** Propuesto
+**Estado:** Aceptado
 **Fecha:** 2026-09-24
 **Proyecto:** OfiFlow
 

@@ -1,0 +1,9 @@
+# Hallazgos de Gitleaks revisados y aceptados de forma consciente (ADR-010).
+# Cada entrada es la huella exacta de UN hallazgo (commit:fichero:regla:línea): si el mismo
+# valor apareciera en otro commit o fichero, Gitleaks lo volvería a detectar.
+# Añadir una entrada exige justificarla aquí.
+
+# Secreto JWT de DESARROLLO del commit inicial (2026-09-22). Solo firmaba tokens contra una
+# base LocalDB local. Se movió a dotnet user-secrets y se ROTÓ en 66762e1 (ADR-009 R8), así
+# que ya no es válido. Se decidió no reescribir el historial por esa razón.
+6117cb846ccbaddb1362a0e075c6418e893806b6:src/OfiFlow.Api/appsettings.Development.json:generic-api-key:12

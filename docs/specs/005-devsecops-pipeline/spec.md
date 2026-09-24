@@ -1,6 +1,6 @@
 # Spec — 005-devsecops-pipeline
 
-**Estado:** Borrador
+**Estado:** Aprobada
 **Fecha:** 2026-09-24
 **Bounded Context:** Transversal (repositorio, CI/CD; sin cambios de dominio)
 **Depende de:** ADR-010 (herramientas y pipeline), ADR-009 (controles verificados), ADR-008 (Testcontainers), `docs/specs/004-security-hardening/`

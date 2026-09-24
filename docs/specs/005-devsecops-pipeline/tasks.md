@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-010-pipeline-devsecops.md](../../adr/ADR-010-pipeline-devsecops.md)
-**Estado general:** Pendiente (spec en Borrador, pendiente de aprobación)
+**Estado general:** En curso (spec aprobada 2026-09-24)
 
 ---
 
@@ -18,10 +18,12 @@
 ## Checklist
 
 ### Antes de publicar (≈ 1 h)
-- [ ] Instalar Gitleaks (binario oficial de GitHub Releases) y ejecutar `gitleaks git` sobre el historial completo
-- [ ] Analizar cada hallazgo. El esperado es el secreto JWT de desarrollo antiguo, ya rotado: se añade a `.gitleaksignore` con un comentario que lo justifique. **Cualquier otro hallazgo bloquea la publicación.**
-- [ ] Revisar a mano que el historial no contiene nada privado (datos personales, cadenas de conexión con contraseña, rutas de clientes reales)
-- [ ] `SECURITY.md`: versiones soportadas, cómo reportar una vulnerabilidad (Private Vulnerability Reporting) y tiempo de respuesta orientativo
+- [x] Gitleaks v8.30.1 con la imagen Docker oficial (`ghcr.io/gitleaks/gitleaks`), repositorio montado en solo lectura, sobre el historial completo (7 commits)
+- [x] Un único hallazgo: el secreto JWT de desarrollo antiguo del commit inicial, ya rotado. Documentado en `.gitleaksignore` por su huella exacta. Con el ignore: `no leaks found`.
+- [x] Escaneo también del directorio de trabajo: solo claves de sesión de IIS Express en `.vs/`, cifradas para la máquina local, **nunca commiteadas** y cubiertas por `.gitignore` (igual que `bin/`, `obj/` y `*.user`)
+- [x] Revisión manual: sin rutas personales, contraseñas ni IPs en ficheros versionados
+- [x] **Hallazgo de privacidad:** los 7 commits llevaban el email personal del autor. Antes de publicar se reescribió el autor y el committer al email privado de GitHub (`…@users.noreply.github.com`) con `git filter-branch` solo sobre `master`. Se comprobó que el contenido es idéntico y que el email personal no aparece en ningún mensaje ni contenido. Copia del historial original en la rama local `backup/pre-noreply` (**no se publica**; se borra tras verificar la publicación). `user.email` local configurado al email privado para los commits futuros.
+- [x] `SECURITY.md`: versiones soportadas, reporte privado de vulnerabilidades, plazos orientativos y alcance (con prioridad al aislamiento entre tenants)
 
 ### Repositorio (≈ 1 h) [externo]
 - [ ] Crear el repositorio público `ofiflow` en GitHub y hacer la primera subida de `master`
