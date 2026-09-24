@@ -1,0 +1,11 @@
+# Ajuste de falsos positivos de OWASP ZAP (ADR-010).
+#
+# Formato: <id de regla>\t<IGNORE|WARN|FAIL>\t<URL opcional>
+#
+# Todavía vacío a propósito: hasta que no exista un primer informe real de dast.yml
+# ejecutado en CI, no hay ningún falso positivo confirmado que documentar aquí — añadir
+# reglas a ciegas, sin haber visto el hallazgo real, sería adivinar. Cada línea que se
+# añada debe llevar un comentario explicando por qué ese hallazgo concreto no aplica.
+#
+# Tarea pendiente en docs/specs/005-devsecops-pipeline/tasks.md: "Analizar el primer
+# informe de ZAP y documentar cada regla que se ignore con su motivo".

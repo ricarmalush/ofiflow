@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore OfiFlow.slnx
+
+      # Los analizadores de seguridad (ADR-009/010) están configurados como error en
+      # Directory.Build.props/.editorconfig: cualquier regresión rompe aquí, no solo avisa.
+      - name: Build
+        run: dotnet build OfiFlow.slnx --no-restore
+
+      # Infrastructure.Tests usa Testcontainers (ADR-008): el runner de Ubuntu trae Docker
+      # preinstalado y arrancado, así que el test obligatorio de aislamiento de tenant corre
+      # aquí igual que en local, incluso los días que Docker falle en la máquina de desarrollo.
+      - name: Test
+        run: dotnet test OfiFlow.slnx --no-build --verbosity normal
+
+  gitleaks:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (historial completo)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      # .gitleaksignore documenta el único hallazgo esperado (secreto JWT de desarrollo
+      # antiguo, ya rotado) — gitleaks lo lee automáticamente de la raíz del repositorio.
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 detect --source . --log-opts="--all" --redact

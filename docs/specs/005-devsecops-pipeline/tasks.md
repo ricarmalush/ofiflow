@@ -31,12 +31,12 @@
 - [ ] Proteger `master`: PR obligatorio, checks `ci` y `codeql` obligatorios, sin force-push
 
 ### Workflows (≈ 4-6 h)
-- [ ] `ci.yml`: `setup-dotnet` 10 → `dotnet build` (analizadores de seguridad como error) → `dotnet test` para todas las suites, con la de Infrastructure usando Testcontainers en el Docker del runner → paso de Gitleaks. Con `permissions: contents: read` y acciones fijadas por SHA.
-- [ ] `Directory.Build.props`: `AnalysisModeSecurity=All` y reglas de seguridad `CA2xxx`/`CA3xxx`/`CA5xxx` como error (se verificó el 2026-09-24 que hoy dan 0 avisos)
-- [ ] `codeql.yml`: C#, build manual (`dotnet build`), en push/PR y cada semana; resultados en la pestaña Security
-- [ ] `dast.yml`: SQL Server como service container → `dotnet ef database update` → API con `Jwt__Secret` generado con `openssl rand -base64 32` → esperar a que responda → `zaproxy/action-api-scan` contra `/openapi/v1.json` → subir el informe como artefacto
-- [ ] `.zap/rules.tsv`: analizar el primer informe de ZAP y documentar cada regla que se ignore con su motivo
-- [ ] `dependabot.yml`: ecosistemas `nuget` y `github-actions`, semanal
+- [x] `ci.yml`: `setup-dotnet` 10 → `dotnet build` (analizadores de seguridad como error) → `dotnet test` para todas las suites, con la de Infrastructure usando Testcontainers en el Docker del runner → paso de Gitleaks. Con `permissions: contents: read` y acciones fijadas por SHA. **Sin verificar en un runner real todavía** — pendiente de pushear/abrir PR.
+- [x] `Directory.Build.props`: `AnalysisModeSecurity=All` + `.editorconfig` (`dotnet_analyzer_diagnostic.category-Security.severity = error`, mecanismo estándar para una categoría completa en vez de listar cada CA en `WarningsAsErrors`). Verificado con `bin`/`obj` limpios: 0 avisos, 0 errores.
+- [x] `codeql.yml`: C#, build manual (`dotnet build`), en push/PR y cada semana; resultados en la pestaña Security. **Sin verificar en un runner real todavía.**
+- [x] `dast.yml`: SQL Server como service container → `dotnet ef database update` → API con `Jwt__Secret` generado con `openssl rand -base64 32` → esperar a que responda → `zaproxy/action-api-scan` contra `/openapi/v1.json` → subir el informe como artefacto. `continue-on-error: true` mientras dure el modo informe (ADR-010). **Sin verificar en un runner real todavía — es la pieza con más riesgo de necesitar ajustes.**
+- [x] `.zap/rules.tsv`: creado vacío a propósito, con la explicación de por qué (no hay informe real todavía del que sacar reglas) — la tarea de rellenarlo con hallazgos reales sigue pendiente, ver "Verificación"
+- [x] `dependabot.yml`: ecosistemas `nuget` y `github-actions`, semanal
 
 ### Verificación (≈ 1-2 h)
 - [ ] PR de prueba con `FromSqlRaw` interpolado → `ci` en rojo (EF1002 y test de arquitectura) → cerrar sin fusionar
