@@ -17,21 +17,21 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
 
         builder.Property(c => c.Name)
             .IsRequired()
-            .HasMaxLength(200);
+            .HasMaxLength(Customer.NameMaxLength);
 
         builder.Property(c => c.Email)
             .HasConversion(
                 email => email == null ? null : email.Value,
                 value => value == null ? null : Email.Create(value))
-            .HasMaxLength(320);
+            .HasMaxLength(Email.MaxLength);
 
         builder.Property(c => c.Phone)
             .HasConversion(
                 phone => phone == null ? null : phone.Value,
                 value => value == null ? null : PhoneNumber.Create(value))
-            .HasMaxLength(20);
+            .HasMaxLength(PhoneNumber.MaxLength);
 
-        builder.Property(c => c.Address).HasMaxLength(500);
-        builder.Property(c => c.Notes).HasMaxLength(2000);
+        builder.Property(c => c.Address).HasMaxLength(Customer.AddressMaxLength);
+        builder.Property(c => c.Notes).HasMaxLength(Customer.NotesMaxLength);
     }
 }

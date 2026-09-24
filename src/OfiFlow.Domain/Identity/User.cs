@@ -9,6 +9,9 @@ namespace OfiFlow.Domain.Identity;
 /// </summary>
 public sealed class User : AggregateRoot, IAuditable
 {
+    // Longitud máxima: fuente única para EF Core y los Validators (ADR-009 R3).
+    public const int NameMaxLength = 200;
+
     public string Name { get; private set; } = string.Empty;
 
     public Email ContactEmail { get; private set; } = null!;

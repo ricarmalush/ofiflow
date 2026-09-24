@@ -4,6 +4,11 @@ namespace OfiFlow.Domain.Customers;
 
 public sealed class Customer : AggregateRoot, ITenantOwned, IAuditable
 {
+    // Longitudes máximas: fuente única para EF Core y los Validators (ADR-009 R3).
+    public const int NameMaxLength = 200;
+    public const int AddressMaxLength = 500;
+    public const int NotesMaxLength = 2000;
+
     public Guid TenantId { get; private set; }
 
     public CustomerType Type { get; private set; }

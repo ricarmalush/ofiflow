@@ -4,6 +4,10 @@ namespace OfiFlow.Domain.Jobs;
 
 public sealed class Job : AggregateRoot, ITenantOwned, IAuditable
 {
+    // Longitudes máximas: fuente única para EF Core y los Validators (ADR-009 R3).
+    public const int TitleMaxLength = 200;
+    public const int DescriptionMaxLength = 2000;
+
     public Guid TenantId { get; private set; }
 
     public Guid CustomerId { get; private set; }

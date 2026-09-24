@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using OfiFlow.Application.Common.Abstractions;
+using OfiFlow.Application.Common.Logging;
 using OfiFlow.Infrastructure.Persistence;
 
 namespace OfiFlow.Infrastructure.Identity;
 
-public sealed class IdentityService(ApplicationDbContext dbContext) : IIdentityService
+public sealed partial class IdentityService(ApplicationDbContext dbContext, ILogger<IdentityService> logger) : IIdentityService
 {
     private static readonly PasswordHasher<ApplicationUser> PasswordHasher = new();
 
@@ -40,11 +42,24 @@ public sealed class IdentityService(ApplicationDbContext dbContext) : IIdentityS
 
         if (user?.PasswordHash is null)
         {
+            // Sin el email: es un dato personal, y en un ataque de credential stuffing el log
+            // se llenaría de emails de terceros (ADR-009 R5). La IP la añade el scope de la API.
+            LogLoginFailed(logger, "UnknownEmail", null);
             return null;
         }
 
         var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
 
-        return result == PasswordVerificationResult.Failed ? null : user.Id;
+        if (result == PasswordVerificationResult.Failed)
+        {
+            LogLoginFailed(logger, "WrongPassword", user.Id);
+            return null;
+        }
+
+        return user.Id;
     }
+
+    [LoggerMessage(EventId = SecurityEventIds.LoginFailed, Level = LogLevel.Warning,
+        Message = "Login fallido. Motivo {Reason}, UserId {UserId}")]
+    private static partial void LogLoginFailed(ILogger logger, string reason, Guid? userId);
 }

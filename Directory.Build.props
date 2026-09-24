@@ -6,4 +6,15 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Guardarraíles de seguridad (ADR-009 R1 y R7): estos avisos rompen la compilación. -->
+  <PropertyGroup>
+    <!-- Audita también las dependencias transitivas, no solo las directas. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <!--
+      EF1002: SQL crudo construido con interpolación en FromSqlRaw/ExecuteSqlRaw (inyección SQL).
+      NU1903/NU1904: paquete NuGet con vulnerabilidad conocida de severidad alta/crítica.
+    -->
+    <WarningsAsErrors>$(WarningsAsErrors);EF1002;NU1903;NU1904</WarningsAsErrors>
+  </PropertyGroup>
+
 </Project>

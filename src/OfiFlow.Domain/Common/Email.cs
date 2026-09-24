@@ -7,6 +7,9 @@ namespace OfiFlow.Domain.Common;
 /// </summary>
 public sealed partial record Email
 {
+    /// <summary>Máximo práctico de RFC 5321; fuente única para EF Core y los Validators (ADR-009 R3).</summary>
+    public const int MaxLength = 320;
+
     public string Value { get; }
 
     private Email(string value)
@@ -21,13 +24,21 @@ public sealed partial record Email
             throw new ArgumentException("El email no puede estar vacío.", nameof(value));
         }
 
-        if (!EmailRegex().IsMatch(value))
+        // El mensaje no incluye el valor: es un dato personal y podría acabar en un log (ADR-009 R5).
+        if (!IsValid(value))
         {
-            throw new ArgumentException($"'{value}' no es un email válido.", nameof(value));
+            throw new ArgumentException("El email no tiene un formato válido.", nameof(value));
         }
 
         return new Email(value);
     }
+
+    /// <summary>
+    /// Misma regla que <see cref="Create"/>, para que los Validators rechacen con 400 lo que
+    /// Domain rechazaría después. La longitud se comprueba antes que la regex.
+    /// </summary>
+    public static bool IsValid(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= MaxLength && EmailRegex().IsMatch(value);
 
     public override string ToString() => Value;
 

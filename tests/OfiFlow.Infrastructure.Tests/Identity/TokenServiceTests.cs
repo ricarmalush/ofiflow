@@ -1,6 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using OfiFlow.Application.Common.Logging;
 using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Identity;
 using OfiFlow.Infrastructure.Persistence;
@@ -19,14 +22,17 @@ public class TokenServiceTests
         RefreshTokenDays = 7
     };
 
-    private static (ApplicationDbContext Db, TokenService Service) CreateSut()
+    private static (ApplicationDbContext Db, TokenService Service) CreateSut(ILogger<TokenService>? logger = null)
     {
         var dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
         var db = new ApplicationDbContext(dbOptions, new FixedTenantContext(Guid.NewGuid()));
-        var service = new TokenService(db, Microsoft.Extensions.Options.Options.Create(Options));
+        var service = new TokenService(
+            db,
+            Microsoft.Extensions.Options.Options.Create(Options),
+            logger ?? NullLogger<TokenService>.Instance);
 
         return (db, service);
     }
@@ -92,5 +98,27 @@ public class TokenServiceTests
 
         var allTokens = await db.RefreshTokens.ToListAsync();
         Assert.All(allTokens, t => Assert.NotNull(t.RevokedAt));
+    }
+
+    [Fact]
+    public async Task RotateRefreshTokenAsync_WithAlreadyRevokedToken_LogsSecurityEventWithoutTheToken()
+    {
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        db.TenantUsers.Add(TenantUser.CreateOwner(tenantId, userId));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        var issued = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+        await service.RotateRefreshTokenAsync(issued.RefreshToken, CancellationToken.None);
+
+        await service.RotateRefreshTokenAsync(issued.RefreshToken, CancellationToken.None);
+
+        var entry = Assert.Single(logger.Entries, e => e.EventId.Id == SecurityEventIds.RefreshTokenReuseDetected);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Contains(userId.ToString(), entry.Message);
+        Assert.DoesNotContain(issued.RefreshToken, entry.Message);
     }
 }

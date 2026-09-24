@@ -4,6 +4,9 @@ namespace OfiFlow.Domain.Tenancy;
 
 public sealed class Tenant : AggregateRoot, IAuditable
 {
+    // Longitud máxima: fuente única para EF Core y los Validators (ADR-009 R3).
+    public const int NameMaxLength = 200;
+
     public string Name { get; private set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }

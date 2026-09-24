@@ -3,16 +3,21 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OfiFlow.Application.Common.Abstractions;
+using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Identity;
 using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Persistence;
 
 namespace OfiFlow.Infrastructure.Identity;
 
-public sealed class TokenService(ApplicationDbContext dbContext, IOptions<JwtOptions> jwtOptions) : ITokenService
+public sealed partial class TokenService(
+    ApplicationDbContext dbContext,
+    IOptions<JwtOptions> jwtOptions,
+    ILogger<TokenService> logger) : ITokenService
 {
     private readonly JwtOptions _options = jwtOptions.Value;
 
@@ -34,6 +39,7 @@ public sealed class TokenService(ApplicationDbContext dbContext, IOptions<JwtOpt
         var existing = await dbContext.RefreshTokens.FirstOrDefaultAsync(rt => rt.TokenHash == tokenHash, cancellationToken);
         if (existing is null)
         {
+            LogRefreshTokenRejected(logger, "Unknown", null);
             return null;
         }
 
@@ -51,11 +57,14 @@ public sealed class TokenService(ApplicationDbContext dbContext, IOptions<JwtOpt
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            LogRefreshTokenReuseDetected(logger, existing.UserId, existing.TenantId, activeTokens.Count);
             return null;
         }
 
         if (!existing.IsActive)
         {
+            LogRefreshTokenRejected(logger, "Expired", existing.UserId);
             return null;
         }
 
@@ -66,6 +75,7 @@ public sealed class TokenService(ApplicationDbContext dbContext, IOptions<JwtOpt
 
         if (tenantUser is null)
         {
+            LogRefreshTokenRejected(logger, "NoTenantMembership", existing.UserId);
             return null;
         }
 
@@ -111,4 +121,14 @@ public sealed class TokenService(ApplicationDbContext dbContext, IOptions<JwtOpt
     }
 
     private static string Hash(string value) => Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
+    // Eventos de seguridad (ADR-009 R5): nunca incluyen el valor ni el hash del token.
+
+    [LoggerMessage(EventId = SecurityEventIds.RefreshTokenReuseDetected, Level = LogLevel.Warning,
+        Message = "Reutilización de refresh token revocado (posible robo). UserId {UserId}, TenantId {TenantId}; revocados {RevokedCount} tokens activos")]
+    private static partial void LogRefreshTokenReuseDetected(ILogger logger, Guid userId, Guid tenantId, int revokedCount);
+
+    [LoggerMessage(EventId = SecurityEventIds.RefreshTokenRejected, Level = LogLevel.Warning,
+        Message = "Refresh token rechazado. Motivo {Reason}, UserId {UserId}")]
+    private static partial void LogRefreshTokenRejected(ILogger logger, string reason, Guid? userId);
 }

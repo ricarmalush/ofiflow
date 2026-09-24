@@ -12,11 +12,11 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.Name)
             .IsRequired()
-            .HasMaxLength(200);
+            .HasMaxLength(User.NameMaxLength);
 
         builder.Property(u => u.ContactEmail)
             .HasConversion(email => email.Value, value => Domain.Common.Email.Create(value))
-            .HasMaxLength(320)
+            .HasMaxLength(Domain.Common.Email.MaxLength)
             .IsRequired();
     }
 }

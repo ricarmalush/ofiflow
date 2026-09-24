@@ -1,4 +1,5 @@
 using MediatR;
+using OfiFlow.Api.Common;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
@@ -17,7 +18,8 @@ public static class AuthEndpoints
                 return Results.Ok(new { tenantId });
             })
             .WithName("Register")
-            .WithSummary("Registra una nueva empresa (Tenant) y su primer usuario (Owner).");
+            .WithSummary("Registra una nueva empresa (Tenant) y su primer usuario (Owner).")
+            .RequireRateLimiting(RateLimiting.Register);
 
         group.MapPost("/login", async (LoginCommand command, ISender sender, CancellationToken cancellationToken) =>
             {
@@ -25,7 +27,8 @@ public static class AuthEndpoints
                 return result is null ? Results.Unauthorized() : Results.Ok(result);
             })
             .WithName("Login")
-            .WithSummary("Autentica al usuario y emite Access Token + Refresh Token.");
+            .WithSummary("Autentica al usuario y emite Access Token + Refresh Token.")
+            .RequireRateLimiting(RateLimiting.Login);
 
         group.MapPost("/refresh", async (RefreshTokenCommand command, ISender sender, CancellationToken cancellationToken) =>
             {
@@ -33,6 +36,7 @@ public static class AuthEndpoints
                 return result is null ? Results.Unauthorized() : Results.Ok(result);
             })
             .WithName("Refresh")
-            .WithSummary("Rota un Refresh Token válido por un nuevo par de tokens.");
+            .WithSummary("Rota un Refresh Token válido por un nuevo par de tokens.")
+            .RequireRateLimiting(RateLimiting.Refresh);
     }
 }

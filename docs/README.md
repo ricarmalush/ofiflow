@@ -33,7 +33,7 @@
 | [001-customer](./specs/001-customer/spec.md) | CRUD de clientes | Implementada |
 | [002-tenancy-identity](./specs/002-tenancy-identity/spec.md) | Tenant, usuarios, registro, login y JWT | Implementada |
 | [003-job](./specs/003-job/spec.md) | Trabajos y transiciones de estado | Implementada |
-| [004-security-hardening](./specs/004-security-hardening/spec.md) | Línea base de seguridad (implementa ADR-009) | Aprobada (en curso) |
+| [004-security-hardening](./specs/004-security-hardening/spec.md) | Línea base de seguridad (implementa ADR-009) | Implementada |
 | [005-devsecops-pipeline](./specs/005-devsecops-pipeline/spec.md) | Repositorio público y pipeline CI de seguridad (implementa ADR-010) | Borrador |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).

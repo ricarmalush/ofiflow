@@ -10,8 +10,8 @@ public sealed class JobConfiguration : IEntityTypeConfiguration<Job>
     {
         builder.HasKey(j => j.Id);
 
-        builder.Property(j => j.Title).IsRequired().HasMaxLength(200);
-        builder.Property(j => j.Description).HasMaxLength(2000);
+        builder.Property(j => j.Title).IsRequired().HasMaxLength(Job.TitleMaxLength);
+        builder.Property(j => j.Description).HasMaxLength(Job.DescriptionMaxLength);
 
         builder.Property(j => j.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(j => j.Priority).HasConversion<string>().HasMaxLength(20);
