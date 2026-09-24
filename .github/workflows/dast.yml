@@ -90,6 +90,10 @@ jobs:
       - name: ZAP API Scan
         uses: zaproxy/action-api-scan@a9a916402665623ce9d37a6998d7b48e6b35dd6c # v0.9.0
         with:
+          # La acción intenta abrir un Issue de GitHub con el informe por defecto — necesita
+          # permiso "issues: write" que este job no tiene a propósito (permisos mínimos, ADR-010
+          # dice que el informe es un artefacto, no un Issue). Desactivarlo, no ampliar permisos.
+          allow_issue_writing: false
           target: "http://localhost:5279/openapi/v1.json"
           format: openapi
           rules_file_name: ".zap/rules.tsv"
