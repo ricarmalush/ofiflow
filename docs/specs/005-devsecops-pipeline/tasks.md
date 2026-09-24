@@ -31,18 +31,18 @@
 - [ ] Proteger `master`: PR obligatorio, checks `ci` y `codeql` obligatorios, sin force-push
 
 ### Workflows (≈ 4-6 h)
-- [x] `ci.yml`: `setup-dotnet` 10 → `dotnet build` (analizadores de seguridad como error) → `dotnet test` para todas las suites, con la de Infrastructure usando Testcontainers en el Docker del runner → paso de Gitleaks. Con `permissions: contents: read` y acciones fijadas por SHA. **Sin verificar en un runner real todavía** — pendiente de pushear/abrir PR.
+- [x] `ci.yml`: `setup-dotnet` 10 → `dotnet build` (analizadores de seguridad como error) → `dotnet test` para todas las suites, con la de Infrastructure usando Testcontainers en el Docker del runner → paso de Gitleaks. Con `permissions: contents: read` y acciones fijadas por SHA. **Verificado en PR #1: `build-and-test` y `gitleaks` en verde.**
 - [x] `Directory.Build.props`: `AnalysisModeSecurity=All` + `.editorconfig` (`dotnet_analyzer_diagnostic.category-Security.severity = error`, mecanismo estándar para una categoría completa en vez de listar cada CA en `WarningsAsErrors`). Verificado con `bin`/`obj` limpios: 0 avisos, 0 errores.
-- [x] `codeql.yml`: C#, build manual (`dotnet build`), en push/PR y cada semana; resultados en la pestaña Security. **Sin verificar en un runner real todavía.**
-- [x] `dast.yml`: SQL Server como service container → `dotnet ef database update` → API con `Jwt__Secret` generado con `openssl rand -base64 32` → esperar a que responda → `zaproxy/action-api-scan` contra `/openapi/v1.json` → subir el informe como artefacto. `continue-on-error: true` mientras dure el modo informe (ADR-010). **Sin verificar en un runner real todavía — es la pieza con más riesgo de necesitar ajustes.**
-- [x] `.zap/rules.tsv`: creado vacío a propósito, con la explicación de por qué (no hay informe real todavía del que sacar reglas) — la tarea de rellenarlo con hallazgos reales sigue pendiente, ver "Verificación"
+- [x] `codeql.yml`: C#, build manual (`dotnet build`), en push/PR y cada semana; resultados en la pestaña Security. **Verificado en PR #1: en verde, sin alertas.**
+- [x] `dast.yml`: SQL Server como service container → `dotnet ef database update` → API con `Jwt__Secret` generado con `openssl rand -base64 32` → esperar a que responda → `zaproxy/action-api-scan` contra `/openapi/v1.json` → subir el informe como artefacto. **Verificado en PR #1, con dos fallos reales corregidos por el camino:** faltaba `dotnet restore` antes de las migraciones, y `ApplicationDbContextFactory` tenía la cadena de conexión de LocalDB hardcodeada e ignoraba `ConnectionStrings__Default` (rompía en el runner Linux, que no tiene LocalDB). En verde tras corregir ambos.
+- [x] `.zap/rules.tsv`: analizado el primer informe real (PR #1) — 0 High/Medium, 1 Low real (Cross-Origin-Resource-Policy, corregido en `SecurityHeadersMiddleware`, no se ignora), 8 Informational documentadas e ignoradas por motivo (fuzzing sin autenticar, cabeceras `Sec-Fetch-*` sin sentido para una API JSON sin frontend). `continue-on-error` retirado de `dast.yml`: a partir de ahora un `FAIL` de ZAP sí bloquea.
 - [x] `dependabot.yml`: ecosistemas `nuget` y `github-actions`, semanal
 
 ### Verificación (≈ 1-2 h)
 - [ ] PR de prueba con `FromSqlRaw` interpolado → `ci` en rojo (EF1002 y test de arquitectura) → cerrar sin fusionar
 - [ ] PR de prueba con un secreto falso con formato real → push protection lo bloquea; hacer una captura como evidencia
-- [ ] `TenantIsolationIntegrationTests` en verde en el runner
-- [ ] Informe de ZAP descargado y revisado, sin riesgos altos sin analizar
+- [x] `TenantIsolationIntegrationTests` en verde en el runner (parte de `build-and-test` en PR #1, con Testcontainers en el Docker del runner de GitHub)
+- [x] Informe de ZAP descargado y revisado, sin riesgos altos sin analizar — ver detalle arriba
 - [ ] Sección "Seguridad" en el README: tabla de capas y herramientas, enlaces a ADR-009, ADR-010 y `SECURITY.md`
 
 ---

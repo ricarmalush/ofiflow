@@ -84,11 +84,10 @@ jobs:
       # Sin autenticar: ve los endpoints anónimos de /auth y comprueba que el resto exige
       # token (401). El escaneo autenticado queda como NEXT (ADR-010).
       #
-      # continue-on-error: modo informe (ADR-010) hasta ajustar .zap/rules.tsv con el primer
-      # informe real — quitar cuando esa tarea de tasks.md quede cerrada, para que a partir
-      # de ese momento los hallazgos FAIL sí bloqueen el PR.
+      # Ya no lleva continue-on-error: el modo informe (ADR-010) terminó al analizar el
+      # primer informe real (PR #1, 2026-09-24) y ajustar .zap/rules.tsv — a partir de aquí
+      # un hallazgo FAIL sí bloquea el PR.
       - name: ZAP API Scan
-        continue-on-error: true
         uses: zaproxy/action-api-scan@a9a916402665623ce9d37a6998d7b48e6b35dd6c # v0.9.0
         with:
           target: "http://localhost:5279/openapi/v1.json"
