@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Diccionario de mensajes de error de OfiFlow (ADR-011). Idioma por defecto: español.
+    name  = código de error (contrato público: no se cambia ni se reutiliza).
+    value = texto para personas (se puede reescribir cuando haga falta).
+    Los marcadores {0}, {1}… reciben los argumentos del error, que nunca son datos personales.
+    Otro idioma: copiar este fichero como ErrorMessages.<idioma>.resx y traducir los value.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- ===== Common (shared kernel) ===== -->
+  <data name="common.email_required" xml:space="preserve">
+    <value>El email es obligatorio.</value>
+  </data>
+  <data name="common.email_invalid" xml:space="preserve">
+    <value>El email no tiene un formato válido.</value>
+  </data>
+
+  <!-- ===== Customers ===== -->
+  <data name="customer.name_required" xml:space="preserve">
+    <value>El nombre del cliente es obligatorio.</value>
+  </data>
+  <data name="customer.phone_required" xml:space="preserve">
+    <value>El teléfono es obligatorio.</value>
+  </data>
+  <data name="customer.phone_invalid" xml:space="preserve">
+    <value>El teléfono no tiene un formato válido.</value>
+  </data>
+  <data name="customer.not_found" xml:space="preserve">
+    <value>No se ha encontrado el cliente.</value>
+  </data>
+  <data name="customer.has_active_jobs" xml:space="preserve">
+    <value>No se puede eliminar un cliente con trabajos activos.</value>
+  </data>
+
+  <!-- ===== Jobs ===== -->
+  <data name="job.title_required" xml:space="preserve">
+    <value>El título del trabajo es obligatorio.</value>
+  </data>
+  <data name="job.cannot_start" xml:space="preserve">
+    <value>Solo se puede iniciar un trabajo nuevo.</value>
+  </data>
+  <data name="job.cannot_complete" xml:space="preserve">
+    <value>Solo se puede completar un trabajo que está en curso.</value>
+  </data>
+  <data name="job.cannot_cancel_completed" xml:space="preserve">
+    <value>No se puede cancelar un trabajo ya completado.</value>
+  </data>
+  <data name="job.not_found" xml:space="preserve">
+    <value>No se ha encontrado el trabajo.</value>
+  </data>
+
+  <!-- ===== Tenancy ===== -->
+  <data name="tenant.name_required" xml:space="preserve">
+    <value>El nombre de la empresa es obligatorio.</value>
+  </data>
+  <data name="tenant_user.not_found" xml:space="preserve">
+    <value>No se ha encontrado el usuario en la empresa.</value>
+  </data>
+
+  <!-- ===== Identity ===== -->
+  <data name="user.name_required" xml:space="preserve">
+    <value>El nombre del usuario es obligatorio.</value>
+  </data>
+  <data name="identity.email_already_registered" xml:space="preserve">
+    <value>El email ya está registrado.</value>
+  </data>
+
+  <!-- ===== API ===== -->
+  <data name="validation.failed" xml:space="preserve">
+    <value>La petición contiene errores. Revisa el detalle de cada campo.</value>
+  </data>
+  <data name="request.invalid_body" xml:space="preserve">
+    <value>El cuerpo de la petición no tiene un formato válido.</value>
+  </data>
+  <data name="rate_limit.exceeded" xml:space="preserve">
+    <value>Has superado el número de intentos permitidos. Inténtalo de nuevo más tarde.</value>
+  </data>
+  <data name="server.unexpected" xml:space="preserve">
+    <value>Ha ocurrido un error inesperado.</value>
+  </data>
+
+  <!-- ===== Títulos de ProblemDetails ===== -->
+  <data name="problem.title.validation" xml:space="preserve">
+    <value>Error de validación</value>
+  </data>
+  <data name="problem.title.business_rule" xml:space="preserve">
+    <value>Regla de negocio violada</value>
+  </data>
+  <data name="problem.title.registration" xml:space="preserve">
+    <value>Error de registro</value>
+  </data>
+  <data name="problem.title.not_found" xml:space="preserve">
+    <value>Recurso no encontrado</value>
+  </data>
+  <data name="problem.title.bad_request" xml:space="preserve">
+    <value>Petición no válida</value>
+  </data>
+  <data name="problem.title.too_many_requests" xml:space="preserve">
+    <value>Demasiadas peticiones</value>
+  </data>
+  <data name="problem.title.server_error" xml:space="preserve">
+    <value>Error interno</value>
+  </data>
+</root>

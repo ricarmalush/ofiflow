@@ -1,4 +1,5 @@
 using MediatR;
+using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Jobs.Commands.AssignJob;
 using OfiFlow.Application.Jobs.Commands.CancelJob;
 using OfiFlow.Application.Jobs.Commands.CompleteJob;
@@ -30,7 +31,8 @@ public static class JobEndpoints
         group.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
             {
                 var job = await sender.Send(new GetJobQuery(id), cancellationToken);
-                return job is null ? Results.NotFound() : Results.Ok(job);
+                // Mismo 404 que los comandos: pasa por GlobalExceptionHandler con código y mensaje (ADR-011).
+                return Results.Ok(job ?? throw new NotFoundException(JobErrors.NotFound, id));
             })
             .WithName("GetJob")
             .WithSummary("Consulta un trabajo por Id.");

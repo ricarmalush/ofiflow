@@ -1,9 +1,11 @@
 using MediatR;
+using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Customers.Commands.CreateCustomer;
 using OfiFlow.Application.Customers.Commands.DeleteCustomer;
 using OfiFlow.Application.Customers.Commands.UpdateCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomers;
+using OfiFlow.Domain.Customers;
 
 namespace OfiFlow.Api.Endpoints;
 
@@ -26,7 +28,8 @@ public static class CustomerEndpoints
         group.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
             {
                 var customer = await sender.Send(new GetCustomerQuery(id), cancellationToken);
-                return customer is null ? Results.NotFound() : Results.Ok(customer);
+                // Mismo 404 que los comandos: pasa por GlobalExceptionHandler con código y mensaje (ADR-011).
+                return Results.Ok(customer ?? throw new NotFoundException(CustomerErrors.NotFound, id));
             })
             .WithName("GetCustomer")
             .WithSummary("Consulta un cliente por Id.");

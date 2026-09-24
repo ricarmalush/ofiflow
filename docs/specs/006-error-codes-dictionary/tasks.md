@@ -31,10 +31,11 @@
 - [x] Tests de Application adaptados: 9 aserciones de código en handlers y 2 en validadores. 53/53 en verde. Adelantado del bloque API: `DomainException` → 400 en `GlobalExceptionHandler`, para no dejar un commit intermedio en el que un error de negocio respondiera 500
 
 ### API (≈ 2 h)
-- [ ] `Api/Resources/ErrorMessages.cs` (clase marcadora) + `ErrorMessages.resx` en español: todos los códigos, títulos de `ProblemDetails`, mensaje genérico del 500 y mensaje del 429
-- [ ] `Program.cs`: `AddLocalization`, `UseRequestLocalization` con lista cerrada (`es`), idioma por defecto `es`
-- [ ] `GlobalExceptionHandler`: mapa `DomainException`/`BusinessRuleException` → 400, `NotFoundException` → 404 y resto → 500; mensaje desde el diccionario; `ProblemDetails` con `code`, `errors[]` y `traceId`
-- [ ] `RateLimiting`: título y mensaje del 429 desde el diccionario, con `code: "rate_limit.exceeded"`
+- [x] `Api/Resources/ErrorMessages.cs` (clase ancla) + `ErrorMessages.resx` en español: 16 códigos de negocio, 4 de la API (`ApiErrors`) y 7 títulos (`ProblemTitles`). Verificado que se incrusta como `OfiFlow.Api.Resources.ErrorMessages.resources`
+- [x] `Common/Localization.cs` + `Program.cs`: lista cerrada (`es`), solo la cabecera `Accept-Language` (sin query string ni cookie) y **antes** del `ExceptionHandler`, para que los errores se traduzcan con el idioma de la petición
+- [x] `GlobalExceptionHandler`: `DomainException`/`BusinessRuleException` → 400, `NotFoundException` → 404, resto → 500; título y mensaje del diccionario; `ProblemDetails` con `code`, `errors[]` (campo, código, mensaje) y `traceId`. En validación, los códigos propios usan el diccionario y los estándar de FluentValidation, su mensaje ya localizado
+- [x] `RateLimiting`: título y mensaje del 429 desde el diccionario, con `code: "rate_limit.exceeded"`
+- [x] **Hallazgo de la verificación manual:** `GET /customers/{id}` y `GET /jobs/{id}` devolvían `Results.NotFound()` con el cuerpo vacío (sin `code`). Ahora lanzan `NotFoundException` y pasan por el `GlobalExceptionHandler` como el resto de los 404
 
 ### Tests (≈ 1,5-2 h)
 - [ ] **Diccionario completo:** todas las constantes de las clases `*Errors` (Domain y Application) tienen entrada en `ErrorMessages.resx`
@@ -46,8 +47,9 @@
 - [ ] Regresión: todas las suites en verde (incluidos el aislamiento de tenant y los tests de seguridad de la spec 004)
 
 ### Verificación manual (≈ 0,5 h)
-- [ ] `dotnet run` y curl: completar un Job `New` → 400 con `code`; nombre de 201 caracteres → `errors[]` en español; recurso inexistente → 404 con `code`
-- [ ] Repetir con `Accept-Language: en-US` → español (inglés todavía no admitido)
+- [x] `dotnet run` y curl: completar un Job `New` → 400 `job.cannot_complete`; nombre de 201 + teléfono inválido → `errors[]` en español (código propio y estándar); inexistente → 404 `customer.not_found`; borrar cliente con trabajo activo → 400 `customer.has_active_jobs`; 0 errores 500
+- [x] **Caso multi-tenant:** el 404 de un cliente de otra empresa es idéntico (salvo `traceId`) al de uno inexistente; la empresa dueña sigue viéndolo (200)
+- [x] `Accept-Language: fr-FR` y `en-US` → español, incluidos los mensajes de FluentValidation
 
 ---
 
@@ -56,3 +58,4 @@
 - Hay unos 24 tests que comprueban tipos de excepción genéricos y deben pasar a comprobar códigos.
 - Cambia la forma de las respuestas de error (`code`, `errors[]`); se acepta porque todavía no hay ningún cliente.
 - Estimación total: ≈ 6-8 h.
+- **Backlog (fuera de esta spec):** la API arranca aunque falten la cadena de conexión o `Jwt:Issuer`/`Jwt:Audience`, y solo falla con la primera petición (visto al arrancarla desde otra carpeta). Aplicar la misma validación al arrancar que ya tiene `Jwt:Secret` (opciones con `ValidateOnStart`).

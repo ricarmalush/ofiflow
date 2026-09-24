@@ -2,6 +2,8 @@ using System.Net.Mime;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Localization;
+using OfiFlow.Api.Resources;
 using OfiFlow.Application.Common.Logging;
 
 namespace OfiFlow.Api.Common;
@@ -38,12 +40,14 @@ public static partial class RateLimiting
                     httpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
                 }
 
+                var messages = httpContext.RequestServices.GetRequiredService<IStringLocalizer<ErrorMessages>>();
                 var problem = new ProblemDetails
                 {
                     Status = StatusCodes.Status429TooManyRequests,
-                    Title = "Demasiadas peticiones",
-                    Detail = "Has superado el número de intentos permitidos. Inténtalo de nuevo más tarde."
+                    Title = messages[ProblemTitles.TooManyRequests],
+                    Detail = messages[ApiErrors.RateLimitExceeded]
                 };
+                problem.Extensions["code"] = ApiErrors.RateLimitExceeded;
 
                 await httpContext.Response.WriteAsJsonAsync(problem, options: null, contentType: MediaTypeNames.Application.ProblemJson, cancellationToken);
             };
