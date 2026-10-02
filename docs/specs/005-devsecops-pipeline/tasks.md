@@ -28,7 +28,7 @@
 ### Repositorio (≈ 1 h) [externo]
 - [x] Repositorio público creado: https://github.com/ricarmalush/ofiflow. Solo se subió `master`. Verificado por la API de GitHub: los 8 commits con email privado (0 con el personal) y sin ficheros sensibles publicados. Después se borró la rama local `backup/pre-noreply` y se purgó el historial antiguo.
 - [x] Activados y verificados por la API: secret scanning, push protection, Dependabot alerts y Private Vulnerability Reporting. Alertas abiertas al activar: 0 de secretos y 0 de Dependabot.
-- [ ] Proteger `master`: PR obligatorio, checks `ci` y `codeql` obligatorios, sin force-push
+- [x] Proteger `master` (2026-10-02, tras fusionar el PR #1 con merge commit `f2be071`): PR obligatorio (0 aprobaciones: es un único mantenedor), checks obligatorios `build-and-test`, `gitleaks`, `analyze` (CodeQL) **y `zap-scan`** (ampliado respecto a la spec: ZAP ya no está en modo informe), rama al día con `master` antes de fusionar (`strict`), sin force-push ni borrado, y `enforce_admins` activado: la regla vale también para el propietario, así que un check en rojo no se puede saltar con el botón de admin. Verificado leyendo la protección por la API. Para relajarlo si hiciera falta: Settings → Branches (queda todo reversible).
 
 ### Workflows (≈ 4-6 h)
 - [x] `ci.yml`: `setup-dotnet` 10 → `dotnet build` (analizadores de seguridad como error) → `dotnet test` para todas las suites, con la de Infrastructure usando Testcontainers en el Docker del runner → paso de Gitleaks. Con `permissions: contents: read` y acciones fijadas por SHA. **Verificado en PR #1: `build-and-test` y `gitleaks` en verde.**
