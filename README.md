@@ -49,7 +49,7 @@ Todas las decisiones arquitectónicas están documentadas como ADR en [`docs/adr
 
 ## Seguridad
 
-La seguridad no depende de que alguien se acuerde: está en el código (ADR-009) y se verifica en cada Pull Request (ADR-010). Cada capa tiene **una** herramienta, sin solaparse:
+La seguridad no depende de que alguien se acuerde: está en el código (ADR-009) y se verifica en cada Pull Request (ADR-010). `master` está protegida: solo se cambia por PR, y `build-and-test`, `gitleaks`, `analyze` (CodeQL) y `zap-scan` tienen que estar en verde para poder fusionar — la regla vale también para el propietario del repositorio. Cada capa tiene **una** herramienta, sin solaparse:
 
 | Capa | Qué comprueba | Herramienta |
 |---|---|---|
