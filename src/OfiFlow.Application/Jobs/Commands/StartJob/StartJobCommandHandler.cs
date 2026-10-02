@@ -11,16 +11,11 @@ public sealed class StartJobCommandHandler(IApplicationDbContext dbContext) : IR
     public async Task Handle(StartJobCommand request, CancellationToken cancellationToken)
     {
         var job = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == request.Id, cancellationToken)
-            ?? throw new NotFoundException(nameof(Job), request.Id);
+            ?? throw new NotFoundException(JobErrors.NotFound, request.Id);
 
-        try
-        {
-            job.Start();
-        }
-        catch (InvalidOperationException ex)
-        {
-            throw new BusinessRuleException(ex.Message);
-        }
+        // Si la transición no es válida, Domain lanza DomainException con su código (ADR-011);
+        // la API la convierte en 400. No se captura aquí: así nunca se confunde con un bug.
+        job.Start();
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }

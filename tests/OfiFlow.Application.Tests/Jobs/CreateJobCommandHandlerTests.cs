@@ -35,7 +35,9 @@ public class CreateJobCommandHandlerTests
         await using var db = TestDbContextFactory.Create();
         var handler = new CreateJobCommandHandler(db, new FakeTenantContext(Guid.NewGuid()));
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             handler.Handle(new CreateJobCommand(Guid.NewGuid(), "Reparar fuga", null, JobPriority.Normal), CancellationToken.None));
+
+        Assert.Equal(CustomerErrors.NotFound, exception.Code);
     }
 }

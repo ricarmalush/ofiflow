@@ -21,7 +21,7 @@ public class EmailTests
     [InlineData("falta-arroba.com")]
     public void Create_WithInvalidFormat_Throws(string value)
     {
-        Assert.Throws<ArgumentException>(() => Email.Create(value));
+        Assert.Throws<DomainException>(() => Email.Create(value));
     }
 
     [Fact]
@@ -29,7 +29,9 @@ public class EmailTests
     {
         const string personalData = "juan.perez@sin-dominio";
 
-        var exception = Assert.Throws<ArgumentException>(() => Email.Create(personalData));
+        var exception = Assert.Throws<DomainException>(() => Email.Create(personalData));
+
+        Assert.Equal(CommonErrors.EmailInvalid, exception.Code);
 
         Assert.DoesNotContain(personalData, exception.Message);
     }

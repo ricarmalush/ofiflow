@@ -12,7 +12,7 @@ public sealed class DeleteCustomerCommandHandler(IApplicationDbContext dbContext
     public async Task Handle(DeleteCustomerCommand request, CancellationToken cancellationToken)
     {
         var customer = await dbContext.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken)
-            ?? throw new NotFoundException(nameof(Customer), request.Id);
+            ?? throw new NotFoundException(CustomerErrors.NotFound, request.Id);
 
         // Cierra el backlog abierto en specs/001-customer/spec.md: ahora que Job existe,
         // esta regla tiene algo real que comprobar (spec 003).
@@ -22,7 +22,7 @@ public sealed class DeleteCustomerCommandHandler(IApplicationDbContext dbContext
 
         if (hasActiveJobs)
         {
-            throw new BusinessRuleException("No se puede eliminar un cliente con trabajos activos.");
+            throw new BusinessRuleException(CustomerErrors.HasActiveJobs);
         }
 
         dbContext.Customers.Remove(customer);

@@ -1,3 +1,4 @@
+using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Jobs;
 
 namespace OfiFlow.Domain.Tests.Jobs;
@@ -24,7 +25,9 @@ public class JobTests
     [InlineData("   ")]
     public void Create_WithoutTitle_Throws(string title)
     {
-        Assert.Throws<ArgumentException>(() => Job.Create(TenantId, CustomerId, title, null, JobPriority.Normal));
+        var exception = Assert.Throws<DomainException>(() => Job.Create(TenantId, CustomerId, title, null, JobPriority.Normal));
+
+        Assert.Equal(JobErrors.TitleRequired, exception.Code);
     }
 
     [Fact]
@@ -43,7 +46,10 @@ public class JobTests
         var job = CreateJob();
         job.Start();
 
-        Assert.Throws<InvalidOperationException>(job.Start);
+        var exception = Assert.Throws<DomainException>(job.Start);
+
+        Assert.Equal(JobErrors.CannotStart, exception.Code);
+        Assert.Equal(JobStatus.InProgress, exception.Arguments[0]);
     }
 
     [Fact]
@@ -62,7 +68,10 @@ public class JobTests
     {
         var job = CreateJob();
 
-        Assert.Throws<InvalidOperationException>(job.Complete);
+        var exception = Assert.Throws<DomainException>(job.Complete);
+
+        Assert.Equal(JobErrors.CannotComplete, exception.Code);
+        Assert.Equal(JobStatus.New, exception.Arguments[0]);
     }
 
     [Fact]
@@ -93,7 +102,9 @@ public class JobTests
         job.Start();
         job.Complete();
 
-        Assert.Throws<InvalidOperationException>(job.Cancel);
+        var exception = Assert.Throws<DomainException>(job.Cancel);
+
+        Assert.Equal(JobErrors.CannotCancelCompleted, exception.Code);
     }
 
     [Fact]
@@ -135,6 +146,8 @@ public class JobTests
     {
         var job = CreateJob();
 
-        Assert.Throws<ArgumentException>(() => job.UpdateDetails("", null, JobPriority.Normal));
+        var exception = Assert.Throws<DomainException>(() => job.UpdateDetails("", null, JobPriority.Normal));
+
+        Assert.Equal(JobErrors.TitleRequired, exception.Code);
     }
 }

@@ -1,0 +1,45 @@
+name: codeql
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    # Todos los lunes a las 06:00 UTC, además de en cada push/PR — para pillar CVEs nuevas
+    # en el propio motor de CodeQL aunque no haya cambios de código esa semana.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # CodeQL necesita este permiso para publicar los hallazgos en la pestaña Security.
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@87ef0dc97def48aa960fbf026a2563ee9dbdb470 # v3
+        with:
+          languages: csharp
+
+      # Build manual (no autobuild): el autobuild de CodeQL a veces falla en soluciones
+      # multi-proyecto con Directory.Build.props; con "dotnet build" directo no hay ambigüedad.
+      - name: Build
+        run: dotnet build OfiFlow.slnx
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@87ef0dc97def48aa960fbf026a2563ee9dbdb470 # v3
+        with:
+          category: "/language:csharp"

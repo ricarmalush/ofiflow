@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Logging;
+using OfiFlow.Domain.Identity;
 using OfiFlow.Infrastructure.Persistence;
 
 namespace OfiFlow.Infrastructure.Identity;
@@ -20,7 +21,7 @@ public sealed partial class IdentityService(ApplicationDbContext dbContext, ILog
 
         if (alreadyExists)
         {
-            return IdentityCreationResult.Failure(["El email ya está registrado."]);
+            return IdentityCreationResult.Failure([IdentityErrors.EmailAlreadyRegistered]);
         }
 
         var user = new ApplicationUser(id, email);

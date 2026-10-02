@@ -11,7 +11,11 @@ namespace OfiFlow.Infrastructure.Tests.Common;
 /// </summary>
 public sealed class SqlServerContainerFixture : IAsyncLifetime
 {
-    private readonly MsSqlContainer _container = new MsSqlBuilder().Build();
+    // Imagen fijada explícitamente: los tests usan siempre la misma versión de SQL Server, en
+    // local y en CI, en vez de la que traiga por defecto cada versión de Testcontainers.
+    private const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
+
+    private readonly MsSqlContainer _container = new MsSqlBuilder(SqlServerImage).Build();
 
     public async Task InitializeAsync()
     {

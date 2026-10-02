@@ -34,7 +34,9 @@ public class AssignJobCommandHandlerTests
         db.Jobs.Add(job);
         await db.SaveChangesAsync(CancellationToken.None);
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             new AssignJobCommandHandler(db).Handle(new AssignJobCommand(job.Id, Guid.NewGuid()), CancellationToken.None));
+
+        Assert.Equal(TenancyErrors.TenantUserNotFound, exception.Code);
     }
 }

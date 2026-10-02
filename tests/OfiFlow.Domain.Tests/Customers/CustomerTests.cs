@@ -22,20 +22,26 @@ public class CustomerTests
     [InlineData("   ")]
     public void Create_WithoutName_Throws(string name)
     {
-        Assert.Throws<ArgumentException>(() =>
+        var exception = Assert.Throws<DomainException>(() =>
             Customer.Create(TenantId, CustomerType.Person, name, null, null, null, null));
+
+        Assert.Equal(CustomerErrors.NameRequired, exception.Code);
     }
 
     [Fact]
     public void Create_WithInvalidEmail_Throws()
     {
-        Assert.Throws<ArgumentException>(() => Email.Create("no-es-un-email"));
+        var exception = Assert.Throws<DomainException>(() => Email.Create("no-es-un-email"));
+
+        Assert.Equal(CommonErrors.EmailInvalid, exception.Code);
     }
 
     [Fact]
     public void Create_WithInvalidPhone_Throws()
     {
-        Assert.Throws<ArgumentException>(() => PhoneNumber.Create("abc"));
+        var exception = Assert.Throws<DomainException>(() => PhoneNumber.Create("abc"));
+
+        Assert.Equal(CustomerErrors.PhoneInvalid, exception.Code);
     }
 
     [Fact]
@@ -57,7 +63,9 @@ public class CustomerTests
     {
         var customer = Customer.Create(TenantId, CustomerType.Person, "Juan Pérez", null, null, null, null);
 
-        Assert.Throws<ArgumentException>(() =>
+        var exception = Assert.Throws<DomainException>(() =>
             customer.UpdateContactInfo("", null, null, null, null));
+
+        Assert.Equal(CustomerErrors.NameRequired, exception.Code);
     }
 }

@@ -1,4 +1,5 @@
 using OfiFlow.Application.Common.Abstractions;
+using OfiFlow.Domain.Identity;
 
 namespace OfiFlow.Application.Tests.Common;
 
@@ -12,7 +13,7 @@ public sealed class FakeIdentityService : IIdentityService
     {
         if (ShouldFailCreation || _users.ContainsKey(email))
         {
-            return Task.FromResult(IdentityCreationResult.Failure(["El email ya está registrado."]));
+            return Task.FromResult(IdentityCreationResult.Failure([IdentityErrors.EmailAlreadyRegistered]));
         }
 
         _users[email] = (id, password);

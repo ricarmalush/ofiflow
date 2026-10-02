@@ -37,7 +37,7 @@ public sealed class User : AggregateRoot, IAuditable
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new ArgumentException("El nombre del usuario es obligatorio.", nameof(name));
+            throw new DomainException(IdentityErrors.UserNameRequired);
         }
 
         return new User(id, name.Trim(), contactEmail);

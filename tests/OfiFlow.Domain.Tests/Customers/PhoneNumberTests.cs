@@ -1,3 +1,4 @@
+using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 
 namespace OfiFlow.Domain.Tests.Customers;
@@ -20,7 +21,7 @@ public class PhoneNumberTests
     [InlineData("abc")]
     public void Create_WithInvalidFormat_Throws(string value)
     {
-        Assert.Throws<ArgumentException>(() => PhoneNumber.Create(value));
+        Assert.Throws<DomainException>(() => PhoneNumber.Create(value));
     }
 
     [Fact]
@@ -28,7 +29,9 @@ public class PhoneNumberTests
     {
         const string personalData = "600-abc-123";
 
-        var exception = Assert.Throws<ArgumentException>(() => PhoneNumber.Create(personalData));
+        var exception = Assert.Throws<DomainException>(() => PhoneNumber.Create(personalData));
+
+        Assert.Equal(CustomerErrors.PhoneInvalid, exception.Code);
 
         Assert.DoesNotContain(personalData, exception.Message);
     }

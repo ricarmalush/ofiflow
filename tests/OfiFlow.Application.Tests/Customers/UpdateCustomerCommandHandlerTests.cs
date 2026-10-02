@@ -33,7 +33,9 @@ public class UpdateCustomerCommandHandlerTests
         await using var db = TestDbContextFactory.Create();
         var handler = new UpdateCustomerCommandHandler(db);
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             handler.Handle(new UpdateCustomerCommand(Guid.NewGuid(), "Juan", null, null, null, null), CancellationToken.None));
+
+        Assert.Equal(CustomerErrors.NotFound, exception.Code);
     }
 }

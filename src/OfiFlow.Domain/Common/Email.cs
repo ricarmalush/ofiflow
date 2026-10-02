@@ -21,13 +21,13 @@ public sealed partial record Email
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new ArgumentException("El email no puede estar vacío.", nameof(value));
+            throw new DomainException(CommonErrors.EmailRequired);
         }
 
-        // El mensaje no incluye el valor: es un dato personal y podría acabar en un log (ADR-009 R5).
+        // Solo el código, nunca el valor: es un dato personal y podría acabar en un log (ADR-009 R5).
         if (!IsValid(value))
         {
-            throw new ArgumentException("El email no tiene un formato válido.", nameof(value));
+            throw new DomainException(CommonErrors.EmailInvalid);
         }
 
         return new Email(value);

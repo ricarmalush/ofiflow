@@ -8,9 +8,11 @@ namespace OfiFlow.Api.Endpoints;
 
 public static class AuthEndpoints
 {
+    public const string Route = "/api/v1/auth";
+
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/auth").WithTags("Auth").AllowAnonymous();
+        var group = app.MapGroup(Route).WithTags("Auth").AllowAnonymous();
 
         group.MapPost("/register", async (RegisterCommand command, ISender sender, CancellationToken cancellationToken) =>
             {
