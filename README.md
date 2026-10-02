@@ -47,6 +47,24 @@ Esta limitación condiciona todas las decisiones técnicas del proyecto: se prio
 
 Todas las decisiones arquitectónicas están documentadas como ADR en [`docs/adr/`](./docs/adr/); el índice con el estado de cada una está en [`docs/README.md`](./docs/README.md). No se reabren sin una razón nueva y explícita — ver cada ADR para su contexto, opciones consideradas y consecuencias.
 
+## Seguridad
+
+La seguridad no depende de que alguien se acuerde: está en el código (ADR-009) y se verifica en cada Pull Request (ADR-010). Cada capa tiene **una** herramienta, sin solaparse:
+
+| Capa | Qué comprueba | Herramienta |
+|---|---|---|
+| Código (SAST, en compilación) | Toda la categoría *Security* de los analizadores de .NET es **error de compilación** (inyección SQL con `FromSqlRaw` interpolado, criptografía débil...) | Analizadores de .NET (`AnalysisModeSecurity=All` + `.editorconfig`) |
+| Código (SAST, flujo de datos) | De la entrada del usuario a un sumidero peligroso | CodeQL (en cada PR y cada semana) |
+| Dependencias (SCA) | Paquetes NuGet con vulnerabilidades conocidas: alta/crítica rompe la compilación | NuGetAudit + Dependabot |
+| Secretos | Ningún secreto en el repositorio ni en el historial | GitHub secret scanning + push protection + Gitleaks |
+| Aplicación en ejecución (DAST) | La API arrancada con SQL Server real, escaneada contra su OpenAPI | OWASP ZAP (API scan) |
+| Aislamiento entre empresas | Un usuario de un tenant nunca ve datos de otro, contra SQL Server real | `TenantIsolationIntegrationTests` (Testcontainers) |
+
+Dentro de la propia API: rate limiting en autenticación, cabeceras de seguridad y HSTS, validación con longitudes máximas, contrato de errores estable (`ProblemDetails` con `code`, sin filtrar tipos internos) y el secreto JWT fuera del repositorio (`user-secrets` en local).
+
+- Decisiones y razones: [ADR-009](./docs/adr/ADR-009-seguridad-base.md) (qué controles lleva el código) y [ADR-010](./docs/adr/ADR-010-pipeline-devsecops.md) (con qué se verifican).
+- Cómo reportar una vulnerabilidad: [`SECURITY.md`](./SECURITY.md) (reporte privado de GitHub, no un issue público).
+
 ## Roadmap por fases
 
 | Fase | Contenido |
@@ -112,7 +130,11 @@ OFIFLOW/
 │   ├── producto/                # ProyectoOFIFLOW.txt + Calendario del Proyecto.txt
 │   ├── adr/                     # ADR-00X-*.md: decisiones de arquitectura
 │   └── specs/                   # NNN-feature/spec.md + tasks.md, y plantillas
+├── .github/                     # Workflows (ci, codeql, dast) y dependabot.yml
+├── .zap/rules.tsv               # Falsos positivos de ZAP, cada uno con su motivo
+├── SECURITY.md                  # Política de divulgación de vulnerabilidades
 ├── Directory.Build.props        # Configuración común a todos los .csproj
+├── .editorconfig                # Severidad de los analizadores de seguridad
 ├── OfiFlow.slnx                 # Solución .NET
 ├── src/
 │   ├── OfiFlow.Domain
@@ -128,4 +150,4 @@ OFIFLOW/
 
 ## Estado actual
 
-Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT + aislamiento de tenant). ADR-001 a ADR-008 aceptadas; ADR-009 (seguridad) y la spec `004-security-hardening` están en borrador. Detalle en [`docs/README.md`](./docs/README.md).
+Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT + aislamiento de tenant). ADR-001 a ADR-011 aceptadas. Implementadas las specs 001 a 004 y 006 (línea base de seguridad y diccionario de errores incluidos); la 005 (pipeline DevSecOps) está en curso. Detalle en [`docs/README.md`](./docs/README.md).

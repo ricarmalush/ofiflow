@@ -43,7 +43,7 @@
 - [ ] PR de prueba con un secreto falso con formato real → push protection lo bloquea; hacer una captura como evidencia
 - [x] `TenantIsolationIntegrationTests` en verde en el runner (parte de `build-and-test` en PR #1, con Testcontainers en el Docker del runner de GitHub)
 - [x] Informe de ZAP descargado y revisado, sin riesgos altos sin analizar — ver detalle arriba
-- [ ] Sección "Seguridad" en el README: tabla de capas y herramientas, enlaces a ADR-009, ADR-010 y `SECURITY.md`
+- [x] Sección "Seguridad" en el README: tabla de capas y herramientas, enlaces a ADR-009, ADR-010 y `SECURITY.md` (más árbol del repo y "Estado actual" corregidos, que seguían diciendo que ADR-009 estaba en borrador)
 
 ---
 
