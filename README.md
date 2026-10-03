@@ -47,6 +47,8 @@ Esta limitación condiciona todas las decisiones técnicas del proyecto: se prio
 
 Todas las decisiones arquitectónicas están documentadas como ADR en [`docs/adr/`](./docs/adr/); el índice con el estado de cada una está en [`docs/README.md`](./docs/README.md). No se reabren sin una razón nueva y explícita — ver cada ADR para su contexto, opciones consideradas y consecuencias.
 
+Si llegas nuevo al proyecto, empieza por el [**manual técnico**](./docs/manual/README.md): explica de qué va la aplicación y cómo está construida, pensado para un programador junior.
+
 ## Seguridad
 
 La seguridad no depende de que alguien se acuerde: está en el código (ADR-009) y se verifica en cada Pull Request (ADR-010). `master` está protegida: solo se cambia por PR, y `build-and-test`, `gitleaks`, `analyze` (CodeQL) y `zap-scan` tienen que estar en verde para poder fusionar — la regla vale también para el propietario del repositorio. Cada capa tiene **una** herramienta, sin solaparse:
@@ -129,6 +131,7 @@ OFIFLOW/
 ├── README.md
 ├── docs/
 │   ├── README.md                # Índice de ADRs y specs con su estado
+│   ├── manual/                  # Manual técnico para programadores junior
 │   ├── producto/                # ProyectoOFIFLOW.txt + Calendario del Proyecto.txt
 │   ├── adr/                     # ADR-00X-*.md: decisiones de arquitectura
 │   └── specs/                   # NNN-feature/spec.md + tasks.md, y plantillas
