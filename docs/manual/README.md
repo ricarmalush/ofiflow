@@ -17,7 +17,7 @@ Este manual está escrito para que **cualquier programador junior** entienda de 
 | 0 | [Qué es OfiFlow](./00-que-es-ofiflow.md) | Escrito |
 | 1 | Poner el proyecto en marcha | Pendiente |
 | 2 | [Estilo arquitectónico](./02-estilo-arquitectonico.md) | Escrito |
-| 3 | Las capas y sus carpetas | Pendiente |
+| 3 | [Las capas y sus carpetas](./03-las-capas-y-sus-carpetas.md) | Escrito |
 | 4 | Una petición de principio a fin | Pendiente |
 | 5 | Multi-tenancy: aislar a cada cliente | Pendiente |
 | 6 | Identidad y autenticación | Pendiente |
