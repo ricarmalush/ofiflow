@@ -112,6 +112,9 @@
   <data name="tenant.name_required" xml:space="preserve">
     <value>El nombre de la empresa es obligatorio.</value>
   </data>
+  <data name="auth.forbidden" xml:space="preserve">
+    <value>No tienes permiso para realizar esta operación.</value>
+  </data>
   <data name="tenant_user.not_found" xml:space="preserve">
     <value>No se ha encontrado el usuario en la empresa.</value>
   </data>

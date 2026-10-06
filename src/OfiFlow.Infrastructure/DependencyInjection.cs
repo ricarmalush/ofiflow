@@ -28,6 +28,7 @@ public static class DependencyInjection
 
         services.AddHttpContextAccessor();
         services.AddScoped<ITenantContext, TenantContext>();
+        services.AddScoped<ICurrentUser, CurrentUser>();
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<ITokenService, TokenService>();
@@ -56,6 +57,11 @@ public static class DependencyInjection
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                // Conserva los nombres de claim tal como los escribe TokenService ("sub", "role", "tenant_id").
+                // Por defecto JwtBearer los renombra al validar (role -> ClaimTypes.Role, sub -> NameIdentifier) y
+                // CurrentUser no encontraría el rol: el Owner recibiría un 403 en todo (ADR-012, spec 008).
+                options.MapInboundClaims = false;
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,

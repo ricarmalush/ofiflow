@@ -19,4 +19,7 @@ public static class SecurityEventIds
 
     // 1200-1299: errores de la aplicación
     public const int UnhandledException = 1201;
+
+    /// <summary>Un usuario autenticado intentó una operación para la que su rol no tiene permiso (ADR-012).</summary>
+    public const int AccessDenied = 1301;
 }

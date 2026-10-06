@@ -10,4 +10,7 @@ public static class TenancyErrors
 
     /// <summary>El TenantUser no existe en el tenant activo (o pertenece a otro: indistinguible a propósito).</summary>
     public const string TenantUserNotFound = "tenant_user.not_found";
+
+    /// <summary>El rol del usuario no tiene el permiso que exige la operación (ADR-012). La API responde 403.</summary>
+    public const string Forbidden = "auth.forbidden";
 }
