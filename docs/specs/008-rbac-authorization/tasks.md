@@ -17,11 +17,11 @@
 ## Checklist
 
 ### Bloque 1 — Domain (≈ 2 h)
-- [ ] `Permission` (enumerado) en `Domain/Tenancy`, con los 8 permisos de la matriz
-- [ ] `RolePermissions`: la tabla única rol → permisos
-- [ ] Test de la matriz: cada celda de la tabla de la spec, para los 5 roles y los 8 permisos
-- [ ] Test: todo rol del enumerado `TenantRole` aparece en la tabla (un rol nuevo sin permisos declarados falla)
-- [ ] Test: `Owner` tiene todos los permisos del enumerado
+- [x] `Permission` (enumerado) en `Domain/Tenancy`, con los 8 permisos de la matriz
+- [x] `RolePermissions`: la tabla única rol → permisos
+- [x] Test de la matriz: cada celda de la tabla de la spec, para los 5 roles y los 8 permisos
+- [x] Test: todo rol del enumerado `TenantRole` aparece en la tabla (un rol nuevo sin permisos declarados falla)
+- [x] Test: `Owner` tiene todos los permisos del enumerado
 
 ### Bloque 2 — Application (≈ 4 h)
 - [ ] `RequiresPermissionAttribute` y `AllowAnonymousRequestAttribute`
@@ -69,3 +69,4 @@
 - **Decisiones a confirmar antes de aprobar:** la matriz de permisos (sobre todo `Employee` y `Manager`) y que `Owner` y `Admin` sean idénticos por ahora.
 - El rol viaja en el token: un cambio de rol no se nota hasta renovar la sesión (riesgo aceptado en ADR-012).
 - Sin invitaciones, los usuarios de cada rol solo existen sembrados en los tests. La spec de invitar y gestionar usuarios es el siguiente paso natural.
+- **Bloque 1 (2026-10-06):** `Permission` y `RolePermissions` en `Domain/Tenancy` (tabla inmutable, `FrozenDictionary`/`FrozenSet`; un rol fuera de la tabla no tiene ningún permiso). Las filas de `Owner` y `Admin` se listan una a una a propósito, sin derivarlas del enumerado: un permiso nuevo no se concede a nadie, tampoco al `Owner`, hasta decidirlo. `RolePermissionsTests` (46 tests): la matriz aprobada copiada literal en el test, aparte de la tabla de producción (40 celdas, una por rol y permiso), más 6 de coherencia (la matriz del test cubre todos los permisos y roles; todo rol tiene fila; `Owner` los tiene todos; ningún permiso queda sin rol; un rol fuera del enumerado no puede nada; los conjuntos no se pueden modificar desde fuera). Mutaciones, restauradas desde copia: (1) `Technician` recibe `CustomersDelete` → rojo en su celda; (2) `Owner` pierde `JobsCancel` → rojo en su celda y en "Owner tiene todos"; (3) se borra la fila de `Employee` → rojo en sus 4 celdas permitidas y en "todo rol tiene fila"; (4) permiso nuevo sin decidir quién lo tiene → rojo en 3 tests. Build con 0 avisos; suite completa en verde: Domain 100, Application 53, Api 61, Infrastructure 34.
