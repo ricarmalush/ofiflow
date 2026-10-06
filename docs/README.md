@@ -2,6 +2,7 @@
 
 | Carpeta | Qué contiene | Cuándo se crea un fichero nuevo |
 |---|---|---|
+| [`manual/`](./manual/) | Manual técnico para programadores junior: de qué va la aplicación y cómo está construida | Al escribir o actualizar un capítulo; cuando cambia algo que el manual explica |
 | [`producto/`](./producto/) | Especificación completa del producto y calendario | Casi nunca: son los documentos maestros |
 | [`adr/`](./adr/) | Decisiones de arquitectura (Architecture Decision Records) | Cuando una feature necesita una decisión técnica que ninguna ADR cubre (paso **Plan** del ciclo SDD) |
 | [`specs/`](./specs/) | Una carpeta por feature con `spec.md` + `tasks.md` | Al empezar cada feature (pasos **Specify** y **Tasks** del ciclo SDD) |

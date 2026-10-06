@@ -1,7 +1,7 @@
 # ADR-001 — Motor de base de datos
 
 **Estado:** Aceptado
-**Fecha:** 2027-01 (ajustar a la fecha exacta en que se cierre)
+**Fecha:** 2026-09-22
 **Proyecto:** OfiFlow
 
 ---

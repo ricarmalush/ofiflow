@@ -121,6 +121,14 @@ Se decide:
 - Diseñar Integration Events cuando se aborden background jobs (WhatsApp, emails) en fases posteriores — no confundir con Domain Events.
 - ~~Mecanismo para los tests de integración... contra SQL Server real~~ — **cerrado en ADR-008** (2026-09-22): LocalDB con base de datos de nombre único por ejecución, no Testcontainers.
 
+### Nota de estado (2026-10-03)
+
+Aclaraciones posteriores a la decisión, sin cambiarla:
+
+- **Dependencia de EF Core:** `OfiFlow.Application` sí referencia el paquete `Microsoft.EntityFrameworkCore`, porque `IApplicationDbContext` expone `DbSet<T>`. Lo que se mantiene es que Application **no conoce el proveedor (SQL Server) ni la implementación del contexto**; eso vive solo en Infrastructure. `Domain` no referencia EF Core.
+- **Domain Events:** `AggregateRoot` (lista de eventos pendientes) e `IDomainEvent` están implementados, pero **ningún agregado lanza eventos todavía y el interceptor que los publica no está escrito** (solo existe `AuditableEntitySaveChangesInterceptor`). Se implementará cuando haya un caso real.
+- **Tests de integración:** el último punto de "Qué queda abierto" quedó cerrado en ADR-008, que después adoptó Testcontainers (SQL Server en Docker) en lugar de LocalDB.
+
 ---
 
 ## Relación con otros ADR

@@ -1,7 +1,7 @@
 # ADR-003 — CQRS
 
 **Estado:** Aceptado
-**Fecha:** 2027-01 (ajustar a la fecha exacta en que se cierre)
+**Fecha:** 2026-09-22
 **Proyecto:** OfiFlow
 
 ---
@@ -61,6 +61,12 @@ Se decide:
 ### Qué queda abierto para revisar más adelante
 - Revisar el estado de la licencia de MediatR si el negocio se acerca al umbral de $5M de ingresos anuales.
 - Evaluar si conviene fijar la versión de MediatR usada (Community) de forma explícita en el proyecto para evitar actualizaciones accidentales a una versión que requiera licencia distinta.
+
+### Nota de estado (2026-10-06)
+
+De los cinco Pipeline Behaviors previstos, hoy están implementados y registrados **dos, en este orden**: **Autorización** (`AuthorizationBehavior`, ADR-012, spec 008; va primero) y **Validación** (`ValidationBehavior`). **Logging**, **Transacciones** y **Performance** no se han escrito todavía (cada handler llama a `SaveChangesAsync`, que ya es una transacción por operación). Se añadirán cuando haya una necesidad concreta.
+
+*(Nota anterior, 2026-10-03: solo estaba implementado el de Validación; el de Autorización figuraba como siguiente paso de seguridad.)*
 
 ---
 
