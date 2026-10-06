@@ -303,7 +303,7 @@ Fíjate en que el grupo entero se declara con `RequireAuthorization()`: **toda r
 
 `Api/Common/` parece un cajón de sastre, pero tiene un criterio: es **todo lo transversal que solo tiene sentido en HTTP**. Un middleware de cabeceras o un límite de peticiones por IP no existen fuera de la web, así que no pertenecen a ninguna otra capa.
 
-> **Nota:** `OfiFlow.Api.http` es un fichero para probar peticiones desde Visual Studio. Hoy conserva el contenido de la plantilla por defecto (una ruta `weatherforecast` que ya no existe), así que no sirve todavía como colección de pruebas.
+> **Para probar la API a mano:** `OfiFlow.Api.http` es una colección de 33 peticiones para Visual Studio, en orden y con instrucciones al principio: cuenta, clientes, el ciclo de vida de un trabajo, errores a propósito y el aislamiento entre dos empresas. Se verificó ejecutando la misma secuencia contra una API real. Lo que no se puede probar a mano todavía son los permisos por rol, porque todo usuario que se registra es `Owner`.
 
 ### De qué depende
 

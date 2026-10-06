@@ -90,7 +90,7 @@ Una cosa que sorprende al principio: **registrarse crea una empresa nueva**. Al 
 
 Después, al iniciar sesión recibes un **token** (un JWT, se explica en el capítulo 6). Ese token dice quién eres y en qué empresa estás trabajando, y se envía en cada petición posterior. Así el sistema sabe qué datos puede enseñarte.
 
-Para ver todas las rutas en vivo, al arrancar la aplicación en modo desarrollo se publica su descripción en OpenAPI (cómo arrancarla, en el capítulo 1).
+Para ver todas las rutas en vivo, al arrancar la aplicación en modo desarrollo se publica su descripción en OpenAPI (cómo arrancarla, en el capítulo 1). Y para **probarlas a mano** hay una colección lista en [`src/OfiFlow.Api/OfiFlow.Api.http`](../../src/OfiFlow.Api/OfiFlow.Api.http), que se abre en Visual Studio y recorre la cuenta, los clientes, los trabajos y los errores típicos.
 
 ## Qué tecnologías se usan
 
