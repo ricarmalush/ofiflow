@@ -1,6 +1,6 @@
 # Spec — 008-rbac-authorization
 
-**Estado:** Aprobada (2026-10-06)
+**Estado:** Implementada (2026-10-06)
 **Fecha:** 2026-10-06
 **Bounded Context:** Tenancy (transversal: Domain, Application, Infrastructure y Api)
 **Depende de:** ADR-012 (autorización por permisos), ADR-003 (CQRS y behaviors), ADR-004 (roles en `TenantUser`), ADR-009 (seguridad base, evento 1301), ADR-011 (errores con código), spec 007 (aislamiento entre empresas)

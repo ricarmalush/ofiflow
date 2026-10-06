@@ -26,7 +26,7 @@
 | [009](./adr/ADR-009-seguridad-base.md) | Línea base de seguridad (Secure by Design) | Aceptado |
 | [010](./adr/ADR-010-pipeline-devsecops.md) | Pipeline DevSecOps y herramientas de seguridad | Aceptado |
 | [011](./adr/ADR-011-errores-codigos-diccionario.md) | Errores de dominio, códigos de error y diccionario de mensajes | Aceptado |
-| [012](./adr/ADR-012-autorizacion-rbac.md) | Autorización por permisos (RBAC) | Propuesto |
+| [012](./adr/ADR-012-autorizacion-rbac.md) | Autorización por permisos (RBAC) | Aceptado |
 
 ## Specs
 
@@ -39,7 +39,7 @@
 | [005-devsecops-pipeline](./specs/005-devsecops-pipeline/spec.md) | Repositorio público y pipeline CI de seguridad (implementa ADR-010) | Aprobada (en curso) |
 | [006-error-codes-dictionary](./specs/006-error-codes-dictionary/spec.md) | Códigos de error y diccionario de mensajes (implementa ADR-011) | Implementada |
 | [007-tenant-isolation-hardening](./specs/007-tenant-isolation-hardening/spec.md) | Guardarraíles y tests que endurecen el aislamiento entre empresas (amplía ADR-009 R2) | Implementada |
-| [008-rbac-authorization](./specs/008-rbac-authorization/spec.md) | Autorización por rol: comprobar los permisos de cada operación (implementa ADR-012) | Aprobada (en curso) |
+| [008-rbac-authorization](./specs/008-rbac-authorization/spec.md) | Autorización por rol: comprobar los permisos de cada operación (implementa ADR-012) | Implementada |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

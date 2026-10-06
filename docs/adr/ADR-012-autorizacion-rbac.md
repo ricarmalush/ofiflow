@@ -1,6 +1,6 @@
 # ADR-012 — Autorización por permisos (RBAC)
 
-**Estado:** Propuesto
+**Estado:** Aceptado (2026-10-06)
 **Fecha:** 2026-10-06
 **Proyecto:** OfiFlow
 
@@ -75,7 +75,8 @@ Se decide **Opción 3 + Opción B + rol del token**, con estas reglas:
 - **Fail-closed:** una operación sin ninguna de las dos declaraciones se deniega. Además, un test de arquitectura falla si aparece una sin declarar.
 
 ### R4 — Usuario actual
-- `ICurrentUser` (Application) con el `UserId` y el `Role`, implementado en Infrastructure leyendo los claims del token ya validado. Si el rol falta o no es un valor válido, se deniega.
+- `ICurrentUser` (Application) con el `UserId`, el `TenantId` y el `Role`, implementado en Infrastructure (`CurrentUser`) leyendo los claims del token ya validado: `sub`, `tenant_id` y `role`. Cada dato es nulo si falta o no es válido. El rol solo vale si es el **nombre exacto** de un `TenantRole` (no un número, ni otra capitalización, ni un valor sin definir); si falta o no es válido, se deniega.
+- `TokenService` escribe el claim del rol de forma explícita con `OfiFlowClaimTypes.Role` (`"role"`), y `JwtBearer` se configura con `MapInboundClaims = false` para conservar los nombres de claim tal como se escribieron (ver la nota de estado).
 
 ### R5 — Respuesta y trazabilidad
 - Denegado → **403** con `code` `auth.forbidden` (ProblemDetails, igual que el resto de errores, ADR-011). El permiso se comprueba **antes** de tocar datos, y depende solo del rol: no revela nada sobre recursos de otras empresas (el aislamiento por tenant sigue actuando después).
@@ -102,6 +103,17 @@ Se decide **Opción 3 + Opción B + rol del token**, con estas reglas:
 - **NEXT:** revalidar rol y pertenencia en cada petición (ver ADR-009).
 - **NEXT:** el permiso `Users.Manage` cuando exista la gestión de usuarios e invitaciones.
 - **LATER:** permisos configurables por empresa (Opción C).
+
+---
+
+### Nota de estado (2026-10-06)
+
+Implementada por la spec 008 (bloques 1 a 5), con 389 tests en verde. Dos cosas que la implementación aclaró y que conviene tener presentes:
+
+- **`JwtBearer` renombra los claims al validar** (por defecto, `role` pasa a `ClaimTypes.Role` y `sub` a `NameIdentifier`). `CurrentUser` no encontraba el rol y el `Owner` recibía 403 en todo; el riesgo que la spec pedía verificar con un token real lo cazó un test de extremo a extremo. Se corrige con `MapInboundClaims = false`. El `tenant_id` no tiene renombrado, y por eso el aislamiento entre empresas nunca lo notó. Si alguien reactivara el renombrado, 69 de los 76 tests de extremo a extremo de roles fallan.
+- **Una operación sin declarar se deniega en ejecución, y además falla un test de arquitectura** que exige que toda operación declare `[RequiresPermission]` o `[AllowAnonymousRequest]` (no ambas) y que el permiso declarado lo tenga algún rol.
+
+Los riesgos aceptados de arriba siguen vigentes: el rol puede estar desfasado hasta 30 minutos, y un `Technician` puede ejecutar cualquier trabajo de su empresa, no solo los asignados a él.
 
 ---
 
