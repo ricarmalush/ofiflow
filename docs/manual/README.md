@@ -22,7 +22,7 @@ Este manual está escrito para que **cualquier programador junior** entienda de 
 | 5 | [Multi-tenancy: aislar a cada cliente](./05-multi-tenancy.md) | Escrito |
 | 6 | [Identidad y autenticación](./06-identidad-y-autenticacion.md) | Escrito |
 | 7 | [Errores y validación](./07-errores-y-validacion.md) | Escrito |
-| 8 | Seguridad | Pendiente |
+| 8 | [Seguridad](./08-seguridad.md) | Escrito |
 | 9 | Tests | Pendiente |
 | 10 | CI/CD y pipeline de seguridad | Pendiente |
 | 11 | Cómo añadir una funcionalidad | Pendiente |
