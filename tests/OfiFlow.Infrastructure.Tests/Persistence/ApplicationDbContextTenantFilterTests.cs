@@ -8,8 +8,9 @@ namespace OfiFlow.Infrastructure.Tests.Persistence;
 /// <summary>
 /// Sanity check (EF Core InMemory) that the reflection-based Global Query Filter from
 /// ApplicationDbContext actually restricts by tenant. This is NOT the mandatory
-/// tenant-isolation test against real SQL Server from specs/001-customer/tasks.md —
-/// that one is pending the LocalDB/Testcontainers decision noted in ADR-006.
+/// tenant-isolation test: that one runs against real SQL Server (Testcontainers, ADR-008) in
+/// TenantIsolationIntegrationTests and CrossTenantWriteIsolationTests, and end to end over HTTP in
+/// OfiFlow.Api.Tests (spec 007).
 /// </summary>
 public class ApplicationDbContextTenantFilterTests
 {

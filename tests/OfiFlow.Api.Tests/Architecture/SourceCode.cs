@@ -1,17 +1,32 @@
 namespace OfiFlow.Api.Tests.Architecture;
 
+/// <summary>Un fichero .cs de <c>src</c>: ruta relativa a la raíz del repositorio (siempre con '/') y contenido.</summary>
+internal sealed record SourceFile(string Path, string Content);
+
 /// <summary>
 /// Búsqueda de texto en el código fuente para los tests de arquitectura. Es un escaneo simple,
 /// sin compilar: rápido y sin dependencias, a cambio de algún falso positivo aceptado (ADR-009).
 /// </summary>
 internal static class SourceCode
 {
-    /// <summary>Ficheros .cs bajo <c>src/{subfolder}</c> que contienen el texto, con ruta relativa a la raíz.</summary>
-    public static List<string> FilesContaining(string text, string subfolder = "") =>
-        Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), "src", subfolder), "*.cs", SearchOption.AllDirectories)
+    /// <summary>Ficheros .cs bajo <c>src/{subfolder}</c>, sin código generado.</summary>
+    public static IEnumerable<SourceFile> Files(string subfolder = "")
+    {
+        var root = RepositoryRoot();
+
+        return Directory.EnumerateFiles(Path.Combine(root, "src", subfolder), "*.cs", SearchOption.AllDirectories)
             .Where(file => !IsGenerated(file))
-            .Where(file => File.ReadAllText(file).Contains(text, StringComparison.Ordinal))
-            .Select(file => Path.GetRelativePath(RepositoryRoot(), file))
+            .Select(file => new SourceFile(
+                // Siempre con '/': la misma ruta en Windows y en el runner de Linux, para poder compararla.
+                Path.GetRelativePath(root, file).Replace('\\', '/'),
+                File.ReadAllText(file)));
+    }
+
+    /// <summary>Rutas relativas de los ficheros bajo <c>src/{subfolder}</c> que contienen el texto.</summary>
+    public static List<string> FilesContaining(string text, string subfolder = "") =>
+        Files(subfolder)
+            .Where(file => file.Content.Contains(text, StringComparison.Ordinal))
+            .Select(file => file.Path)
             .ToList();
 
     // bin/obj contienen código generado; Migrations lo genera EF Core.

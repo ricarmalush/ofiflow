@@ -37,6 +37,7 @@
 | [004-security-hardening](./specs/004-security-hardening/spec.md) | Línea base de seguridad (implementa ADR-009) | Implementada |
 | [005-devsecops-pipeline](./specs/005-devsecops-pipeline/spec.md) | Repositorio público y pipeline CI de seguridad (implementa ADR-010) | Aprobada (en curso) |
 | [006-error-codes-dictionary](./specs/006-error-codes-dictionary/spec.md) | Códigos de error y diccionario de mensajes (implementa ADR-011) | Implementada |
+| [007-tenant-isolation-hardening](./specs/007-tenant-isolation-hardening/spec.md) | Guardarraíles y tests que endurecen el aislamiento entre empresas (amplía ADR-009 R2) | Implementada |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

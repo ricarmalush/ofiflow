@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Jobs;
+using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Tests.Common;
 
 namespace OfiFlow.Infrastructure.Tests.Persistence;
@@ -10,13 +11,10 @@ namespace OfiFlow.Infrastructure.Tests.Persistence;
 /// puede acceder a información del Tenant B" — contra SQL Server real (Testcontainers, ADR-008),
 /// no InMemory. Verificado manualmente por HTTP en 001/002/003; esta es su automatización.
 /// </summary>
-public class TenantIsolationIntegrationTests : IAsyncLifetime
+public class TenantIsolationIntegrationTests(SqlServerContainerFixture fixture) : IClassFixture<SqlServerContainerFixture>
 {
-    private readonly SqlServerContainerFixture _fixture = new();
-
-    public Task InitializeAsync() => _fixture.InitializeAsync();
-
-    public Task DisposeAsync() => _fixture.DisposeAsync();
+    // Un contenedor compartido por todos los tests de la clase (cada test usa empresas nuevas).
+    private readonly SqlServerContainerFixture _fixture = fixture;
 
     [Fact]
     public async Task Customers_AreNotVisibleAcrossTenants()
@@ -53,5 +51,27 @@ public class TenantIsolationIntegrationTests : IAsyncLifetime
         var visibleToTenantB = await dbAsTenantB.Jobs.ToListAsync();
 
         Assert.Empty(visibleToTenantB);
+    }
+
+    [Fact]
+    public async Task TenantUsers_AreNotVisibleAcrossTenants()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var dbAsTenantA = _fixture.CreateDbContext(tenantA))
+        {
+            dbAsTenantA.TenantUsers.Add(TenantUser.Create(tenantA, Guid.NewGuid(), TenantRole.Technician));
+            await dbAsTenantA.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var dbAsTenantB = _fixture.CreateDbContext(tenantB);
+        var visibleToTenantB = await dbAsTenantB.TenantUsers.ToListAsync();
+
+        Assert.Empty(visibleToTenantB);
+
+        // Control positivo: la propia empresa sí los ve, así que "vacío" no se debe a un fallo al sembrar.
+        await using var dbAsOwner = _fixture.CreateDbContext(tenantA);
+        Assert.Single(await dbAsOwner.TenantUsers.ToListAsync());
     }
 }

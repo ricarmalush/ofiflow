@@ -10,14 +10,32 @@ namespace OfiFlow.Api.Tests.Architecture;
 public class SecurityArchitectureTests
 {
     /// <summary>
-    /// Únicos ficheros autorizados a saltarse el Global Query Filter de tenant (ADR-002).
-    /// Añadir uno nuevo exige justificarlo en el código y en ADR-009.
+    /// Únicos ficheros (por ruta relativa, no por nombre) autorizados a saltarse el Global Query
+    /// Filter de tenant (ADR-002). Añadir uno nuevo exige justificarlo en el código y en ADR-009.
     /// </summary>
     private static readonly string[] IgnoreQueryFiltersAllowList =
     [
-        "LoginCommandHandler.cs", // todavía no hay tenant activo: es lo que el login determina
-        "TokenService.cs"         // el refresh relee el rol del usuario en su tenant
+        // todavía no hay tenant activo: es lo que el login determina
+        "src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs",
+        // el refresh relee el rol del usuario en su tenant
+        "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
     ];
+
+    /// <summary>
+    /// DbSets de entidades globales (sin filtro de tenant: spec 007, lista en TenantModelRules de
+    /// Infrastructure.Tests) y los únicos ficheros que pueden leerlos. Crear un dato (.Add) se admite en
+    /// cualquier sitio. Un handler nuevo que lea Users o Tenants vería a todas las empresas, así que
+    /// leerlos exige añadir aquí el fichero con su motivo.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> GlobalDbSetReadAllowList = new()
+    {
+        ["Users"] = [],
+        ["Tenants"] = [],
+        // credenciales: se buscan por email o por Id de usuario, nunca por listado
+        ["ApplicationUsers"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
+        // se buscan por el hash del token, que es secreto y único
+        ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"]
+    };
 
     [Theory]
     [InlineData("FromSqlRaw")]
@@ -34,13 +52,22 @@ public class SecurityArchitectureTests
     [Fact]
     public void IgnoreQueryFilters_IsOnlyUsedInTheAllowList()
     {
-        var offenders = SourceCode.FilesContaining("IgnoreQueryFilters(")
-            .Where(file => !IgnoreQueryFiltersAllowList.Contains(Path.GetFileName(file)))
-            .ToList();
+        var offenders = TenantAccessRules.IgnoreQueryFiltersOffenders(SourceCode.Files(), IgnoreQueryFiltersAllowList);
 
         Assert.True(offenders.Count == 0,
             "IgnoreQueryFilters() se salta el aislamiento de tenant (ADR-002, ADR-009 R2) y solo se permite en " +
             $"{string.Join(", ", IgnoreQueryFiltersAllowList)}. Aparece también en: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void GlobalEntities_AreOnlyReadInTheAllowList()
+    {
+        var offenders = TenantAccessRules.GlobalEntityAccessOffenders(SourceCode.Files(), GlobalDbSetReadAllowList);
+
+        Assert.True(offenders.Count == 0,
+            "Users, Tenants, ApplicationUsers y RefreshTokens no tienen filtro de tenant (spec 007, ADR-009 R2): " +
+            "leerlos puede exponer datos de todas las empresas. Solo se leen en los ficheros de GlobalDbSetReadAllowList; " +
+            $"para añadir uno, justifícalo ahí. Accesos no permitidos: {string.Join("; ", offenders)}");
     }
 
     [Fact]
