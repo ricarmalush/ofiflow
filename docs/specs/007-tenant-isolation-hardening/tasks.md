@@ -1,7 +1,7 @@
 # Tasks — 007-tenant-isolation-hardening
 
 **Spec relacionada:** [./spec.md](./spec.md)
-**Estado general:** En curso (spec aprobada 2026-10-06)
+**Estado general:** Implementada (2026-10-06); pendiente de PR y merge
 
 ---
 
@@ -40,10 +40,10 @@
 - [x] Medir cuánto añade al tiempo de CI y anotarlo (ver "Notas")
 
 ### Documentación y cierre (≈ 1 h)
-- [ ] Corregir el comentario obsoleto de `ApplicationDbContextTenantFilterTests`
-- [ ] Nota de revisión en ADR-009 R2 (toda entidad mapeada está clasificada; lista blanca por ruta)
-- [ ] Actualizar el capítulo 5 del manual: marcar como cerrados los puntos débiles 1, 2, 3 y 6, y la fila "sin control" del mapa de amenazas
-- [ ] `docs/README.md`: fila de la spec en "Implementada"
+- [x] Corregir el comentario obsoleto de `ApplicationDbContextTenantFilterTests`
+- [x] Nota de revisión en ADR-009 R2 (toda entidad mapeada está clasificada; lista blanca por ruta) y los tres puntos que quedan abiertos (NEXT/LATER) en "Qué queda abierto"
+- [ ] Actualizar el capítulo 5 (y la mención de Api.Tests del capítulo 3) del manual: marcar como cerrados los puntos débiles 1, 2, 3 y 6, y las filas "sin control" del mapa de amenazas. **El manual vive en la rama `docs/manual-tecnico`, aún no en `master`: se actualiza allí.**
+- [x] `docs/README.md`: fila de la spec en "Implementada"
 - [ ] [externo] Push de la rama y PR contra `master`; los 4 checks en verde (`build-and-test`, `gitleaks`, `analyze`, `zap-scan`)
 - [ ] [externo] Merge (con confirmación explícita)
 

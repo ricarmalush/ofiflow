@@ -59,6 +59,10 @@ Se adopta la **Opción 3**, con estas reglas:
 ### R2 — Aislamiento de tenant (refuerza ADR-002)
 - `IgnoreQueryFilters()` solo en una **lista blanca** explícita (hoy: `LoginCommandHandler`, `TokenService`). Un test de arquitectura falla si aparece en cualquier otro fichero; añadir uno nuevo exige actualizar la lista blanca de forma consciente y justificarlo en el código.
 - **Ningún Command/Query** (`IRequest`) puede tener una propiedad `TenantId` (protección contra mass assignment). Test de arquitectura por reflexión.
+- **Toda entidad mapeada está clasificada** (spec 007): o es de una empresa (`ITenantOwned`, con su filtro aplicado en el modelo) o está declarada *global* en una lista explícita con su motivo (hoy: `Tenant`, `User`, `ApplicationUser`, `RefreshToken`). Una entidad nueva sin clasificar, o con `TenantId` pero sin la marca, rompe un test sobre el modelo de EF Core.
+- **Las entidades globales solo se leen en ficheros de una lista blanca** (hoy, `ApplicationUsers` en `IdentityService` y `RefreshTokens` en `TokenService`; `Users` y `Tenants` en ninguno). Crear con `.Add` se admite en cualquier sitio. Un test de arquitectura lo vigila.
+- **Las listas blancas se comparan por ruta relativa completa**, no por nombre de fichero (aplica también a `IgnoreQueryFilters()`).
+- El aislamiento se comprueba contra SQL Server real: lecturas y escrituras entre empresas con los handlers reales, y de extremo a extremo por HTTP con dos empresas registradas (token → `TenantContext` → filtro).
 
 ### R3 — Validación de entrada
 - Todo Command con campos de texto tiene `MaximumLength` en su Validator, **igual** al `HasMaxLength` de la configuración EF. Para no duplicar números, las longitudes se definen **una vez** como constantes en Domain (ej. `Customer.NameMaxLength`) y las usan tanto la configuración EF como el Validator.
@@ -109,6 +113,9 @@ Se adopta la **Opción 3**, con estas reglas:
 
 ### Qué queda abierto para revisar más adelante
 - **NEXT — RBAC dentro del tenant:** `AuthorizationBehavior` (previsto en ADR-003, no implementado) que compruebe `TenantUser.Role` por Command. Se vuelve necesario en cuanto un tenant tenga más de un usuario (invitaciones). Sigue abierto el punto de ADR-004/007 sobre permisos granulares.
+- **NEXT — Revalidar la pertenencia al tenant en cada petición** (spec 007, ADR-002): hoy solo se comprueba al renovar la sesión, así que un token sigue valiendo hasta que caduca (30 minutos) aunque el usuario ya no pertenezca a la empresa. Sin urgencia mientras no exista la operación de quitar usuarios de una empresa; necesita decidir el coste (una consulta por petición o una caché).
+- **NEXT — Login con varias empresas** (spec 007): el login toma la primera pertenencia del usuario. Hoy cada usuario tiene una sola; con invitaciones hará falta elegir empresa y poder cambiar de empresa.
+- **LATER — Row-Level Security de SQL Server** como segunda barrera a nivel de base de datos (defensa en profundidad), si el riesgo lo justifica. Requiere ADR propia.
 - **NEXT — Enumeración de usuarios:** igualar el tiempo del login cuando el email no existe (verificar contra un hash ficticio) y revisar el mensaje "El email ya está registrado" del registro cuando exista confirmación de email.
 - **NEXT — CORS** restringido al origen del frontend Angular, cuando exista.
 - **NEXT — Lockout por cuenta** (además del rate limiting por IP), junto con la adopción de `UserManager` que ADR-007/spec 002 dejaron en backlog.

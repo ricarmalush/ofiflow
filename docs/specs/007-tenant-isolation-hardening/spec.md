@@ -1,6 +1,6 @@
 # Spec — 007-tenant-isolation-hardening
 
-**Estado:** Aprobada (2026-10-06)
+**Estado:** Implementada (2026-10-06)
 **Fecha:** 2026-10-06
 **Bounded Context:** Tenancy (transversal: Infrastructure y tests)
 **Depende de:** ADR-002 (Multi-Tenancy), ADR-008 (Testcontainers), ADR-009 R2 (aislamiento), spec 004 (guardarraíles)
