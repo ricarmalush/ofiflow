@@ -68,6 +68,8 @@ public sealed partial class GlobalExceptionHandler(
         BusinessRuleException businessRule => new(StatusCodes.Status400BadRequest, ProblemTitles.BusinessRule, businessRule.Code, businessRule.Arguments),
         IdentityOperationException identity => new(StatusCodes.Status400BadRequest, ProblemTitles.Registration,
             identity.Codes.FirstOrDefault() ?? ApiErrors.Unexpected),
+        // Autenticado, pero su rol no tiene el permiso de la operación (ADR-012). Depende solo del rol, no del recurso pedido.
+        ForbiddenException forbidden => new(StatusCodes.Status403Forbidden, ProblemTitles.Forbidden, forbidden.Code),
         // Mismo código para "no existe" y "es de otra empresa": no se revela que existe (ADR-002).
         NotFoundException notFound => new(StatusCodes.Status404NotFound, ProblemTitles.NotFound, notFound.Code),
         // JSON mal formado o de tipo incorrecto: error del cliente (ASP.NET ya trae el 4xx), no un 500.

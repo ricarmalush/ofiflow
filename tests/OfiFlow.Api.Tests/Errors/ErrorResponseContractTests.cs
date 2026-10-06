@@ -16,6 +16,7 @@ using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
+using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Api.Tests.Errors;
 
@@ -91,6 +92,7 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new DomainException(JobErrors.CannotComplete, JobStatus.New), HttpStatusCode.BadRequest, "job.cannot_complete" },
         { new BusinessRuleException(CustomerErrors.HasActiveJobs), HttpStatusCode.BadRequest, "customer.has_active_jobs" },
         { new NotFoundException(CustomerErrors.NotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "customer.not_found" },
+        { new ForbiddenException(TenancyErrors.Forbidden), HttpStatusCode.Forbidden, "auth.forbidden" },
         { new IdentityOperationException([IdentityErrors.EmailAlreadyRegistered]), HttpStatusCode.BadRequest, "user.email_already_registered" }
     };
 
@@ -105,6 +107,22 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         Assert.Equal(code, problem.GetProperty("code").GetString());
         Assert.Equal(Dictionary.Spanish(code), problem.GetProperty("detail").GetString());
         Assert.True(problem.TryGetProperty("traceId", out _));
+    }
+
+    [Fact]
+    public async Task ForbiddenException_Is403WithItsOwnTitle_AndRevealsNothingElse()
+    {
+        // ADR-012 R5: 403 con código estable y título propio. El cuerpo no lleva ni el permiso que faltaba
+        // ni el rol del usuario: eso va al registro de seguridad, no al cliente.
+        var response = await SendAsync(new ForbiddenException(TenancyErrors.Forbidden));
+        var problem = await Dictionary.ReadProblemAsync(response);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(403, problem.GetProperty("status").GetInt32());
+        Assert.Equal(Dictionary.Spanish("problem.title.forbidden"), problem.GetProperty("title").GetString());
+        Assert.False(problem.TryGetProperty("errors", out _));
+        Assert.DoesNotContain("Jobs", problem.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Customers", problem.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

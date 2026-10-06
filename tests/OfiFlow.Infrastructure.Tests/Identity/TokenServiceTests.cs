@@ -51,6 +51,24 @@ public class TokenServiceTests
         Assert.Equal(userId.ToString(), jwt.Claims.First(c => c.Type == JwtRegisteredClaimNames.Sub).Value);
     }
 
+    [Theory]
+    [InlineData(TenantRole.Owner)]
+    [InlineData(TenantRole.Admin)]
+    [InlineData(TenantRole.Manager)]
+    [InlineData(TenantRole.Employee)]
+    [InlineData(TenantRole.Technician)]
+    public async Task IssueTokensAsync_WritesTheRoleNameInTheRoleClaim(TenantRole role)
+    {
+        // El nombre "role" y el valor (el nombre del rol) son contrato con CurrentUser (ADR-012 R4):
+        // si la librería de JWT cambiara cómo acorta el tipo de claim, la autorización dejaría de ver el rol.
+        var (_, service) = CreateSut();
+
+        var result = await service.IssueTokensAsync(Guid.NewGuid(), Guid.NewGuid(), role, CancellationToken.None);
+
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(result.AccessToken);
+        Assert.Equal(role.ToString(), jwt.Claims.Single(c => c.Type == "role").Value);
+    }
+
     [Fact]
     public async Task RotateRefreshTokenAsync_WithValidToken_ReturnsNewTokensAndRevokesTheOld()
     {

@@ -118,6 +118,8 @@ $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create
 dotnet user-secrets set "Jwt:Secret" ([Convert]::ToBase64String($b)) --project src/OfiFlow.Api
 ```
 
+Para probar la API a mano, abre [`src/OfiFlow.Api/OfiFlow.Api.http`](./src/OfiFlow.Api/OfiFlow.Api.http) en Visual Studio: es una colección de peticiones en orden (cuenta, clientes, trabajos, errores a propósito y aislamiento entre empresas), con instrucciones al principio.
+
 Si la API no arranca por falta del secreto, el mensaje de error indica qué fuentes de configuración consultó y la ruta exacta en la que buscó `secrets.json`.
 
 ## Estructura del repositorio
