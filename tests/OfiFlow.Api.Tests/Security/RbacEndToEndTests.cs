@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using OfiFlow.Application.Customers;
 using OfiFlow.Application.Jobs;
 using OfiFlow.Domain.Tenancy;
@@ -162,8 +163,10 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
     public async Task TheAnonymousOperations_StillWorkWithoutAToken()
     {
         var email = $"rbac-nueva-{Guid.NewGuid():N}@example.com";
+        // Generada en cada ejecución, como en el resto de tests: ninguna contraseña escrita en el código.
+        var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
         var register = await fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/register",
-            new { companyName = "Otra empresa", userName = "Otra persona", email, password = "una-clave-larga-1234" });
+            new { companyName = "Otra empresa", userName = "Otra persona", email, password });
 
         var refresh = await fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/refresh",
             new { refreshToken = fixture.UserOf(TenantRole.Owner).RefreshToken });
