@@ -10,4 +10,7 @@ namespace OfiFlow.Application.Identity;
 public static class OfiFlowClaimTypes
 {
     public const string TenantId = "tenant_id";
+
+    /// <summary>El rol del usuario en el tenant activo (nombre de un TenantRole). Lo escribe TokenService y lo lee CurrentUser.</summary>
+    public const string Role = "role";
 }

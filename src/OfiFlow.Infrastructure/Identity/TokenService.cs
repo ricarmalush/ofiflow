@@ -96,7 +96,7 @@ public sealed partial class TokenService(
         [
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new Claim(OfiFlowClaimTypes.TenantId, tenantId.ToString()),
-            new Claim(ClaimTypes.Role, role.ToString())
+            new Claim(OfiFlowClaimTypes.Role, role.ToString())
         ];
 
         var key = new SymmetricSecurityKey(Convert.FromBase64String(_options.Secret));

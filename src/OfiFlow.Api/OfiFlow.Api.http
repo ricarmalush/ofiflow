@@ -1,6 +1,298 @@
-@OfiFlow.Api_HostAddress = http://localhost:5279
+# Colección de peticiones de OfiFlow para Visual Studio (editor de ficheros .http).
+#
+# Cómo usarla
+#   1. Arranca la API (perfil "http", puerto 5279). Hace falta el secreto JWT en tus user-secrets
+#      y la base de datos migrada: ver "Arrancar en local" en el README.
+#   2. Ejecuta las peticiones EN ORDEN con el enlace "Enviar solicitud" de cada una. Las de abajo
+#      reutilizan lo que devuelven las de arriba (el token, el Id del cliente, el del trabajo).
+#   3. Si repites la colección, cambia @suffix: el email de una empresa solo puede registrarse una vez.
+#
+# Cosas que conviene saber
+#   - Los enumerados entran como NÚMERO, no como texto. Cliente: tipo 0 = Person, 1 = Company.
+#     Trabajo: prioridad 0 = Low, 1 = Normal, 2 = High, 3 = Urgent. Las respuestas los devuelven como texto.
+#   - Hay límites de peticiones por IP: el registro admite 3 por hora, el login 5 por minuto y la
+#     renovación 20 por minuto. Si te pasas, la API responde 429 con la cabecera Retry-After.
+#   - El token de acceso dura 30 minutos. Pasado ese tiempo, usa la petición "Renovar sesión".
+#   - Hoy todo usuario que se registra es Owner de su empresa, así que aquí no se puede probar un
+#     403 por falta de permisos (no existen las invitaciones): eso solo se prueba en los tests.
 
-GET {{OfiFlow.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+@host = http://localhost:5279
+@suffix = 1
+@password = Demo-Password-123
 
-###
+###############################################################################
+# 1. CUENTA: registrarse, iniciar sesión y renovar la sesión
+###############################################################################
+
+### Registrar la empresa A (crea la empresa, el usuario y lo hace Owner)
+# @name registerA
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "companyName": "Fontanería A",
+  "userName": "Dueña de A",
+  "email": "demo-a-{{suffix}}@example.com",
+  "password": "{{password}}"
+}
+
+### Iniciar sesión como A (devuelve accessToken y refreshToken)
+# @name loginA
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "demo-a-{{suffix}}@example.com",
+  "password": "{{password}}"
+}
+
+@tokenA = {{loginA.response.body.$.accessToken}}
+@refreshA = {{loginA.response.body.$.refreshToken}}
+
+### Renovar la sesión de A (rota el token: el refreshToken anterior deja de valer)
+# @name refreshA
+POST {{host}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshA}}"
+}
+
+###############################################################################
+# 2. CLIENTES (con el token de A)
+###############################################################################
+
+### Crear un cliente
+# @name createCustomer
+POST {{host}}/api/v1/customers
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "type": 0,
+  "name": "Juan Pérez",
+  "email": "juan.perez@example.com",
+  "phone": "+34 600 000 000",
+  "address": "Calle Mayor 1",
+  "notes": "Tiene perro"
+}
+
+@customerId = {{createCustomer.response.body.$.id}}
+
+### Listar los clientes de la empresa
+GET {{host}}/api/v1/customers
+Authorization: Bearer {{tokenA}}
+
+### Ver un cliente por Id
+GET {{host}}/api/v1/customers/{{customerId}}
+Authorization: Bearer {{tokenA}}
+
+### Modificar un cliente (204 sin cuerpo)
+PUT {{host}}/api/v1/customers/{{customerId}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Juan Pérez García",
+  "email": "juan.perez@example.com",
+  "phone": "+34 600 000 000",
+  "address": "Calle Mayor 1, 2º B",
+  "notes": null
+}
+
+###############################################################################
+# 3. TRABAJOS (con el token de A): el ciclo de vida New -> InProgress -> Completed
+###############################################################################
+
+### Crear un trabajo para el cliente (estado inicial: New)
+# @name createJob
+POST {{host}}/api/v1/jobs
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "customerId": "{{customerId}}",
+  "title": "Reparar fuga bajo el fregadero",
+  "description": "Gotea desde ayer",
+  "priority": 3
+}
+
+@jobId = {{createJob.response.body.$.id}}
+
+### Listar los trabajos
+GET {{host}}/api/v1/jobs
+Authorization: Bearer {{tokenA}}
+
+### Ver un trabajo por Id
+GET {{host}}/api/v1/jobs/{{jobId}}
+Authorization: Bearer {{tokenA}}
+
+### Modificar título, descripción y prioridad (204)
+PUT {{host}}/api/v1/jobs/{{jobId}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "title": "Reparar fuga bajo el fregadero (urgente)",
+  "description": "Gotea desde ayer; cliente en casa por la tarde",
+  "priority": 3
+}
+
+### Intentar completar un trabajo que aún no se ha empezado -> 400 job.cannot_complete
+POST {{host}}/api/v1/jobs/{{jobId}}/complete
+Authorization: Bearer {{tokenA}}
+
+### Intentar borrar el cliente teniendo un trabajo activo -> 400 customer.has_active_jobs
+DELETE {{host}}/api/v1/customers/{{customerId}}
+Authorization: Bearer {{tokenA}}
+
+### Iniciar el trabajo (New -> InProgress, 204)
+POST {{host}}/api/v1/jobs/{{jobId}}/start
+Authorization: Bearer {{tokenA}}
+
+### Completar el trabajo (InProgress -> Completed, 204)
+POST {{host}}/api/v1/jobs/{{jobId}}/complete
+Authorization: Bearer {{tokenA}}
+
+### Un trabajo completado ya no se puede cancelar -> 400 job.cannot_cancel_completed
+POST {{host}}/api/v1/jobs/{{jobId}}/cancel
+Authorization: Bearer {{tokenA}}
+
+### Crear un segundo trabajo y cancelarlo (New -> Cancelled)
+# @name createJob2
+POST {{host}}/api/v1/jobs
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "customerId": "{{customerId}}",
+  "title": "Revisar la caldera",
+  "priority": 1
+}
+
+@jobId2 = {{createJob2.response.body.$.id}}
+
+### Asignar un trabajo a un TenantUser. Aún no hay forma de listar los TenantUser por la API, así que
+### con un Id inventado responde 404 tenant_user.not_found (en los tests se prueba con uno real).
+POST {{host}}/api/v1/jobs/{{jobId2}}/assign
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "tenantUserId": "00000000-0000-0000-0000-000000000001"
+}
+
+### Cancelar el segundo trabajo (204)
+POST {{host}}/api/v1/jobs/{{jobId2}}/cancel
+Authorization: Bearer {{tokenA}}
+
+### Con todos los trabajos terminados, ahora sí se puede eliminar el cliente (204)
+DELETE {{host}}/api/v1/customers/{{customerId}}
+Authorization: Bearer {{tokenA}}
+
+###############################################################################
+# 4. ERRORES A PROPÓSITO: qué responde la API cuando algo va mal
+###############################################################################
+
+### Sin token -> 401
+GET {{host}}/api/v1/customers
+
+### Token manipulado -> 401 (se añade un carácter al final: la firma ya no coincide)
+GET {{host}}/api/v1/customers
+Authorization: Bearer {{tokenA}}x
+
+### Datos inválidos: título vacío -> 400 validation.failed, con la lista de errores por campo
+POST {{host}}/api/v1/jobs
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "customerId": "{{customerId}}",
+  "title": "",
+  "priority": 1
+}
+
+### Enumerado como texto en vez de número -> 400 request.invalid_body
+POST {{host}}/api/v1/jobs
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "customerId": "{{customerId}}",
+  "title": "Prueba",
+  "priority": "Urgent"
+}
+
+### Un Id que no existe -> 404 job.not_found
+GET {{host}}/api/v1/jobs/00000000-0000-0000-0000-0000000000aa
+Authorization: Bearer {{tokenA}}
+
+### Credenciales incorrectas -> 401
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "demo-a-{{suffix}}@example.com",
+  "password": "esta-no-es-la-contraseña"
+}
+
+###############################################################################
+# 5. AISLAMIENTO ENTRE EMPRESAS: la empresa B no ve nada de A
+###############################################################################
+
+### Registrar la empresa B (es el segundo registro de la colección: el límite es 3 por hora)
+# @name registerB
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "companyName": "Electricidad B",
+  "userName": "Dueño de B",
+  "email": "demo-b-{{suffix}}@example.com",
+  "password": "{{password}}"
+}
+
+### Iniciar sesión como B
+# @name loginB
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "demo-b-{{suffix}}@example.com",
+  "password": "{{password}}"
+}
+
+@tokenB = {{loginB.response.body.$.accessToken}}
+
+### Para esta prueba, A crea de nuevo un cliente (el anterior se eliminó arriba)
+# @name createCustomerOfA
+POST {{host}}/api/v1/customers
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "type": 0,
+  "name": "Cliente de A",
+  "email": null,
+  "phone": null,
+  "address": null,
+  "notes": null
+}
+
+@customerOfA = {{createCustomerOfA.response.body.$.id}}
+
+### B pide el cliente de A por su Id -> 404 customer.not_found (igual que si no existiera)
+GET {{host}}/api/v1/customers/{{customerOfA}}
+Authorization: Bearer {{tokenB}}
+
+### B intenta borrar el cliente de A -> 404 y el cliente sigue ahí
+DELETE {{host}}/api/v1/customers/{{customerOfA}}
+Authorization: Bearer {{tokenB}}
+
+### La lista de clientes de B está vacía (no incluye los de A)
+GET {{host}}/api/v1/customers
+Authorization: Bearer {{tokenB}}
+
+### A sigue viendo su cliente intacto -> 200
+GET {{host}}/api/v1/customers/{{customerOfA}}
+Authorization: Bearer {{tokenA}}

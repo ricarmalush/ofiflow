@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OfiFlow.Infrastructure.Persistence;
 using Testcontainers.MsSql;
 
@@ -21,6 +22,19 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
     private const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
 
     private readonly MsSqlContainer _container = new MsSqlBuilder(SqlServerImage).Build();
+
+    /// <summary>
+    /// Secreto efímero por ejecución: los tests no dependen de los user-secrets (ADR-009 R8). Se expone para
+    /// que un test pueda fabricar tokens con una forma que el login nunca emite (sin rol, con un rol inválido).
+    /// </summary>
+    public string JwtSecret { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+
+    public string JwtIssuer => "OfiFlow.Api.Tests";
+
+    public string JwtAudience => "OfiFlow.Api.Tests.Client";
+
+    /// <summary>Todo lo que la API ha registrado en el log, para comprobar eventos de seguridad (ADR-009 R5).</summary>
+    public CapturingLoggerProvider Logs { get; } = new();
 
     /// <summary>Arranca el contenedor y aplica las migraciones. Hay que llamarlo antes de usar la factoría.</summary>
     public async Task StartAsync()
@@ -54,10 +68,11 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
 
         builder.UseSetting("ConnectionStrings:Default", _container.GetConnectionString());
 
-        // Secreto efímero por ejecución: los tests no dependen de los user-secrets (ADR-009 R8).
-        builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
-        builder.UseSetting("Jwt:Issuer", "OfiFlow.Api.Tests");
-        builder.UseSetting("Jwt:Audience", "OfiFlow.Api.Tests.Client");
+        builder.UseSetting("Jwt:Secret", JwtSecret);
+        builder.UseSetting("Jwt:Issuer", JwtIssuer);
+        builder.UseSetting("Jwt:Audience", JwtAudience);
+
+        builder.ConfigureLogging(logging => logging.AddProvider(Logs));
     }
 
     public override async ValueTask DisposeAsync()

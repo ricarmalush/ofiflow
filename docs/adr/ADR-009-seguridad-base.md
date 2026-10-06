@@ -78,7 +78,7 @@ Se adopta la **Opción 3**, con estas reglas:
 
 ### R5 — Observabilidad y logs de seguridad
 - `GlobalExceptionHandler` registra los 500 con `LogError` (excepción completa en el log, mensaje genérico al cliente).
-- Eventos de seguridad con `LogWarning` y campos estructurados: login fallido, reutilización de refresh token revocado (posible robo), rate limit superado.
+- Eventos de seguridad con `LogWarning` y campos estructurados: login fallido, reutilización de refresh token revocado (posible robo), rate limit superado y, desde la spec 008 (ADR-012), **acceso denegado por falta de permiso** (evento `1301`, con `UserId`, `TenantId`, el rol y el nombre de la operación; nunca datos de la petición).
 - **Nunca se registran**: contraseñas, access/refresh tokens, cuerpos de petición, ni datos personales de Customer (email, teléfono, dirección, notas). Se registran **Ids** (`UserId`, `TenantId`, `EntityId`) y la IP.
 - `EnableSensitiveDataLogging()` de EF Core prohibido fuera de un depurado local puntual (nunca commiteado).
 
@@ -112,7 +112,7 @@ Se adopta la **Opción 3**, con estas reglas:
 - No introducir Redis ni un WAF solo por seguridad mientras haya una única instancia.
 
 ### Qué queda abierto para revisar más adelante
-- **NEXT — RBAC dentro del tenant:** `AuthorizationBehavior` (previsto en ADR-003, no implementado) que compruebe `TenantUser.Role` por Command. Se vuelve necesario en cuanto un tenant tenga más de un usuario (invitaciones). Sigue abierto el punto de ADR-004/007 sobre permisos granulares.
+- ~~**NEXT — RBAC dentro del tenant:** `AuthorizationBehavior` que compruebe `TenantUser.Role` por Command.~~ — **cerrado en ADR-012 / spec 008** (2026-10-06): permisos `Entidad.Acción` con una tabla única rol → permisos, comprobados por un `AuthorizationBehavior` fail-closed. Sigue abierto, como NEXT, que un técnico solo vea y avance los trabajos asignados a él (ADR-012).
 - **NEXT — Revalidar la pertenencia al tenant en cada petición** (spec 007, ADR-002): hoy solo se comprueba al renovar la sesión, así que un token sigue valiendo hasta que caduca (30 minutos) aunque el usuario ya no pertenezca a la empresa. Sin urgencia mientras no exista la operación de quitar usuarios de una empresa; necesita decidir el coste (una consulta por petición o una caché).
 - **NEXT — Login con varias empresas** (spec 007): el login toma la primera pertenencia del usuario. Hoy cada usuario tiene una sola; con invitaciones hará falta elegir empresa y poder cambiar de empresa.
 - **LATER — Row-Level Security de SQL Server** como segunda barrera a nivel de base de datos (defensa en profundidad), si el riesgo lo justifica. Requiere ADR propia.
