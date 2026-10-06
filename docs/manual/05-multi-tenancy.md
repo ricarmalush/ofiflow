@@ -191,18 +191,28 @@ Al renovar la sesión (`refresh`), el servicio comprueba otra vez que el usuario
 
 ## Cómo sabemos que funciona: los tests
 
-Un control de seguridad que no se prueba es solo una esperanza. Hay tres capas de prueba:
+Un control de seguridad que no se prueba es solo una esperanza. Hay cuatro capas de prueba (las tres últimas se añadieron con la spec 007, el 2026-10-06):
 
 | Test | Qué demuestra | Contra qué |
 |---|---|---|
 | [`ApplicationDbContextTenantFilterTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/ApplicationDbContextTenantFilterTests.cs) | El filtro por reflexión restringe por tenant | Base de datos en memoria (comprobación rápida) |
-| [`TenantIsolationIntegrationTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/TenantIsolationIntegrationTests.cs) | **Clientes y trabajos de una empresa no se ven desde otra** | **SQL Server real en Docker** |
-| [`SecurityArchitectureTests`](../../tests/OfiFlow.Api.Tests/Architecture/SecurityArchitectureTests.cs) | Nadie usa `IgnoreQueryFilters` fuera de la lista blanca; ningún Command/Query acepta `TenantId` | Escaneo del código y reflexión |
+| [`TenantIsolationIntegrationTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/TenantIsolationIntegrationTests.cs) | **Clientes, trabajos y `TenantUser` de una empresa no se ven desde otra** (lecturas) | **SQL Server real en Docker** |
+| [`CrossTenantWriteIsolationTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/CrossTenantWriteIsolationTests.cs) | La empresa B no puede **modificar, borrar, cambiar de estado ni asignar** nada de A: recibe "no encontrado" y el dato de A sigue intacto | SQL Server real, con los handlers reales |
+| [`TenantModelClassificationTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/TenantModelClassificationTests.cs) | Toda entidad es de una empresa (con filtro) o está declarada global con su motivo | El modelo de EF Core (sin Docker) |
+| [`SecurityArchitectureTests`](../../tests/OfiFlow.Api.Tests/Architecture/SecurityArchitectureTests.cs) | Nadie usa `IgnoreQueryFilters` fuera de la lista blanca (por ruta); las entidades globales solo se leen donde se permite; ningún Command/Query acepta `TenantId` | Escaneo del código y reflexión |
+| [`TenantIsolationEndToEndTests`](../../tests/OfiFlow.Api.Tests/Security/TenantIsolationEndToEndTests.cs) | **El recorrido completo por HTTP** con dos empresas registradas: 404 idéntico al de un `Id` inexistente, 401 sin token, `tenantId` del cliente ignorado, token con la empresa alterada rechazado | La API real + SQL Server real |
+
+### Cómo se sabe que un test de seguridad no está vacío
+
+Un guardarraíl que nunca ha fallado no demuestra que funcione: podría estar comprobando nada. Por eso, al añadir estos tests se hicieron dos cosas:
+
+- **Controles positivos:** junto a cada "B no puede tocar lo de A" hay un "A sí puede usar lo suyo". Si el test de B pasa porque la API está rota o los datos se sembraron mal, el control de A falla y lo delata.
+- **Mutaciones:** se **rompe a propósito el código real** (desactivar el filtro, no comprobar la firma del token, saltar el filtro en un solo handler), se comprueba que los tests se ponen en rojo y se restaura el código. Con el filtro desactivado, 20 de los 22 tests de extremo a extremo fallan; con el filtro saltado solo en `GetJob`, falla únicamente la ruta `GET job`. Esa técnica se llama *mutation testing* (pruebas de mutación) y es una forma muy buena de contestar "¿cómo sabes que tus tests de seguridad funcionan?".
 
 ### Cómo leer el test más importante
 
 ```csharp
-// TenantIsolationIntegrationTests.cs:21-37
+// TenantIsolationIntegrationTests.cs (el primer test)
 [Fact]
 public async Task Customers_AreNotVisibleAcrossTenants()
 {
@@ -232,23 +242,23 @@ La base en memoria de EF Core **no se comporta igual que SQL Server**: no ejecut
 
 ## Dónde están hoy los puntos débiles
 
-Un buen diseño conoce sus límites. Estos son los de este mecanismo, de más a menos importante:
+Un buen diseño conoce sus límites. Al escribir este capítulo se identificaron siete. **La spec 007 (2026-10-06) cerró los puntos 1, 2, 3 y 6** (los que dependían de que alguien "se acordara"); quedan abiertos el 4, el 5 y el 7, que son los que aparecerán al crecer.
 
-**1. Una entidad nueva que olvide la marca no queda protegida, y ningún test lo detecta.**
-El filtro se aplica solo a las entidades con `ITenantOwned`. Si alguien crea una entidad con su propia columna `TenantId` pero olvida añadir la interfaz, esa tabla **no tendrá filtro**, y nada fallará. El comentario del código dice que "ninguna entidad queda exenta por omisión", pero eso solo es cierto para las que llevan la marca. Una solución barata sería un test de arquitectura: "toda entidad con una propiedad `TenantId` debe implementar `ITenantOwned`" (con una excepción documentada para `RefreshToken`). No existe todavía.
+**1. ✅ Cerrado: una entidad nueva que olvidara la marca no quedaba protegida.**
+Antes, una entidad con su propia columna `TenantId` pero sin la interfaz `ITenantOwned` no tenía filtro y nada fallaba. Ahora [`TenantModelClassificationTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/TenantModelClassificationTests.cs) exige que **toda** entidad mapeada sea de una empresa (con su filtro aplicado) o esté en una lista explícita de entidades globales, cada una con su motivo (`Tenant`, `User`, `ApplicationUser`, `RefreshToken`). Si alguien añade una entidad sin decidir cuál de las dos es, el build falla con un mensaje que dice qué hacer. Es un diseño *fail-closed*: ante la duda, rechaza.
 
-**2. `Tenants` y `Users` no tienen filtro, y `IApplicationDbContext` los expone.**
-Es lo correcto según el diseño (no pertenecen a una empresa), pero significa que un handler futuro que escribiera `dbContext.Users.ToListAsync()` vería a **todas las personas de todas las empresas**. Hoy ningún handler los lee (solo `Register` los escribe), pero la protección aquí depende de que quien escriba el siguiente handler tenga cuidado.
+**2. ✅ Cerrado: `Tenants` y `Users` no tienen filtro, y `IApplicationDbContext` los expone.**
+Sigue siendo así por diseño (no pertenecen a una empresa), pero ahora un test de arquitectura prohíbe **leerlos** fuera de una lista blanca (hoy: ningún fichero puede leer `Users` ni `Tenants`; `ApplicationUsers` solo en `IdentityService` y `RefreshTokens` solo en `TokenService`). Crear con `.Add` se admite en cualquier sitio. Un handler futuro que escribiera `dbContext.Users.ToListAsync()` rompería ese test.
 
-**3. Los tests cubren lecturas de `Customer` y `Job`, no todo.**
-No hay test de aislamiento para `TenantUser`; ni de que un handler no pueda **modificar o borrar** un dato ajeno (funciona por la lectura previa, pero no está probado explícitamente); ni de extremo a extremo por HTTP con dos usuarios reales. El comentario de `ApplicationDbContextTenantFilterTests` sigue diciendo que el test contra SQL Server real está "pendiente", y ya existe: está desactualizado.
+**3. ✅ Cerrado: los tests solo cubrían lecturas de `Customer` y `Job`.**
+Ahora hay tests de **escritura** entre empresas (modificar, borrar, cambiar de estado y asignar, con los handlers reales y SQL Server real), la lectura de `TenantUser`, y el test de extremo a extremo por HTTP con dos empresas registradas. El comentario obsoleto de `ApplicationDbContextTenantFilterTests` está corregido.
 
 **4. La pertenencia al tenant no se vuelve a comprobar en cada petición.**
 El ADR-002 prevé verificar en cada Command que el usuario pertenece al tenant del token. Hoy solo se verifica al **renovar** la sesión. Entre renovaciones, el token manda: si a alguien se le quitase de la empresa, su token seguiría valiendo hasta que caduque (30 minutos). Como todavía no existe la operación de quitar usuarios, no es explotable hoy, pero lo será cuando exista.
 
 **5. El login no sabe elegir entre varias empresas** (ver la sección anterior).
 
-**6. La lista blanca de `IgnoreQueryFilters` se compara por nombre de fichero.** Un fichero nuevo llamado `TokenService.cs` en otra carpeta pasaría el test. Es un riesgo menor, pero real.
+**6. ✅ Cerrado: la lista blanca de `IgnoreQueryFilters` se comparaba por nombre de fichero.** Ahora se compara por **ruta relativa completa**: un `TokenService.cs` en otra carpeta ya no hereda el permiso. Lo demuestran tests con ficheros inventados, y una prueba con un fichero infractor real, que se puso en rojo.
 
 **7. Todo el aislamiento está en el código.** La base de datos no lo impone por sí misma. SQL Server tiene un mecanismo (*Row-Level Security*) que podría añadir una segunda barrera a nivel de base de datos. No está en ningún ADR y sería una mejora para más adelante, si el riesgo lo justifica: es defensa en profundidad.
 
@@ -264,12 +274,16 @@ Una tabla para ver de un vistazo qué amenaza cubre qué control (el germen del 
 | El cliente dice que es de otra empresa | El tenant sale del token firmado | `TenantContext.cs:17-20` | Validación de firma (capítulo 6) |
 | El cliente envía `tenantId` en el JSON | Ningún Command/Query tiene `TenantId` | Los `*Command.cs` | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` |
 | Alguien se salta el filtro con `IgnoreQueryFilters` | Lista blanca vigilada | `SecurityArchitectureTests.cs:16-20` | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` |
-| Adivinar el `Id` de un recurso ajeno | El filtro no lo encuentra; mismo 404 que si no existiera | `GlobalExceptionHandler.cs:71-72` | `Jobs_AreNotVisibleAcrossTenants` (lectura) |
-| Token manipulado para cambiar de empresa | Firma HMAC-SHA256 | `DependencyInjection.cs:57-68` | Capítulo 6 |
-| Entidad nueva sin la marca | **Sin control** | — | **Sin test** (punto débil 1) |
-| Handler futuro que lea `Users` o `Tenants` | **Sin control** (por diseño) | — | **Sin test** (punto débil 2) |
+| Adivinar el `Id` de un recurso ajeno para leerlo | El filtro no lo encuentra; mismo 404 que si no existiera | `GlobalExceptionHandler.cs:71-72` | `Jobs_AreNotVisibleAcrossTenants`, `TenantB_WithTenantAsIds_GetsTheSameNotFoundAsForAnIdThatDoesNotExist` (HTTP) |
+| Adivinar el `Id` de un recurso ajeno para **modificarlo o borrarlo** | El handler lo busca con el filtro: no lo encuentra | Los `*CommandHandler.cs` | `CrossTenantWriteIsolationTests` |
+| Token manipulado para cambiar de empresa | Firma HMAC-SHA256 | `DependencyInjection.cs:57-68` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| Entidad nueva sin la marca o sin clasificar | Clasificación obligatoria (*fail-closed*) | `TenantModelRules.cs` (tests) | `TenantModelClassificationTests` |
+| Handler futuro que lea `Users` o `Tenants` | Lista blanca de lecturas de entidades globales | `SecurityArchitectureTests.cs` | `GlobalEntities_AreOnlyReadInTheAllowList` |
+| Un `IgnoreQueryFilters` colado en otro fichero con el mismo nombre | Lista blanca por ruta completa | `SecurityArchitectureTests.cs` | `TenantAccessRulesTests` |
+| Token válido de un usuario que ya no pertenece a la empresa | **Sin control todavía** (punto débil 4) | — | **Sin test** |
+| Usuario con varias empresas: el login elige "la primera" | **Sin control todavía** (punto débil 5) | — | **Sin test** |
 
-Las dos últimas filas están en blanco a propósito: son las que habría que cerrar a continuación.
+Las dos últimas filas siguen abiertas a propósito: dependen de funcionalidad que aún no existe (quitar usuarios de una empresa, invitaciones), y se cerrarán cuando exista.
 
 ## Para comprobar que lo has entendido
 
@@ -278,9 +292,10 @@ Las dos últimas filas están en blanco a propósito: son las que habría que ce
 3. ¿Por qué `Tenant` y `User` no llevan `ITenantOwned`?
 4. ¿Por qué el login necesita `IgnoreQueryFilters()` y qué impide que se use en cualquier otro sitio?
 5. ¿Por qué el test de aislamiento usa SQL Server real en vez de una base en memoria?
-6. Nombra dos puntos débiles del mecanismo actual y cómo cerrarías uno.
+6. Nombra dos puntos débiles que siguen abiertos y explica por qué hoy no son explotables.
+7. ¿Cómo sabes que un test de aislamiento no está "vacío"? Cita dos técnicas.
 
-*(Respuestas: 1 = del claim `tenant_id` del token JWT, que está firmado con el secreto del servidor; si se altera, la firma no coincide y se rechaza. 2 = solo los clientes de la empresa de Marta, porque el filtro global añade `WHERE TenantId = ...` automáticamente. 3 = `Tenant` es la propia empresa y `User` puede pertenecer a varias; ninguno es "de" una empresa concreta. 4 = en el login aún no hay tenant activo, es lo que se está determinando; lo impide un test que escanea el código y falla si aparece en un fichero fuera de la lista blanca. 5 = porque la base en memoria no ejecuta SQL real y no prueba que el filtro se traduzca bien; es el test más importante. 6 = por ejemplo, entidad nueva sin la marca `ITenantOwned` (se cerraría con un test de arquitectura que exija la marca a toda entidad con `TenantId`) y la pertenencia no revalidada en cada petición.)*
+*(Respuestas: 1 = del claim `tenant_id` del token JWT, que está firmado con el secreto del servidor; si se altera, la firma no coincide y se rechaza. 2 = solo los clientes de la empresa de Marta, porque el filtro global añade `WHERE TenantId = ...` automáticamente. 3 = `Tenant` es la propia empresa y `User` puede pertenecer a varias; ninguno es "de" una empresa concreta. 4 = en el login aún no hay tenant activo, es lo que se está determinando; lo impide un test que escanea el código y falla si aparece en un fichero fuera de la lista blanca. 5 = porque la base en memoria no ejecuta SQL real y no prueba que el filtro se traduzca bien; es el test más importante. 6 = la pertenencia al tenant no se revalida en cada petición (un token vale hasta 30 minutos) y el login toma "la primera" empresa del usuario; hoy no son explotables porque no existen la operación de quitar usuarios de una empresa ni las invitaciones, así que cada usuario tiene una sola empresa. 7 = controles positivos (comprobar que la empresa dueña sí puede hacer lo mismo) y mutaciones (romper a propósito el código real y ver que el test se pone en rojo).)*
 
 ## Siguiente capítulo
 

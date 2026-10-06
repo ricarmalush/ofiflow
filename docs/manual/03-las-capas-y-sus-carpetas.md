@@ -318,7 +318,7 @@ Es la **primera línea de defensa**: cabeceras de seguridad, HSTS, rate limiting
 
 ### Cómo se prueba
 
-`OfiFlow.Api.Tests`: arranca la API entera en memoria (`WebApplicationFactory`) y le hace peticiones reales. No necesita SQL Server: sus tests o no tocan la base de datos, o la validación rechaza la petición antes de llegar a ella. Aquí también están los **tests de arquitectura**, que fallan si alguien introduce SQL crudo, usa `IgnoreQueryFilters()` donde no debe, o añade un código de error sin su mensaje.
+`OfiFlow.Api.Tests`: arranca la API entera en memoria (`WebApplicationFactory`) y le hace peticiones reales. La mayoría de sus tests no necesitan SQL Server: o no tocan la base de datos, o la validación rechaza la petición antes de llegar a ella. La excepción es `TenantIsolationEndToEndTests` (spec 007), que sí usa SQL Server real en Docker para recorrer el camino completo con dos empresas registradas. Aquí también están los **tests de arquitectura**, que fallan si alguien introduce SQL crudo, usa `IgnoreQueryFilters()` donde no debe, o añade un código de error sin su mensaje.
 
 ### Pregunta de tribunal
 
@@ -364,7 +364,7 @@ Los cuatro proyectos de `tests/` reflejan las capas y son cada vez más lentos y
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro, instantáneo |
 | `OfiFlow.Application.Tests` | Los casos de uso y los validadores | Base de datos en memoria y dobles de prueba |
 | `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker |
-| `OfiFlow.Api.Tests` | HTTP, seguridad y arquitectura | La API completa en memoria, sin base de datos |
+| `OfiFlow.Api.Tests` | HTTP, seguridad y arquitectura | La API completa en memoria; casi siempre sin base de datos, y con **SQL Server real** en el test de aislamiento de extremo a extremo |
 
 Se detallan en el capítulo 9.
 
