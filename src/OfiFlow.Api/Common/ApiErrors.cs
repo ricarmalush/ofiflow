@@ -26,6 +26,7 @@ public static class ProblemTitles
     public const string BusinessRule = "problem.title.business_rule";
     public const string Registration = "problem.title.registration";
     public const string NotFound = "problem.title.not_found";
+    public const string Forbidden = "problem.title.forbidden";
     public const string BadRequest = "problem.title.bad_request";
     public const string TooManyRequests = "problem.title.too_many_requests";
     public const string ServerError = "problem.title.server_error";
