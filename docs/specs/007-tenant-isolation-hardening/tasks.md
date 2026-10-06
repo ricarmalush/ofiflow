@@ -15,10 +15,10 @@
 ## Checklist
 
 ### Bloque 1 — Guardarraíles sobre el modelo (≈ 2 h)
-- [ ] Test de clasificación: toda entidad mapeada es `ITenantOwned` o está en la lista de globales (`Tenant`, `User`, `ApplicationUser`, `RefreshToken`, cada una con su motivo en el propio test)
-- [ ] Test: toda entidad `ITenantOwned` tiene el filtro aplicado en el modelo de EF Core
-- [ ] Test: una entidad con propiedad `TenantId` sin `ITenantOwned` solo se admite si está en la lista de globales
-- [ ] Demostrar que los tests fallan: añadir una entidad de prueba sin clasificar, ver el rojo con el mensaje claro, y retirarla (anotar el resultado en "Notas")
+- [x] Test de clasificación: toda entidad mapeada es `ITenantOwned` o está en la lista de globales (`Tenant`, `User`, `ApplicationUser`, `RefreshToken`, cada una con su motivo en el propio test)
+- [x] Test: toda entidad `ITenantOwned` tiene el filtro aplicado en el modelo de EF Core
+- [x] Test: una entidad con propiedad `TenantId` sin `ITenantOwned` solo se admite si está en la lista de globales
+- [x] Demostrar que los tests fallan: meta-tests permanentes sobre un modelo con entidades mal clasificadas a propósito, más dos mutaciones del código real (ver "Notas")
 
 ### Bloque 2 — Guardarraíles de código fuente (≈ 1-2 h)
 - [ ] `IgnoreQueryFilters`: lista blanca por ruta relativa en vez de por nombre de fichero
@@ -52,4 +52,5 @@
 ## Notas / bloqueos
 
 - Hallazgos que hagan cambiar código de producción: _(ninguno todavía)_
+- **Bloque 1 (2026-10-06):** reglas en `TenantModelRules.cs` y tests en `TenantModelClassificationTests.cs` (`OfiFlow.Infrastructure.Tests/Persistence`), sobre el modelo de EF Core con el proveedor en memoria (sin Docker). Además de las 4 reglas y un test que fija el conjunto actual de entidades de empresa (`Customer`, `Job`, `TenantUser`, para que nunca pasen en vacío), hay 5 *meta-tests* que aplican las reglas a un modelo con entidades mal clasificadas y exigen que las detecten. Mutaciones sobre el código real, restauradas con git: (1) desactivar `ApplyTenantQueryFilters` → rojo en "filtro aplicado" con las 3 entidades; (2) quitar `ITenantOwned` de `Job` → rojo en 3 tests, con el mensaje que indica qué hacer. Build: 0 avisos, 0 errores. Suite sin Docker: Domain 54, Application 53, Api 23, Infrastructure 20, todo en verde.
 - La spec parte de los puntos débiles identificados en el capítulo 5 del manual técnico (puntos 1, 2, 3 y 6). Los puntos 4 y 5 (revalidación por petición y login con varias empresas) quedan en NEXT.
