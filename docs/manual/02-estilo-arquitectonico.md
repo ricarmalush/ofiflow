@@ -288,7 +288,12 @@ public Task<JobDto?> Handle(GetJobQuery request, CancellationToken cancellationT
 
 Además permite **Pipeline Behaviors**: código que se ejecuta **antes de todos los handlers** sin tener que repetirlo en cada uno. Es como un control de acceso por el que pasa cada pedido.
 
-**Estado real:** el ADR-003 prevé cinco behaviors (validación, logging, autorización, transacciones y rendimiento). **Hoy solo está implementado uno: [`ValidationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/ValidationBehavior.cs)**, que ejecuta los validadores antes de cada handler. El de autorización está planificado como siguiente paso de seguridad (ADR-009); los de logging, transacciones y rendimiento no se han escrito aún.
+**Estado real:** el ADR-003 prevé cinco behaviors (validación, logging, autorización, transacciones y rendimiento). **Hoy hay dos implementados, y en este orden:**
+
+1. [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) (spec 008, ADR-012): comprueba que el rol del usuario tiene el permiso que declara la operación (`[RequiresPermission(Permission.JobsWrite)]`, por ejemplo). Va **primero**: quien no puede hacer algo no recibe ni siquiera información sobre si sus datos eran válidos.
+2. [`ValidationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/ValidationBehavior.cs): ejecuta los validadores antes de cada handler.
+
+Los de logging, transacciones y rendimiento no se han escrito aún. La autorización es *fail-closed*: una operación que no declara su permiso se deniega, y un test de arquitectura impide que exista una sin declarar.
 
 ---
 
@@ -318,9 +323,9 @@ Resumen: una sola base de datos donde cada fila de negocio lleva un `TenantId`, 
 | CQRS: comandos y consultas separados | **Pragmático** | Una base de datos, sin Event Sourcing; las consultas no pasan por el dominio |
 | Abstracción de la base de datos | **Pragmático** | `IApplicationDbContext`, sin patrón Repository |
 | Límites entre módulos | **Por disciplina** | Carpetas, no proyectos; sin test automático todavía |
-| Pipeline Behaviors | **Parcial** | Solo validación; autorización, logging, transacciones y rendimiento pendientes |
+| Pipeline Behaviors | **Parcial** | Autorización y validación hechas; logging, transacciones y rendimiento pendientes |
 | Eventos de dominio | **Preparado, sin usar** | La base existe; ningún agregado lanza eventos ni hay quien los publique |
-| Permisos por rol (RBAC) | **Pendiente** | Los roles se guardan pero no se comprueban |
+| Permisos por rol (RBAC) | **A fondo** | Tabla única rol → permisos en Domain, comprobada en cada operación y probada por HTTP con un usuario de cada rol. Pendiente: que el técnico solo vea lo asignado, y poder crear usuarios con otro rol |
 
 Que haya cosas pendientes no es una debilidad escondida: son decisiones aplazadas a propósito, con su motivo, porque con un único desarrollador y sin usuarios reales todavía no compensan. Lo importante es que **estén identificadas** y que no se afirme que están hechas.
 
@@ -333,7 +338,7 @@ Que haya cosas pendientes no es una debilidad escondida: son decisiones aplazada
 5. ¿Por qué un monolito modular y no microservicios?
 6. Nombra una cosa que OfiFlow *prevé* pero *todavía no hace* en arquitectura.
 
-*(Respuestas: 1 = Clean decide quién depende de quién; DDD decide cómo se modelan las reglas dentro de Domain. 2 = evita que el negocio quede atado a la base de datos; Application depende de una interfaz que Infrastructure implementa. 3 = para que solo se cambie el estado llamando a métodos que validan la transición; si fuera público cualquiera podría saltarse las reglas. 4 = el Command pasa por el agregado y sus reglas; la Query lee un DTO directamente porque no cambia nada. 5 = un solo desarrollador: los microservicios añadirían coste sin beneficio, y el monolito modular deja la puerta abierta. 6 = eventos de dominio, o los behaviors de autorización/logging/transacciones.)*
+*(Respuestas: 1 = Clean decide quién depende de quién; DDD decide cómo se modelan las reglas dentro de Domain. 2 = evita que el negocio quede atado a la base de datos; Application depende de una interfaz que Infrastructure implementa. 3 = para que solo se cambie el estado llamando a métodos que validan la transición; si fuera público cualquiera podría saltarse las reglas. 4 = el Command pasa por el agregado y sus reglas; la Query lee un DTO directamente porque no cambia nada. 5 = un solo desarrollador: los microservicios añadirían coste sin beneficio, y el monolito modular deja la puerta abierta. 6 = eventos de dominio, o los behaviors de logging, transacciones y rendimiento.)*
 
 ## Siguiente capítulo
 

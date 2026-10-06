@@ -49,7 +49,7 @@ Hay cinco conceptos. Sus nombres en el código están en inglés, y conviene apr
 
 ¿Por qué existe `TenantUser` y no se pone el rol directamente en `User`? Porque **una misma persona puede trabajar en varias empresas con un rol distinto en cada una**. Un técnico autónomo puede ser *Owner* de la suya y *Technician* en la de un amigo. La relación entre persona y empresa es una cosa en sí misma, y por eso tiene su propia tabla.
 
-Los roles que existen (`TenantRole`) son: `Owner`, `Admin`, `Manager`, `Technician` y `Employee`. **Aviso:** hoy los roles se guardan, pero todavía no se comprueban para limitar lo que cada uno puede hacer. Eso está pendiente (ver "Qué NO hace todavía").
+Los roles que existen (`TenantRole`) son: `Owner`, `Admin`, `Manager`, `Technician` y `Employee`. Cada rol tiene unos **permisos** y el sistema los comprueba en cada operación: un `Technician`, por ejemplo, puede ver clientes y trabajos y empezar o completar un trabajo, pero no crear un cliente ni eliminarlo (recibe un error 403). Es la spec 008. **Aviso:** hoy no se puede probar a mano, porque todo usuario que se registra es `Owner` y todavía no existen las invitaciones para crear usuarios con otro rol; se comprueba con tests (ver "Qué NO hace todavía").
 
 ### El ciclo de vida de un trabajo
 
@@ -118,7 +118,8 @@ Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 - **Pantallas:** no hay frontend; solo la API.
 - **Agenda, presupuestos, facturas y pagos:** son las fases 2 a 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
-- **Control de permisos por rol:** los roles se guardan pero no se comprueban todavía.
+- **Invitar y gestionar usuarios de una empresa:** hoy cada empresa tiene un único usuario, su `Owner`. Los permisos por rol ya se comprueban, pero no hay forma de crear un `Technician` o un `Employee` desde la API.
+- **Que un técnico solo vea los trabajos que tiene asignados:** hoy un `Technician` puede ver y ejecutar cualquier trabajo de su empresa, no solo los suyos.
 - **Bloqueo de cuentas tras varios intentos fallidos de login:** hoy solo hay un límite de peticiones por IP.
 
 El roadmap completo (fases 0 a 12) está en el [README del repositorio](../../README.md#roadmap-por-fases). Las fases 0 y 1 (arquitectura y MVP: empresa, usuario, cliente y trabajo) están hechas.

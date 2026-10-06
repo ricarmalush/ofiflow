@@ -49,7 +49,7 @@ Dos observaciones sobre esta petición:
 └─────────────────────────────────┬──────────────────────────────────────┘
                                   ▼
 ┌────────────────────── APPLICATION (capa Application) ──────────────────┐
-│ 10 ValidationBehavior: ¿los datos son válidos?                         │
+│ 10 Permisos (¿tu rol puede?) y después validación (¿datos válidos?)    │
 │ 11 Handler: ¿existe ese cliente en MI empresa?                         │
 │ 12 Pide a Domain que cree el trabajo                                   │
 └──────────────┬──────────────────────────────────────┬──────────────────┘
@@ -108,7 +108,7 @@ Si todo es correcto, el servidor construye un objeto de usuario con los datos de
 
 Aquí se responde "¿**puedes pasar**?". El grupo de rutas de trabajos se declaró con `RequireAuthorization()` ([`JobEndpoints.cs:21`](../../src/OfiFlow.Api/Endpoints/JobEndpoints.cs)), lo que significa: **sin sesión válida, no se pasa**. Si Marta no hubiese enviado token (o estuviese caducado), la petición terminaría aquí con un **401**, y **nunca llegaría al código de la aplicación**.
 
-> Hoy esta comprobación solo mira "¿hay sesión?". **No mira el rol**: un `Employee` puede hacer lo mismo que un `Owner`. El control de permisos por rol está pendiente (capítulo 2).
+> Esta comprobación del *middleware* solo mira "¿hay sesión?". **El rol se comprueba un poco más tarde, dentro de Application, en el paso 10**: no está en los endpoints a propósito, para que valga igual venga la petición de HTTP, de la IA o de otro cliente (spec 008).
 
 ### Paso 9 — El endpoint (`JobEndpoints.cs:23-27`)
 
@@ -142,9 +142,32 @@ El endpoint no decide nada: solo entrega el comando y espera. La línea `sender.
 
 ## Parte 2 — El caso de uso (capa Application)
 
-### Paso 10 — Validación (`ValidationBehavior.cs:26-32`)
+### Paso 10 — Permisos y validación (`AuthorizationBehavior.cs` y `ValidationBehavior.cs`)
 
-Antes de que el comando llegue a su handler, MediatR lo hace pasar por los *behaviors*. El único que existe hoy ejecuta los **validadores**: [`CreateJobCommandValidator`](../../src/OfiFlow.Application/Jobs/Commands/CreateJob/CreateJobCommandValidator.cs), líneas 10 a 13:
+Antes de que el comando llegue a su handler, MediatR lo hace pasar por los *behaviors*, en este orden: primero los **permisos**, después la **validación**.
+
+#### 10a — ¿Tu rol puede hacer esto? (`AuthorizationBehavior`)
+
+La operación declara el permiso que exige, justo encima de su definición:
+
+```csharp
+[RequiresPermission(Permission.JobsWrite)]
+public sealed record CreateJobCommand(...)
+```
+
+El [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) lee ese permiso y el **rol** de Marta (que sale del token, el claim `role`, que lee `CurrentUser`) y consulta una tabla única, [`RolePermissions`](../../src/OfiFlow.Domain/Tenancy/RolePermissions.cs): ¿tiene este rol `Jobs.Write`? Marta es `Owner`, que lo tiene todo, así que pasa. Un `Technician` no lo tiene: recibiría un **403** aquí mismo, y el handler no se ejecutaría.
+
+Tres detalles que importan:
+
+- **Va antes que la validación.** Un técnico que envía un título vacío recibe un 403, no un 400: no se le dice nada sobre si sus datos eran válidos.
+- **Es *fail-closed*.** Una operación que no declara su permiso se deniega, y un test de arquitectura impide que exista una sin declarar.
+- **Depende solo del rol, no del recurso.** Un técnico que pide borrar un cliente de otra empresa y otro que pide borrar uno inexistente reciben el mismo 403: no se revela nada.
+
+Cada denegación queda en el registro de seguridad (evento `1301`) con quién, de qué empresa, con qué rol y qué operación; nunca con los datos de la petición.
+
+#### 10b — ¿Los datos son válidos? (`ValidationBehavior`, líneas 26-32)
+
+Después ejecuta los **validadores**: [`CreateJobCommandValidator`](../../src/OfiFlow.Application/Jobs/Commands/CreateJob/CreateJobCommandValidator.cs), líneas 10 a 13:
 
 | Campo | Regla |
 |---|---|
@@ -275,7 +298,8 @@ Casi todo lo que sale mal se convierte en una **excepción** que cae en la red d
 |---|---|---|---|
 | Sin token, o token inválido o caducado | Paso 7-8 (autenticación) | **401** | *(lo genera la autenticación de ASP.NET, no nuestro manejador, así que no lleva el formato con `code`)* |
 | JSON mal formado, o un campo con tipo incorrecto (p. ej. `priority` como texto) | Paso 9 (lectura del cuerpo) | **400** | `request.invalid_body` |
-| Título vacío o demasiado largo, `customerId` vacío, `priority` fuera de rango... | Paso 10 (validación) | **400** | `validation.failed`, con una lista `errors` por campo |
+| Tu rol no tiene el permiso de la operación (p. ej. un `Technician` creando un trabajo) | Paso 10a (permisos) | **403** | `auth.forbidden` |
+| Título vacío o demasiado largo, `customerId` vacío, `priority` fuera de rango... | Paso 10b (validación) | **400** | `validation.failed`, con una lista `errors` por campo |
 | El cliente no existe, **o es de otra empresa** | Paso 11 (handler) | **404** | `customer.not_found` |
 | Una regla de Domain se rompe (título inválido que se colara) | Paso 12 (`Job.Create`) | **400** | `job.title_required` |
 | Cualquier fallo inesperado (la base de datos no responde...) | Cualquier paso | **500** | `server.unexpected` |
@@ -304,7 +328,8 @@ Para no llevarte una idea más optimista de la real:
 - ✅ **Valida** la entrada antes de usarla y vuelve a comprobar en Domain.
 - ✅ **Responde siempre con el mismo formato** de error y sin filtrar detalles internos.
 - ⚠️ **No tiene límite de peticiones**: solo lo tiene `auth`. Alguien con un token válido podría crear trabajos sin freno.
-- ⚠️ **No comprueba el rol**: cualquier miembro de la empresa puede crear trabajos.
+- ✅ **Comprueba el permiso del rol** (`Jobs.Write`) antes de validar los datos y antes de tocar nada.
+- ⚠️ **El rol viaja en el token**: si a alguien se le cambia el rol, no se nota hasta que renueve la sesión (hasta 30 minutos). Hoy no existe todavía la operación de cambiar roles.
 - ⚠️ **Hace dos viajes a la base de datos** (comprobar el cliente y guardar el trabajo). Es suficiente para el tamaño actual; si hiciera falta, se optimizaría con datos reales.
 - ⚠️ **No publica eventos de dominio**: nadie se entera de que se creó un trabajo salvo quien lo consulte después.
 - ⚠️ **No registra la creación en un log de auditoría** (quién creó qué y cuándo): solo queda `CreatedAt`. El log de auditoría persistente está planificado para más adelante.
@@ -314,7 +339,7 @@ Para no llevarte una idea más optimista de la real:
 | Capa | Pasos | Su trabajo en esta petición |
 |---|---|---|
 | **Api** | 1-9, 14 | Seguridad de entrada, saber quién eres, traducir HTTP a un comando y la respuesta de vuelta |
-| **Application** | 10-12 | Validar, comprobar que el cliente existe y orquestar |
+| **Application** | 10-12 | Comprobar los permisos, validar, comprobar que el cliente existe y orquestar |
 | **Domain** | 12 | Crear un trabajo siempre válido |
 | **Infrastructure** | 7, 11b, 13 | Validar el token, filtrar por empresa, guardar |
 
@@ -329,7 +354,7 @@ Observa que Infrastructure aparece **tres veces repartidas por todo el recorrido
 5. ¿Por qué un handler puede lanzar una excepción en vez de devolver un error HTTP?
 6. Nombra dos cosas que esta petición no controla todavía.
 
-*(Respuestas: 1 = el tenant va en el token firmado, no lo decide el cliente; el servidor lo lee del claim `tenant_id` validado en el paso 7. 2 = no pasa nada: el comando no tiene propiedad `TenantId` y el JSON sobrante se ignora; el tenant lo fija el servidor. 3 = un 404 `customer.not_found`; el filtro automático por tenant hace que esa consulta no vea clientes ajenos, y se devuelve lo mismo para no revelar que existe. 4 = el validador protege la entrada y da un 400 claro; Domain protege su integridad y no confía en nadie, porque podría llamarse sin pasar por el validador. 5 = porque el `ExceptionHandler` del paso 3 envuelve todo y las traduce a respuestas. 6 = rate limiting en estas rutas, control de rol, eventos de dominio, log de auditoría.)*
+*(Respuestas: 1 = el tenant va en el token firmado, no lo decide el cliente; el servidor lo lee del claim `tenant_id` validado en el paso 7. 2 = no pasa nada: el comando no tiene propiedad `TenantId` y el JSON sobrante se ignora; el tenant lo fija el servidor. 3 = un 404 `customer.not_found`; el filtro automático por tenant hace que esa consulta no vea clientes ajenos, y se devuelve lo mismo para no revelar que existe. 4 = el validador protege la entrada y da un 400 claro; Domain protege su integridad y no confía en nadie, porque podría llamarse sin pasar por el validador. 5 = porque el `ExceptionHandler` del paso 3 envuelve todo y las traduce a respuestas. 6 = rate limiting en estas rutas, eventos de dominio, log de auditoría persistente, que el rol se revalide en cada petición.)*
 
 ## Siguiente capítulo
 

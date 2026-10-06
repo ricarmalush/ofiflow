@@ -56,7 +56,7 @@ La carpeta de primer nivel es siempre un **contexto de negocio** (capítulo 2, s
 | `Common/` | `Entity`, `AggregateRoot`, `IDomainEvent`, `DomainException`, `Email`, `ITenantOwned`, `IAuditable`, `CommonErrors` | Lo que comparten todos los contextos. `Email` está aquí porque lo usan a la vez Customers e Identity (*shared kernel*) |
 | `Customers/` | `Customer`, `CustomerType`, `PhoneNumber`, `CustomerErrors` | Todo lo que es un cliente |
 | `Jobs/` | `Job`, `JobStatus`, `JobPriority`, `JobErrors` | Todo lo que es un trabajo y sus transiciones de estado |
-| `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `TenancyErrors` | La empresa, y la pertenencia de una persona a ella con un rol |
+| `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `Permission`, `RolePermissions`, `TenancyErrors` | La empresa, la pertenencia de una persona a ella con un rol, y **qué puede hacer cada rol**: `Permission` son los permisos (`Customers.Write`, `Jobs.Assign`...) y `RolePermissions` es la tabla única rol → permisos |
 | `Identity/` | `User`, `IdentityErrors` | Los **datos de negocio** de la persona. Las credenciales (contraseña) no están aquí: viven en Infrastructure |
 
 Dos interfaces de `Common/` merecen atención, porque son "etiquetas" que activan comportamientos automáticos en otras capas:
@@ -134,10 +134,11 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 
 | Subcarpeta | Qué contiene | Por qué |
 |---|---|---|
-| `Abstractions/` | `ITenantContext`, `IIdentityService`, `ITokenService` | Los **contratos** que Application necesita y que `Infrastructure` implementa. Aquí se produce la inversión de dependencias del capítulo 2 |
+| `Abstractions/` | `ITenantContext`, `ICurrentUser`, `IIdentityService`, `ITokenService` | Los **contratos** que Application necesita y que `Infrastructure` implementa. Aquí se produce la inversión de dependencias del capítulo 2. `ICurrentUser` dice quién hace la petición (usuario, empresa y rol, leídos del token) |
+| `Authorization/` | `RequiresPermissionAttribute`, `AllowAnonymousRequestAttribute` | Las marcas que cada operación lleva encima para declarar qué permiso exige, o que se ejecuta sin sesión (registro, login, renovar) |
 | `Persistence/` | `IApplicationDbContext` | El contrato para acceder a los datos, sin atarse a SQL Server |
-| `Behaviors/` | `ValidationBehavior` | Código que se ejecuta antes de **todos** los handlers (hoy, validar) |
-| `Exceptions/` | `NotFoundException`, `BusinessRuleException`, `IdentityOperationException` | Los errores que Application puede lanzar, cada uno con un código estable |
+| `Behaviors/` | `AuthorizationBehavior`, `ValidationBehavior` | Código que se ejecuta antes de **todos** los handlers, en este orden: primero comprobar que el rol tiene el permiso, después validar los datos |
+| `Exceptions/` | `NotFoundException`, `BusinessRuleException`, `ForbiddenException`, `IdentityOperationException` | Los errores que Application puede lanzar, cada uno con un código estable. `ForbiddenException` es el 403 de "tu rol no puede" |
 | `Validation/` | `ValidationRules` | Reglas de validación reutilizadas por varios validadores (email, teléfono) |
 | `Logging/` | `SecurityEventIds` | El catálogo de identificadores de los eventos de seguridad (login fallido, rate limit...) |
 
@@ -213,7 +214,7 @@ Existe para que esos detalles se puedan **cambiar sin tocar las reglas del negoc
 | `Persistence/Interceptors/` | `AuditableEntitySaveChangesInterceptor` | Rellena `CreatedAt` y `UpdatedAt` al guardar, sin que ningún handler lo haga |
 | `Persistence/Migrations/` | Una clase por cambio del esquema | El historial de la base de datos, generado con `dotnet ef`. Es un registro, no se escribe a mano |
 | `Persistence/` (otros) | `ApplicationDbContextFactory`, `ConnectionStringNames` | La fábrica la usa solo `dotnet ef` para generar migraciones; los nombres evitan repetir cadenas mágicas |
-| `Identity/` | `IdentityService`, `TokenService`, `ApplicationUser`, `RefreshToken`, `JwtOptions` | Contraseñas, tokens y su configuración (ver más abajo) |
+| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario, la empresa y el rol |
 | `Tenancy/` | `TenantContext` | Lee el `tenant_id` del token del usuario autenticado. Implementa `ITenantContext` |
 
 Y en la raíz, [`DependencyInjection.cs`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs): `AddInfrastructure()` conecta el `DbContext`, los servicios y la validación de tokens JWT. **Si falta el secreto `Jwt:Secret`, la aplicación se niega a arrancar** con un mensaje que indica cómo configurarlo, antes que arrancar de forma insegura.
