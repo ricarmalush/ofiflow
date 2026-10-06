@@ -1,14 +1,26 @@
 version: 2
 updates:
-  # Dependencias NuGet del backend .NET.
+  # Dependencias NuGet del backend .NET. Un solo PR por semana con todas las actualizaciones de
+  # todos los proyectos: sin agrupar, Dependabot abría uno por paquete y por proyecto (15 PRs para
+  # 3 paquetes), y con la rama protegida cada merge obligaba a repetir los checks en los demás.
   - package-ecosystem: "nuget"
-    directory: "/"
+    directories:
+      - "/src/*"
+      - "/tests/*"
     schedule:
       interval: "weekly"
+    groups:
+      nuget:
+        patterns:
+          - "*"
 
-  # Las acciones de terceros de los workflows van fijadas por SHA (ADR-010); Dependabot
+  # Las acciones de terceros de los workflows van fijadas por SHA de commit (ADR-010); Dependabot
   # abre el PR de actualización cuando sale una versión nueva, manteniendo el pin por SHA.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
