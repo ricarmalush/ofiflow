@@ -24,7 +24,7 @@ Este manual está escrito para que **cualquier programador junior** entienda de 
 | 7 | [Errores y validación](./07-errores-y-validacion.md) | Escrito |
 | 8 | [Seguridad](./08-seguridad.md) | Escrito |
 | 9 | [Tests](./09-tests.md) | Escrito |
-| 10 | CI/CD y pipeline de seguridad | Pendiente |
+| 10 | [CI/CD y pipeline de seguridad](./10-ci-cd-y-pipeline.md) | Escrito |
 | 11 | Cómo añadir una funcionalidad | Pendiente |
 | 12 | Glosario y decisiones | Pendiente |
 | Anexo | Preguntas probables del tribunal | Pendiente |
