@@ -9,6 +9,7 @@
 - Qué hace Dependabot y cómo se evita que te inunde de avisos.
 - Qué problemas encontró de verdad el pipeline, y qué le falta todavía.
 - Cómo leer un check en rojo y reproducirlo en tu máquina.
+- Por qué `master` puede ponerse en rojo sin que cambies nada (un caso real con una dependencia vulnerable) y cómo se resuelve sin silenciar el control.
 
 ## CI y CD
 
@@ -61,7 +62,7 @@ Un *workflow* es un fichero YAML en `.github/workflows/` que le dice a GitHub qu
 
 **`build-and-test`** hace tres cosas: `dotnet restore`, `dotnet build` y `dotnet test` sobre toda la solución. Dos detalles importantes:
 
-- **El build ya es un control de seguridad.** Los analizadores de seguridad de .NET están configurados como *error* (capítulo 8), así que una regresión rompe aquí, no se queda en un aviso.
+- **El build ya es un control de seguridad.** Los analizadores de seguridad de .NET están configurados como *error* (capítulo 8), así que una regresión rompe aquí, no se queda en un aviso. Lo mismo pasa con las **dependencias**: `dotnet restore` consulta la base de avisos de vulnerabilidades de NuGet y un paquete con una vulnerabilidad **alta o crítica** (`NU1903`/`NU1904`) rompe el paso `Restore`, antes de compilar nada. Se audita también lo que llega de forma indirecta (`NuGetAuditMode=all` en [`Directory.Build.props`](../../Directory.Build.props)). Más abajo, un caso real.
 - **`dotnet test` ejecuta todo**, incluidos los tests con SQL Server real: el runner de Ubuntu trae Docker preinstalado (capítulo 9). El test de aislamiento entre empresas corre aquí igual que en tu máquina.
 
 **`gitleaks`** busca secretos (contraseñas, claves) escritos por error en el código. No mira solo el cambio: escanea **todo el historial** de commits (`fetch-depth: 0` y `--log-opts="--all"`). Esto tiene una consecuencia práctica que nos pasó de verdad: aunque borres un secreto del código, **sigue en el historial**, y el escáner lo vuelve a encontrar. La excepción se documenta con su huella exacta en [`.gitleaksignore`](../../.gitleaksignore), con la justificación al lado. Solo se ejecuta si `build-and-test` pasó (`needs: build-and-test`).
@@ -137,6 +138,35 @@ Su problema, que nos pasó: sin configurar, abría **un PR por paquete y por pro
 
 Además de los PRs, el repositorio tiene activadas las **alertas de dependencias vulnerables** de GitHub.
 
+## Un caso real: el pipeline se pone rojo sin que toques nada
+
+El 13 de octubre de 2026 se publicó el aviso **CVE-2026-84008** (denegación de servicio, severidad alta) sobre el paquete `System.Security.Cryptography.Pkcs`. Al día siguiente, un PR que **solo cambiaba documentación** falló en tres de los cuatro comprobantes obligatorios (`build-and-test`, `analyze` y `zap-scan`; `gitleaks` ni llegó a ejecutarse porque depende del primero). El log decía, ya en el paso `Restore`:
+
+```
+error NU1903: Warning As Error: Package 'System.Security.Cryptography.Pkcs' 9.0.11
+has a known high severity vulnerability, https://github.com/advisories/GHSA-846f-f764-76mx
+```
+
+Es una lección importante: **`master` puede ponerse en rojo sin que cambie una sola línea nuestra**, porque la base de vulnerabilidades es externa y crece cada día. Y entonces falla **todo** PR, también los que no tienen nada que ver.
+
+**Cómo se diagnosticó.** El paquete no está en ningún `.csproj` nuestro. Lo averigua `dotnet nuget why`:
+
+```
+OfiFlow.Infrastructure → Microsoft.EntityFrameworkCore.SqlServer (10.0.12)
+  → Microsoft.Data.SqlClient (6.1.6) → System.Security.Cryptography.Pkcs (9.0.11)
+```
+
+Es una **dependencia transitiva** (la trae otra dependencia). El aviso decía que la versión corregida de la rama 10.x es la 10.0.13. Actualizar `Microsoft.Data.SqlClient` a su última versión (6.1.7) **no servía**: seguía pidiendo la 9.0.11.
+
+**Cómo se arregló, y cómo no.** Se descartó lo fácil: bajar la severidad de `NU1903` o excluir el aviso habría dejado la vulnerabilidad dentro. Se añadió `System.Security.Cryptography.Pkcs` 10.0.13 como **dependencia directa** de `OfiFlow.Infrastructure`, con un comentario que explica el motivo y cuándo quitarla. Funciona porque NuGet resuelve cada paquete con la versión **más cercana al proyecto**: la directa gana a la transitiva, y los proyectos que referencian a Infrastructure la heredan (PR #30).
+
+**Cómo se verificó.** Con un control positivo, como en el capítulo 9: sin el cambio, `dotnet restore` fallaba con 4 errores `NU1903`; con él, 0 advertencias, 0 errores y los 389 tests en verde.
+
+Dos detalles que conviene saber:
+
+- **Dependabot no avisó.** Estaba configurado con revisión semanal y las *actualizaciones de seguridad* de Dependabot están desactivadas (límite 6), así que cuando se escribió esto, un día después del aviso, no había abierto ningún PR para este paquete. Lo cazó el pipeline en el siguiente PR, no un robot.
+- **Cuidado con el estado antiguo.** Tras el arreglo, un build local siguió mostrando el error porque quedaba estado de una restauración anterior en `obj/`. Si un error "no se va" tras arreglarlo, borra las carpetas `obj` y `bin` y vuelve a restaurar antes de pensar que el arreglo no funciona.
+
 ## La política del repositorio
 
 El repositorio es **público** (así las herramientas de seguridad de GitHub son gratuitas) y tiene:
@@ -159,8 +189,9 @@ Un pipeline se justifica por lo que atrapa. Esto es lo que nos atrapó a nosotro
 | Faltaba la cabecera `Cross-Origin-Resource-Policy` | El primer informe de ZAP | Se añadió al middleware |
 | Una contraseña de ejemplo escrita en un test | gitleaks en el PR de permisos por rol | Se generó al azar y se documentó la huella |
 | El pin de `codeql-action` apuntaba al objeto de la etiqueta, no al commit | La revisión manual al actualizar las acciones (`git ls-remote` con la etiqueta pelada) | Se fijó el commit correcto |
+| Un aviso nuevo (CVE-2026-84008, severidad alta) sobre una dependencia **transitiva** | `NuGetAudit` en el paso `Restore`, en un PR que solo tocaba documentación | Se fijó la versión corregida como dependencia directa (sección anterior) |
 
-Fíjate en lo que tienen en común: **ninguno se habría descubierto sin ejecutar el pipeline de verdad** en la máquina limpia de GitHub. Funcionaba en la nuestra.
+Fíjate en lo que tienen en común: **ninguno se habría descubierto sin ejecutar el pipeline de verdad** en la máquina limpia de GitHub. Funcionaba en la nuestra. La última fila es distinta y aún más instructiva: el pipeline detectó un problema que **no habíamos introducido nosotros**.
 
 ---
 
@@ -176,7 +207,7 @@ Fíjate en lo que tienen en común: **ninguno se habría descubierto sin ejecuta
 
 **5. Las imágenes de Docker no se vigilan.** El SQL Server del job de ZAP usa la etiqueta móvil `2022-latest` (los tests usan una versión fija distinta), y la imagen de gitleaks va fijada por etiqueta, no por huella. Dependabot cubre NuGet y las acciones, pero no Docker.
 
-**6. Ajustes de GitHub sin activar:** las actualizaciones de seguridad automáticas de Dependabot, los patrones adicionales de *secret scanning* y la validación de si un secreto detectado sigue activo.
+**6. Ajustes de GitHub sin activar:** las actualizaciones de seguridad automáticas de Dependabot (por eso un aviso nuevo como el de Pkcs no genera un PR por sí solo: solo lo detecta el `restore` del siguiente PR), los patrones adicionales de *secret scanning* y la validación de si un secreto detectado sigue activo.
 
 **7. No se mide la cobertura de los tests** (capítulo 9) y no se aplica ninguna política de calidad más allá de pasar los tests.
 
@@ -187,7 +218,7 @@ Fíjate en lo que tienen en común: **ninguno se habría descubierto sin ejecuta
 Una receta para cuando un PR falla:
 
 1. **Abre el PR** y baja hasta la lista de checks. El que está en rojo tiene un enlace *Details*.
-2. **Entra en el log** y busca la primera línea de error: casi siempre está unas líneas antes del final, no en la última.
+2. **Entra en el log** y busca la primera línea de error: casi siempre está unas líneas antes del final, no en la última. Fíjate también en **qué paso** falló: si un PR que solo toca documentación falla en `Restore`, el problema no es tu cambio sino una dependencia o un aviso nuevo (`dotnet nuget why <paquete>` te dice quién la trae).
 3. **Reprodúcelo en tu máquina** con el mismo comando que ejecuta el job:
 
 | Check rojo | Para reproducirlo |
@@ -198,7 +229,8 @@ Una receta para cuando un PR falla:
 | `zap-scan` | Descargar el artefacto `zap-report` del job y leer el informe |
 
 4. **Arréglalo y haz un commit nuevo** en la misma rama: el PR vuelve a ejecutar los checks solo. No hace falta cerrarlo ni abrir otro.
-5. **Desconfía de un arreglo que "silencia" el check** (ignorar una regla, ampliar un permiso). Primero pregunta si el hallazgo es real.
+5. **Desconfía de un arreglo que "silencia" el check** (ignorar una regla, ampliar un permiso, bajar la severidad de un aviso). Primero pregunta si el hallazgo es real.
+6. Si tras arreglarlo el error local "no se va", borra las carpetas `obj` y `bin` y restaura de nuevo (`dotnet restore OfiFlow.slnx --force`): puede quedar estado antiguo.
 
 ## Para comprobar que lo has entendido
 
@@ -210,8 +242,9 @@ Una receta para cuando un PR falla:
 6. ¿Qué impide la regla `enforce_admins` y por qué importa en un proyecto de una sola persona?
 7. Dependabot abrió 20 PRs para 9 actualizaciones. ¿Qué pasaba y cómo se arregló?
 8. Un check está en rojo. ¿Qué haces, en orden?
+9. Un PR que solo cambia documentación falla en el paso `Restore` con `NU1903`. ¿Qué ha pasado, cómo averiguas de dónde viene el paquete y por qué la solución no es bajar la severidad del aviso?
 
-*(Respuestas: 1 = CI compila y prueba cada cambio automáticamente; CD lo despliega; OfiFlow solo tiene CI. 2 = rama, push, PR; corren en paralelo `ci.yml`, `codeql.yml` y `dast.yml`; hacen falta los 4 comprobantes en verde (`build-and-test`, `gitleaks`, `analyze`, `zap-scan`) y la rama al día; se fusiona con merge commit. 3 = CodeQL analiza el código sin ejecutarlo, siguiendo el flujo de los datos; ZAP ataca la aplicación en ejecución desde fuera. 4 = porque escanea todo el historial de commits, y el secreto sigue en los commits antiguos; la excepción se registra con su huella exacta en `.gitleaksignore`. 5 = porque una etiqueta puede moverse a código malicioso (ataque a la cadena de suministro); el hash identifica un commit inmutable. 6 = que el dueño del repositorio se salte las reglas (un check en rojo) con un botón; importa porque, siendo la única persona, sin esa regla nada le frenaría en un día de prisa. 7 = sin configurar, abría un PR por paquete y por proyecto, y con `strict` cada fusión obligaba a repetir los checks en todos; se arregló agrupando en `dependabot.yml`. 8 = abrir el log y encontrar el primer error, reproducirlo en local con el mismo comando, arreglarlo con un commit nuevo en la misma rama, y no silenciar el check sin comprobar que el hallazgo no es real.)*
+*(Respuestas: 1 = CI compila y prueba cada cambio automáticamente; CD lo despliega; OfiFlow solo tiene CI. 2 = rama, push, PR; corren en paralelo `ci.yml`, `codeql.yml` y `dast.yml`; hacen falta los 4 comprobantes en verde (`build-and-test`, `gitleaks`, `analyze`, `zap-scan`) y la rama al día; se fusiona con merge commit. 3 = CodeQL analiza el código sin ejecutarlo, siguiendo el flujo de los datos; ZAP ataca la aplicación en ejecución desde fuera. 4 = porque escanea todo el historial de commits, y el secreto sigue en los commits antiguos; la excepción se registra con su huella exacta en `.gitleaksignore`. 5 = porque una etiqueta puede moverse a código malicioso (ataque a la cadena de suministro); el hash identifica un commit inmutable. 6 = que el dueño del repositorio se salte las reglas (un check en rojo) con un botón; importa porque, siendo la única persona, sin esa regla nada le frenaría en un día de prisa. 7 = sin configurar, abría un PR por paquete y por proyecto, y con `strict` cada fusión obligaba a repetir los checks en todos; se arregló agrupando en `dependabot.yml`. 8 = abrir el log y encontrar el primer error, reproducirlo en local con el mismo comando, arreglarlo con un commit nuevo en la misma rama, y no silenciar el check sin comprobar que el hallazgo no es real. 9 = se publicó un aviso de vulnerabilidad alta sobre una dependencia y `NuGetAudit` lo trata como error, así que falla todo PR aunque no toque código; con `dotnet nuget why <paquete>` ves qué dependencia la trae (aquí `Microsoft.Data.SqlClient`, de forma transitiva); bajar la severidad dejaría la vulnerabilidad dentro, así que se fija la versión corregida como dependencia directa, que NuGet prefiere a la transitiva por estar más cerca del proyecto.)*
 
 ## Siguiente capítulo
 
