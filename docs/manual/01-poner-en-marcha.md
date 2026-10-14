@@ -108,13 +108,22 @@ Verás en la consola `Now listening on: ...` y `Application started`. Ya está e
 
 ## Tu primera petición
 
-La API no tiene pantallas ni una interfaz tipo Swagger. En `Development` publica solo la **descripción OpenAPI** (la lista de operaciones, en JSON), que es justo lo que lee ZAP en el pipeline:
+La API no tiene frontend, pero en `Development` incluye **Swagger UI**: una pantalla que lista todas las operaciones y permite probarlas desde el navegador, sin escribir peticiones a mano. Con la API en marcha, abre **`http://localhost:5279/swagger`** (con el perfil `https`, `https://localhost:7228/swagger`; en Visual Studio se abre sola).
+
+Para probar una ruta protegida (las que tienen un candado):
+
+1. Despliega `POST /api/v1/auth/register`, pulsa **Try it out** y **Execute** para crear una empresa. (Rellena un email y una contraseña propios.)
+2. Haz lo mismo con `POST /api/v1/auth/login` y copia el `accessToken` de la respuesta.
+3. Pulsa **Authorize** (arriba a la derecha), pega el token **sin** la palabra `Bearer` y confirma.
+4. Prueba `GET /api/v1/customers`: devuelve **200** con una lista vacía. Sin autorizar, la misma petición da **401**.
+
+Por debajo, Swagger UI lee la **descripción OpenAPI** de la API (la lista de operaciones, en JSON), que es también lo que lee ZAP en el pipeline y que puedes pedir directamente:
 
 ```bash
 curl http://localhost:5279/openapi/v1.json
 ```
 
-Esa ruta **no existe fuera de `Development`**: el código la registra solo en ese entorno ([`Program.cs`](../../src/OfiFlow.Api/Program.cs)). Una API en producción no debe ofrecer su propio mapa a cualquiera.
+Ni esa ruta ni `/swagger` **existen fuera de `Development`**: el código las registra solo en ese entorno ([`Program.cs`](../../src/OfiFlow.Api/Program.cs)), y hay tests que lo comprueban (capítulo 9). Una API en producción no debe ofrecer su propio mapa ni una pantalla para probarla a cualquiera. Swagger necesitó una excepción en las cabeceras de seguridad, explicada en el capítulo 8.
 
 Para probar de verdad, hay una colección ordenada de 33 peticiones en [`OfiFlow.Api.http`](../../src/OfiFlow.Api/OfiFlow.Api.http), que se ejecuta desde Visual Studio (cuenta, clientes, trabajos, errores a propósito, aislamiento entre dos empresas). Si prefieres la terminal, la secuencia mínima:
 
@@ -177,11 +186,11 @@ Con la API en marcha, el siguiente paso natural es **entender qué ha pasado** c
 2. ¿Qué hace `dotnet ef database update` y en qué se diferencia de arrancar la API?
 3. ¿Cómo sabe `dotnet ef` a qué base de datos conectarse, y cómo lo cambias sin tocar ningún fichero?
 4. ¿Qué necesitas para arrancar la API a mano y qué para ejecutar los tests? ¿Coinciden?
-5. ¿Por qué no hay una interfaz tipo Swagger ni la ruta `/openapi/v1.json` en producción?
+5. ¿Por qué ni Swagger ni la ruta `/openapi/v1.json` existen en producción, y para qué sirve el botón Authorize?
 6. Recibes un 429 al probar el login varias veces. ¿Es un error del programa?
 7. La API se detiene con "Falta 'Jwt:Secret'". ¿Cuál es el primer sitio donde mirar y por qué el mensaje es tan largo?
 
-*(Respuestas: 1 = porque quien lo conozca puede fabricar tokens de cualquier usuario y empresa; está en tus user-secrets, un fichero fuera del repositorio (`%APPDATA%\Microsoft\UserSecrets\<UserSecretsId>\secrets.json`), y en producción llegará por la variable `Jwt__Secret`. 2 = aplica las migraciones pendientes a la base de datos (crea o cambia tablas); arrancar la API no toca el esquema. 3 = lee la cadena `Default` de la configuración (LocalDB en `appsettings.Development.json`) y, si existe, la variable de entorno `ConnectionStrings__Default` tiene prioridad: se cambia con esa variable. 4 = API: SQL Server (LocalDB o contenedor) y el secreto, sin Docker; tests: Docker, sin LocalDB; no coinciden. 5 = porque la descripción de la API solo se registra en `Development`, y una API en producción no debe ofrecer su mapa a cualquiera. 6 = no: es el rate limiting de ADR-009 funcionando (login 5 por minuto por IP); espera lo que indica `Retry-After`. 7 = el paso 1, comprobando los user-secrets; el mensaje lista todas las fuentes de configuración consultadas con la longitud de lo que cada una tiene, así que se ve de un vistazo en cuál faltó o cuál lo pisó, sin mostrar nunca el valor.)*
+*(Respuestas: 1 = porque quien lo conozca puede fabricar tokens de cualquier usuario y empresa; está en tus user-secrets, un fichero fuera del repositorio (`%APPDATA%\Microsoft\UserSecrets\<UserSecretsId>\secrets.json`), y en producción llegará por la variable `Jwt__Secret`. 2 = aplica las migraciones pendientes a la base de datos (crea o cambia tablas); arrancar la API no toca el esquema. 3 = lee la cadena `Default` de la configuración (LocalDB en `appsettings.Development.json`) y, si existe, la variable de entorno `ConnectionStrings__Default` tiene prioridad: se cambia con esa variable. 4 = API: SQL Server (LocalDB o contenedor) y el secreto, sin Docker; tests: Docker, sin LocalDB; no coinciden. 5 = porque ambas se registran solo en `Development`, y una API en producción no debe ofrecer su mapa ni una pantalla para probarla a cualquiera; Authorize guarda el token de acceso (el que devuelve el login) y lo envía en la cabecera `Authorization` de cada petición, para poder probar las rutas con candado. 6 = no: es el rate limiting de ADR-009 funcionando (login 5 por minuto por IP); espera lo que indica `Retry-After`. 7 = el paso 1, comprobando los user-secrets; el mensaje lista todas las fuentes de configuración consultadas con la longitud de lo que cada una tiene, así que se ve de un vistazo en cuál faltó o cuál lo pisó, sin mostrar nunca el valor.)*
 
 ## Siguiente capítulo
 

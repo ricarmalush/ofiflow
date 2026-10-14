@@ -27,9 +27,9 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 100 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 88 | ~1 s | No |
 | `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 56 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 145 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 156 | ~15 s | **Sí**, en parte |
 
-En total, **389 casos**. Un "caso" no es lo mismo que un método de test: hay unos 208 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **400 casos**. Un "caso" no es lo mismo que un método de test: hay unos 213 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -135,7 +135,7 @@ Aquí viven el test obligatorio de aislamiento (`TenantIsolationIntegrationTests
 
 `OfiFlow.Api.Tests` arranca la **API entera en memoria** (con `WebApplicationFactory`) y le hace peticiones HTTP reales. Dentro hay tres familias:
 
-**1. Contrato HTTP, sin base de datos** (`OfiFlowApiFactory`). Comprueban cabeceras de seguridad, formato de errores, límite de peticiones o idioma. No necesitan SQL Server porque no llegan a la base de datos.
+**1. Contrato HTTP, sin base de datos** (`OfiFlowApiFactory`). Comprueban cabeceras de seguridad, formato de errores, límite de peticiones, idioma o la pantalla de Swagger (`SwaggerUiTests`: solo existe en `Development`, su CSP relajada no se escapa a otras rutas y en `Production` ni existe). No necesitan SQL Server porque no llegan a la base de datos.
 
 **2. Extremo a extremo, con SQL Server real** (`SqlServerApiFactory` con `TwoTenantsFixture` o `RolesFixture`). Registran empresas y usuarios **por HTTP**, hacen login de verdad y comprueban el comportamiento completo: aislamiento entre dos empresas (`TenantIsolationEndToEndTests`) y la matriz de permisos con un usuario de cada rol (`RbacEndToEndTests`). Dos cosas curiosas:
 

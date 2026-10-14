@@ -90,13 +90,15 @@ Cada respuesta lleva cinco **cabeceras HTTP** que son instrucciones para el nave
 | `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` | "No cargues ni ejecutes nada de esta respuesta" | Si alguien lograra inyectar un script (XSS), no se ejecutaría |
 | `Cross-Origin-Resource-Policy: same-origin` | "Solo páginas de mi mismo origen pueden usarme" | Que otras webs lean o incrusten la respuesta |
 
-Una **aclaración honesta**: OfiFlow hoy es una API que solo devuelve JSON, sin pantallas, así que estas cabeceras son **defensa en profundidad**: no frenan un ataque concreto *ahora*, pero valen si un navegador abre una respuesta de la API, y valdrán cuando exista un frontend. Con una API se ponen lo más restrictivas posible, porque no hay nada legítimo que permitir. La última (`Cross-Origin-Resource-Policy`) la añadió el **primer escaneo automático real** del pipeline, que la echó en falta: no fue una suposición.
+Una **aclaración honesta**: OfiFlow hoy es una API que solo devuelve JSON, sin pantallas (salvo la de Swagger, que solo existe en desarrollo y se explica abajo), así que estas cabeceras son **defensa en profundidad**: no frenan un ataque concreto *ahora*, pero valen si un navegador abre una respuesta de la API, y valdrán cuando exista un frontend. Con una API se ponen lo más restrictivas posible, porque no hay nada legítimo que permitir. La última (`Cross-Origin-Resource-Policy`) la añadió el **primer escaneo automático real** del pipeline, que la echó en falta: no fue una suposición.
 
 Tres detalles de diseño:
 
-- Se registran con **`OnStarting`** (línea 13): "justo antes de enviar la respuesta, añade esto". Es necesario porque, cuando ocurre un error, el manejador de excepciones **borra** las cabeceras para escribir la respuesta de error; con `OnStarting` se añaden después de eso, y los errores también salen protegidos. Lo comprueba un test sobre una respuesta 401.
+- Se registran con **`OnStarting`** (línea 28): "justo antes de enviar la respuesta, añade esto". Es necesario porque, cuando ocurre un error, el manejador de excepciones **borra** las cabeceras para escribir la respuesta de error; con `OnStarting` se añaden después de eso, y los errores también salen protegidos. Lo comprueba un test sobre una respuesta 401.
 - El middleware es **el primero** del pipeline ([`Program.cs:33`](../../src/OfiFlow.Api/Program.cs)), para cubrir también lo que falle más adentro.
 - No hay `CORS` configurado: ningún frontend consume la API todavía.
+
+**Una excepción, y por qué.** La pantalla de Swagger (capítulo 1) es HTML con scripts y estilos, y la CSP estricta (`default-src 'none'`) la dejaba **en blanco**: el navegador se negaba a cargar sus propios ficheros. Para poder usarla, el middleware aplica una CSP más laxa (`default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'`) **solo si se cumplen las dos cosas a la vez**: el entorno es `Development` y la ruta empieza por `/swagger`. Cualquier otra ruta, y todo `Production`, conserva la estricta; `X-Frame-Options: DENY` y `frame-ancestors 'none'` siguen impidiendo que nadie la meta en un `iframe`. Es un **cambio consciente de una regla** que este capítulo daba por absoluta ("lo más restrictivo posible"), y por eso tiene sus propios tests ([`SwaggerUiTests`](../../tests/OfiFlow.Api.Tests/Security/SwaggerUiTests.cs)): que la relajada no se escape a otras rutas (ni a `/swaggerfoo`, que empieza igual), que en `Production` ni exista y que la política laxa nunca incluya `unsafe-eval`, comodines ni orígenes externos. Se comprobó rompiéndolos a propósito: relajarla en todas las rutas, fuera de `Development` o con `unsafe-eval` pone tests en rojo.
 
 ### HTTPS y HSTS
 
@@ -295,11 +297,14 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 11. **El escaneo ZAP no está autenticado.** Ataca la API por su descripción OpenAPI sin enviar un token, así que prueba lo anónimo (registro, login, renovar) y comprueba que lo demás responde 401, pero **no recorre las operaciones protegidas**. Se compensa con los tests de extremo a extremo, que sí lo hacen.
 12. **Hay cuatro reglas de ZAP ignoradas**, todas informativas, cada una con su motivo escrito en `.zap/rules.tsv`.
 
+**Herramientas de desarrollo**
+13. **Swagger UI relaja la política CSP** en su ruta (solo en `Development`, con tests que impiden que se extienda). Si algún día se registrara por error en producción, esa ruta expondría una pantalla para probar la API; lo impide la condición de entorno y un test, pero es una excepción a la regla general.
+
 **Controles sin test propio** (existen, pero ningún test los comprueba directamente)
-13. La aplicación **no arranca sin el secreto** del token.
-14. El token **caduca** a los 30 minutos.
-15. El hash guardado **no es la contraseña** en claro.
-16. **HSTS** se envía fuera de desarrollo.
+14. La aplicación **no arranca sin el secreto** del token.
+15. El token **caduca** a los 30 minutos.
+16. El hash guardado **no es la contraseña** en claro.
+17. **HSTS** se envía fuera de desarrollo.
 
 Los cuatro últimos son los candidatos más baratos para una próxima ronda de endurecimiento, con el mismo método de siempre: escribir el test y verlo fallar rompiendo el código a propósito.
 
