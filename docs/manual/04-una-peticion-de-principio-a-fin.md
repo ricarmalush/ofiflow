@@ -70,7 +70,7 @@ Son 14 pasos. Vamos uno a uno.
 
 ## Parte 1 — La puerta (capa Api)
 
-Todo lo que sigue está en [`Program.cs`](../../src/OfiFlow.Api/Program.cs), líneas 33 a 52. Una petición HTTP en ASP.NET Core atraviesa una cadena de **middlewares** (piezas por las que pasa en orden), y el **orden es una decisión de diseño**.
+Todo lo que sigue está en [`Program.cs`](../../src/OfiFlow.Api/Program.cs), líneas 33 a 63. Una petición HTTP en ASP.NET Core atraviesa una cadena de **middlewares** (piezas por las que pasa en orden), y el **orden es una decisión de diseño**.
 
 ### Paso 1 — Cabeceras de seguridad (`Program.cs:33`)
 
@@ -90,7 +90,11 @@ Lee `Accept-Language: es` y fija el idioma de la petición. Va antes del manejad
 - **IP al log:** `RequestLogScopeMiddleware` apunta la IP de origen en el contexto de logging, para que cualquier evento de seguridad que ocurra después la incluya sin tener que pasarla de mano en mano.
 - **Rate limiter:** limita las peticiones por IP. **Pero solo en las rutas que lo piden**, y hoy solo lo piden las de `auth` (registro, login, renovación). Las rutas de trabajos y clientes **no tienen límite de peticiones**. Es una limitación conocida; la comentamos al final.
 
-### Paso 7 — Autenticación (`Program.cs:47`)
+### Un paso que solo existe en desarrollo (`Program.cs:47-56`)
+
+Entre el rate limiter y la autenticación hay un bloque que **solo se ejecuta en `Development`**: registra la pantalla de **Swagger UI** (capítulo 1). Está ahí, después de las cabeceras de seguridad y del manejo de errores, para que sus respuestas también pasen por ellos. En cualquier otro entorno el bloque no existe y `/swagger` devuelve 404.
+
+### Paso 7 — Autenticación (`Program.cs:58`)
 
 Aquí se responde "¿**quién eres**?". El middleware de JWT mira la cabecera `Authorization`, extrae el token y comprueba:
 
@@ -104,7 +108,7 @@ Aquí se responde "¿**quién eres**?". El middleware de JWT mira la cabecera `A
 
 Si todo es correcto, el servidor construye un objeto de usuario con los datos del token (sus *claims*): quién es y, **lo importante, en qué empresa está operando** (`tenant_id`).
 
-### Paso 8 — Autorización (`Program.cs:48`)
+### Paso 8 — Autorización (`Program.cs:59`)
 
 Aquí se responde "¿**puedes pasar**?". El grupo de rutas de trabajos se declaró con `RequireAuthorization()` ([`JobEndpoints.cs:21`](../../src/OfiFlow.Api/Endpoints/JobEndpoints.cs)), lo que significa: **sin sesión válida, no se pasa**. Si Marta no hubiese enviado token (o estuviese caducado), la petición terminaría aquí con un **401**, y **nunca llegaría al código de la aplicación**.
 

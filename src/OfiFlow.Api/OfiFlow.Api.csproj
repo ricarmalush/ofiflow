@@ -7,6 +7,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <!--
+      Solo la pantalla (Swagger UI), sin dependencias propias: lee el documento OpenAPI que ya genera
+      Microsoft.AspNetCore.OpenApi. Se registra únicamente en Development (Program.cs). Versión
+      anterior a la última a propósito: publicada hace más de tres meses.
+    -->
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
   </ItemGroup>
 
   <ItemGroup>
