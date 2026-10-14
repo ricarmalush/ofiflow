@@ -15,7 +15,7 @@ Este manual está escrito para que **cualquier programador junior** entienda de 
 | Cap. | Título | Estado |
 |---|---|---|
 | 0 | [Qué es OfiFlow](./00-que-es-ofiflow.md) | Escrito |
-| 1 | Poner el proyecto en marcha | Pendiente |
+| 1 | [Poner el proyecto en marcha](./01-poner-en-marcha.md) | Escrito |
 | 2 | [Estilo arquitectónico](./02-estilo-arquitectonico.md) | Escrito |
 | 3 | [Las capas y sus carpetas](./03-las-capas-y-sus-carpetas.md) | Escrito |
 | 4 | [Una petición de principio a fin](./04-una-peticion-de-principio-a-fin.md) | Escrito |
