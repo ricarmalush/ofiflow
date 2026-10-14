@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-012-autorizacion-rbac.md](../../adr/ADR-012-autorizacion-rbac.md)
-**Estado general:** Implementada (2026-10-06); pendiente de PR y merge
+**Estado general:** Implementada y fusionada en `master` (PR #26, 2026-10-06)
 
 ---
 
@@ -59,8 +59,8 @@
 - [x] ADR-009: RBAC cerrado en "Qué queda abierto" y evento `1301` en el catálogo de R5. **ADR-003:** su nota de estado vive en la rama `docs/manual-tecnico` (aún no en `master`); se actualiza allí, para no chocar al publicar el manual
 - [x] `docs/README.md`: filas de la ADR-012 (Aceptado) y de la spec 008 (Implementada)
 - [x] Manual técnico (rama `docs/manual-tecnico`, commit 778c76d, junto con la nota de estado de ADR-003): capítulos 0, 2, 3 y 4 al día con los permisos por rol
-- [ ] [externo] Push de la rama y PR contra `master`; los 4 checks en verde
-- [ ] [externo] Merge (con confirmación explícita)
+- [x] [externo] Push de la rama y PR contra `master`; los 4 checks en verde (hecho, PR #26)
+- [x] [externo] Merge (con confirmación explícita) (hecho, 2026-10-06)
 
 ---
 
