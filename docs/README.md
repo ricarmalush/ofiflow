@@ -28,6 +28,7 @@
 | [010](./adr/ADR-010-pipeline-devsecops.md) | Pipeline DevSecOps y herramientas de seguridad | Aceptado |
 | [011](./adr/ADR-011-errores-codigos-diccionario.md) | Errores de dominio, códigos de error y diccionario de mensajes | Aceptado |
 | [012](./adr/ADR-012-autorizacion-rbac.md) | Autorización por permisos (RBAC) | Aceptado |
+| [013](./adr/ADR-013-gestion-de-usuarios.md) | Gestión de usuarios de una empresa (invitaciones, jerarquía de roles, revalidación por petición) | Propuesto |
 
 ## Specs
 
@@ -41,6 +42,7 @@
 | [006-error-codes-dictionary](./specs/006-error-codes-dictionary/spec.md) | Códigos de error y diccionario de mensajes (implementa ADR-011) | Implementada |
 | [007-tenant-isolation-hardening](./specs/007-tenant-isolation-hardening/spec.md) | Guardarraíles y tests que endurecen el aislamiento entre empresas (amplía ADR-009 R2) | Implementada |
 | [008-rbac-authorization](./specs/008-rbac-authorization/spec.md) | Autorización por rol: comprobar los permisos de cada operación (implementa ADR-012) | Implementada |
+| [009-user-management](./specs/009-user-management/spec.md) | Invitar y gestionar usuarios de una empresa: invitaciones, cambio de rol y baja con efecto inmediato (implementa ADR-013) | Borrador |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 
