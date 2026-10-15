@@ -2,8 +2,15 @@ using OfiFlow.Api.Common;
 using OfiFlow.Api.Endpoints;
 using OfiFlow.Application;
 using OfiFlow.Infrastructure;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ADR-015: Serilog como un proveedor de logging más, junto a la consola. Sus destinos (sinks) salen
+// de la sección "Serilog" de la configuración; sin ella no escribe en ningún sitio. No usa UseSerilog
+// a propósito: eso sustituiría el ILoggerFactory y los tests que añaden su propio proveedor dejarían
+// de ver los logs. dispose: true vacía el búfer y cierra el fichero al parar la API.
+builder.Logging.AddSerilog(new LoggerConfiguration().ReadFrom.Configuration(builder.Configuration).CreateLogger(), dispose: true);
 
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
 builder.Services.AddApplication();
