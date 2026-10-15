@@ -82,9 +82,12 @@ OfiFlow, por ahora, es **solo una API** (un servidor al que se le hacen peticion
 | | Iniciar sesión | `POST /api/v1/auth/login` |
 | | Renovar la sesión | `POST /api/v1/auth/refresh` |
 | | Aceptar una invitación (elige nombre y contraseña) | `POST /api/v1/auth/accept-invitation` |
+| | Segundo paso del login (cuentas con segundo factor) | `POST /api/v1/auth/mfa/verify` |
 | **Clientes** (requiere sesión) | Crear / ver uno / listar / modificar / eliminar | `POST`, `GET`, `GET`, `PUT`, `DELETE` en `/api/v1/customers` |
 | **Equipo** (requiere sesión; spec 009) | Invitar / ver pendientes / revocar | `POST`, `GET`, `DELETE` en `/api/v1/invitations` |
 | | Ver miembros / cambiar el rol / quitar a uno | `GET /api/v1/users`, `PUT /api/v1/users/{id}/role`, `DELETE /api/v1/users/{id}` |
+| | Reiniciar el segundo factor de un miembro (spec 010) | `DELETE /api/v1/users/{id}/mfa` |
+| **Segundo factor** (requiere sesión; spec 010) | Ver el estado / pedir el secreto / confirmar / desactivar / regenerar los códigos de recuperación | `GET`, `POST /setup`, `POST /enable`, `POST /disable`, `POST /recovery-codes` en `/api/v1/account/mfa` |
 | **Trabajos** (requiere sesión) | Crear / ver uno / listar / modificar | `POST`, `GET`, `GET`, `PUT` en `/api/v1/jobs` |
 | | Empezar / completar / cancelar | `POST /api/v1/jobs/{id}/start`, `/complete`, `/cancel` |
 | | Asignar a un técnico | `POST /api/v1/jobs/{id}/assign` |
@@ -107,6 +110,7 @@ No hace falta dominarlas ahora; cada una se explica cuando toca. Es solo para qu
 | **MediatR** | Un "cartero" interno: cada operación (crear un trabajo, por ejemplo) es un mensaje que llega a su manejador |
 | **FluentValidation** | Comprobar que los datos que llegan son válidos antes de usarlos |
 | **JWT + `PasswordHasher` de ASP.NET Core** | Guardar las contraseñas de forma segura (hash) e iniciar sesión recordando quién eres sin guardar la sesión en el servidor |
+| **TOTP (RFC 6238) + AES-GCM** | El segundo factor: el código de 6 dígitos de la app del móvil, con su secreto guardado cifrado |
 | **xUnit + Testcontainers** | Los tests. Testcontainers arranca un SQL Server real en Docker para probar contra una base de datos de verdad |
 | **GitHub Actions** | Ejecutar tests y comprobaciones de seguridad automáticamente en cada cambio |
 
@@ -124,7 +128,7 @@ Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 - **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009), pero el token se le entrega a quien invita en vez de enviarse por correo, y cada cuenta pertenece a una sola empresa.
 - **El panel de operador de la plataforma** (ver todas las empresas, como en IrrigationMaster): previsto como spec propia, solo con metadatos de empresa.
 - **Que un técnico solo vea los trabajos que tiene asignados:** hoy un `Technician` puede ver y ejecutar cualquier trabajo de su empresa, no solo los suyos.
-- **Bloqueo de cuentas tras varios intentos fallidos de login:** hoy solo hay un límite de peticiones por IP.
+- **Segundo factor obligatorio, *passkeys* y recuperar o cambiar la contraseña:** el segundo factor (TOTP) existe y es opcional (spec 010), junto con el bloqueo de cuenta por intentos fallidos; obligarlo para `Owner` y `Admin` exige pantallas, y el TOTP no resiste al *phishing* (las *passkeys* sí). Todavía no se puede cambiar ni recuperar la contraseña.
 
 El roadmap completo (fases 0 a 12) está en el [README del repositorio](../../README.md#roadmap-por-fases). Las fases 0 y 1 (arquitectura y MVP: empresa, usuario, cliente y trabajo) están hechas.
 

@@ -1,6 +1,6 @@
 # Spec — 010-mfa-and-account-lockout
 
-**Estado:** Aprobada (2026-10-15), con las decisiones D1-D9 tal como se recomendaron
+**Estado:** Implementada (2026-10-15), con las decisiones D1-D9 tal como se aprobaron
 **Fecha:** 2026-10-15
 **Bounded Context:** Identity (transversal: Application, Infrastructure y Api; el permiso nuevo vive en Domain)
 **Depende de:** ADR-014 (MFA y bloqueo de cuenta, redactada junto a esta spec), ADR-007 (credenciales y refresh tokens), ADR-009 (seguridad base: cierra dos de sus NEXT), ADR-011 (errores con código), ADR-012 (permisos), ADR-013 (jerarquía de roles y borrado al quitar), spec 009 (gestión de usuarios)

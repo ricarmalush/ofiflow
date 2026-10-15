@@ -279,7 +279,7 @@ Una tabla para ver de un vistazo qué amenaza cubre qué control (el germen del 
 | Alguien se salta el filtro con `IgnoreQueryFilters` | Lista blanca vigilada | `SecurityArchitectureTests.cs:16-24` | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` |
 | Adivinar el `Id` de un recurso ajeno para leerlo | El filtro no lo encuentra; mismo 404 que si no existiera | `GlobalExceptionHandler.cs:71-72` | `Jobs_AreNotVisibleAcrossTenants`, `TenantB_WithTenantAsIds_GetsTheSameNotFoundAsForAnIdThatDoesNotExist` (HTTP) |
 | Adivinar el `Id` de un recurso ajeno para **modificarlo o borrarlo** | El handler lo busca con el filtro: no lo encuentra | Los `*CommandHandler.cs` | `CrossTenantWriteIsolationTests` |
-| Token manipulado para cambiar de empresa | Firma HMAC-SHA256 | `DependencyInjection.cs:57-68` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| Token manipulado para cambiar de empresa | Firma HMAC-SHA256 | `DependencyInjection.cs:62-81` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | Entidad nueva sin la marca o sin clasificar | Clasificación obligatoria (*fail-closed*) | `TenantModelRules.cs` (tests) | `TenantModelClassificationTests` |
 | Handler futuro que lea `Users` o `Tenants` | Lista blanca de lecturas de entidades globales | `SecurityArchitectureTests.cs` | `GlobalEntities_AreOnlyReadInTheAllowList` |
 | Un `IgnoreQueryFilters` colado en otro fichero con el mismo nombre | Lista blanca por ruta completa | `SecurityArchitectureTests.cs` | `TenantAccessRulesTests` |

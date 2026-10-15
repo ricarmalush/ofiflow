@@ -51,7 +51,7 @@ Fíjate en el **orden**: de dentro hacia fuera (Domain → Infrastructure → Ap
 Tres hábitos que se repitieron en **cada** bloque y que conviene copiar:
 
 - **El manual avanza a la vez que el código.** Cada bloque terminaba con su tarea `[manual]`: los capítulos afectados se actualizaban en ese mismo bloque. Un manual que va por detrás enseña cosas que ya no son verdad.
-- **Cada guardarraíl se comprueba rompiéndolo.** Se modificaba el código real a propósito y se veía el test en rojo (capítulo 9). En la spec 009 hubo unas noventa de estas pruebas de mutación, y cuatro hallazgos reales salieron de ahí.
+- **Cada guardarraíl se comprueba rompiéndolo.** Se modificaba el código real a propósito y se veía el test en rojo (capítulo 9). En la spec 009 hubo unas noventa de estas pruebas de mutación, y cuatro hallazgos reales salieron de ahí. En la spec 010 (segundo factor y bloqueo de cuenta) fueron más de ciento diez, y el hallazgo más importante no salió de ninguna mutación sino de un test de extremo a extremo que recorría el flujo entero (capítulo 6).
 - **Nada se commitea sin que lo hayas leído.** Cada bloque termina con un resumen, y el siguiente empieza cuando dices "hazle el commit".
 
 ## La receta: añadir una operación
@@ -160,6 +160,9 @@ Te vas a olvidar de cosas. Para eso están los guardarraíles: un test en rojo *
 | SQL escrito a mano | `SourceCode_DoesNotUseRawSqlApis` | Usa LINQ, o SQL parametrizado en una *Query* con tests |
 | Usar `IgnoreQueryFilters()` donde no toca | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` | Justifícalo y añade el fichero a la lista blanca |
 | Leer una tabla global (`Users`, `Tenants`...) | `GlobalEntities_AreOnlyReadInTheAllowList` | Léela solo desde un fichero de la lista blanca |
+| SQL parametrizado (`SqlQuery`, `ExecuteSql`...) fuera de `AccountLockout.cs` | `ParameterizedRawSql_IsOnlyUsedInTheLockout` | Solo hay una excepción, justificada; una nueva exige argumentarla y añadirla a la lista |
+| Un camino nuevo que emite sesiones (`IssueTokensAsync`) | `OnlyTheLoginAndTheChallengeRedemption_CanIssueANewSession` | Decide, a propósito, qué pasa con el segundo factor en ese camino |
+| Usar HMAC-SHA1 fuera del TOTP | `Sha1_IsOnlyUsedByTheTotpImplementation` | Usa SHA-256 o más; SHA-1 solo está por el estándar del TOTP |
 
 La idea de fondo: **un guardarraíl no te prohíbe hacerlo, te obliga a hacerlo a propósito.** Todo lo que está en una lista blanca está ahí con su motivo escrito.
 

@@ -67,7 +67,7 @@ dotnet user-secrets set "Jwt:Secret" ([Convert]::ToBase64String($b)) --project s
 dotnet user-secrets set "Mfa:EncryptionKey" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
 ```
 
-En PowerShell, el mismo fragmento de arriba cambiando el nombre de la clave. Esta clave **no se puede perder**: sin ella, los secretos ya guardados no se pueden descifrar y esas cuentas tendrían que reiniciar su segundo factor. Hoy no hay ninguno (la spec 010 va por el bloque 2 y todavía no hay rutas), pero la de producción habrá que guardarla con copia de seguridad.
+En PowerShell, el mismo fragmento de arriba cambiando el nombre de la clave. Esta clave **no se puede perder**: sin ella, los secretos ya guardados no se pueden descifrar y esas cuentas tendrían que reiniciar su segundo factor. Desde la spec 010 hay rutas para activar el segundo factor, así que la clave de producción habrá que guardarla con copia de seguridad (y rotarla cuando exista el procedimiento).
 
 En producción no existirá ese fichero: el secreto llegará por la variable de entorno `Jwt__Secret` (el doble guion bajo equivale a los dos puntos) o desde un gestor de secretos. Esa decisión es la R8 del ADR-009.
 

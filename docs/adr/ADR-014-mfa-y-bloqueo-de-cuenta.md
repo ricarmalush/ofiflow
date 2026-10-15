@@ -1,6 +1,6 @@
 # ADR-014 — Segundo factor (MFA) y bloqueo de cuenta
 
-**Estado:** Propuesto (2026-10-15)
+**Estado:** Aceptado (2026-10-15)
 **Fecha:** 2026-10-15
 **Proyecto:** OfiFlow
 
@@ -113,6 +113,21 @@ El servidor tiene que **calcular** el código, así que no puede guardar solo un
 ### Qué queda abierto para revisar más adelante
 - **NEXT:** MFA obligatorio para `Owner`/`Admin` (con frontend); passkeys/WebAuthn; bloqueo progresivo; desbloqueo manual; rotación de la clave de cifrado; claim `amr`; recuperar y cambiar contraseña (que también cerrará sesiones).
 - **LATER:** "recordar este dispositivo"; avisos por email de bloqueos y reinicios.
+
+---
+
+## Nota de estado (2026-10-15)
+
+Implementada por la spec 010 (bloques 1 a 7), con 1192 tests en verde. Lo que la implementación aclaró y que conviene tener presente:
+
+- **La anotación atómica no usa `rowversion`.** El último paso TOTP aceptado y el consumo de un código de recuperación se escriben con un `UPDATE` condicional (`... WHERE LastUsedTimeStep < @paso`, `... WHERE UsedAt IS NULL`): una fila o ninguna, sin depender del seguimiento de EF ni lanzar excepciones. El canje del desafío es igual (`... WHERE ConsumedAt IS NULL AND ExpiresAt > ahora AND FailedAttempts < 5`).
+- **Todo el control del bloqueo vive dentro de `IdentityService.AuthenticateAsync`.** El llamante no puede olvidarse de devolver o limpiar la reserva. La única sentencia SQL fuera de LINQ del proyecto es la reserva del intento (`UPDATE ... OUTPUT`), parametrizada y en una lista blanca vigilada por un test.
+- **Un fallo real, solo cazado por el test de extremo a extremo.** Con 4 fallos previos, el quinto intento *reserva*, llega a 5 y fija el bloqueo antes de saber si la contraseña es buena; con segundo factor, devolver la reserva no levantaba el bloqueo y una persona legítima quedaba fuera. `ReleaseAsync` levanta ahora el bloqueo si el contador baja del umbral. Está probado en tres niveles (servicio, login y recorrido HTTP).
+- **Los fallos al confirmar el primer código no cuentan para el bloqueo** (se limitan por IP): quien se equivoca al escanear el QR no debe quedarse sin poder entrar. Sí cuentan la contraseña y el código al pedir el secreto, desactivar o regenerar.
+- **El cifrado ata el secreto al Id de la cuenta** (dato asociado de GCM): un secreto copiado a la fila de otra cuenta no se descifra. Refuerza la decisión 2.C.
+- **El desafío no cuenta contra la cuenta si no sirve** (desconocido o caducado): si contara, cualquiera podría bloquear cuentas ajenas inventando desafíos. Un desafío erróneo gasta uno de sus 5 intentos; un código erróneo, además, suma al contador de la cuenta.
+- **Solo dos sitios emiten sesiones** (el login sin MFA y el canje del desafío), fijado por un test de arquitectura que también comprueba que, en el login, la rama del segundo factor termina antes de la emisión.
+- **Riesgos aceptados que se mantienen:** el TOTP no resiste al *phishing*; se puede mantener bloqueada una cuenta ajena fallando a propósito cada 15 minutos; un `Owner` sin móvil ni códigos queda fuera hasta que intervenga el operador de la plataforma; el token de acceso ya emitido vale hasta 30 minutos tras cerrar las sesiones; y el `catch` de `DbUpdateException` de *activar* no tiene un test que garantice su ejecución.
 
 ---
 

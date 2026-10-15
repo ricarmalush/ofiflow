@@ -33,7 +33,7 @@ Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para cons
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
 | `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
 
-(Los límites están en [`RateLimiting.cs:29-33`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
+(Los límites están en [`RateLimiting.cs:35-44`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
 
 ---
 
@@ -128,9 +128,9 @@ return Hasher.VerifyHashedPassword(NoUser, storedHash, password) != PasswordVeri
 
 Dos decisiones de seguridad en este flujo:
 
-**Una sola respuesta de fallo.** Tanto si el email no existe, como si la contraseña es incorrecta, como si la cuenta está bloqueada (más abajo), la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:30`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
+**Una sola respuesta de fallo.** Tanto si el email no existe, como si la contraseña es incorrecta, como si la cuenta está bloqueada (más abajo), la API responde exactamente lo mismo: un **401** sin explicación (`default: return Results.Unauthorized();` del `switch` sobre el resultado del login, [`AuthEndpoints.cs:45`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
 
-**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:92` y `:111`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
+**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:90` y `:109`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
 El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:34`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
 
@@ -184,7 +184,7 @@ Lo escribe [`TokenService.GenerateAccessToken`](../../src/OfiFlow.Infrastructure
 
 La firma es la clave. El servidor calcula la firma con un secreto que solo él conoce. Si alguien cambia `"role": "Technician"` por `"Owner"`, o `tenant_id` por el de otra empresa, la firma que viaja **ya no corresponde** al contenido, y el servidor la rechaza con un 401. Para falsificar un token válido habría que conocer el secreto.
 
-En cada petición, el servidor comprueba el token con estas reglas ([`DependencyInjection.cs:67-74`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)):
+En cada petición, el servidor comprueba el token con estas reglas ([`DependencyInjection.cs:72-79`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)):
 
 | Qué se comprueba | Qué evita |
 |---|---|
@@ -201,7 +201,7 @@ Y en la configuración, un detalle que dio un susto de verdad: `options.MapInbou
 El secreto que firma los tokens es lo más delicado de todo el sistema: quien lo tenga puede fabricar un token de cualquiera. Por eso:
 
 - **Nunca está en el repositorio.** En local vive en `dotnet user-secrets` (fuera del proyecto); en producción, en una variable de entorno o un almacén de secretos.
-- **Si falta, la aplicación no arranca**, con un mensaje que indica el comando exacto ([`DependencyInjection.cs:49-52`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)). Prefiere no funcionar a funcionar con una clave débil por defecto.
+- **Si falta, la aplicación no arranca**, con un mensaje que indica el comando exacto ([`DependencyInjection.cs:54-60`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)). Prefiere no funcionar a funcionar con una clave débil por defecto.
 - En los tests se genera uno distinto en cada ejecución.
 
 ### Un límite inevitable
@@ -427,22 +427,22 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP, **y bloqueo por cuenta** (5 fallos / 15 min, con el intento reservado antes de comprobar) | `RateLimiting.cs:29`, `AccountLockout.cs` | `RateLimitingTests`, `FiftySimultaneousWrongAttempts_PerformExactlyFiveRealVerifications_AndLockTheAccount` |
+| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP, **y bloqueo por cuenta** (5 fallos / 15 min, con el intento reservado antes de comprobar) | `RateLimiting.cs:35`, `AccountLockout.cs` | `RateLimitingTests`, `FiftySimultaneousWrongAttempts_PerformExactlyFiveRealVerifications_AndLockTheAccount` |
 | Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:18,38` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
 | Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
-| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:30` | `Handle_WithInvalidCredentials_ReturnsNull` |
+| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:45` | `Handle_WithInvalidCredentials_IsRejected` |
 | Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs` (`LogLoginFailed` y los dos eventos del bloqueo) | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` (SQL real) y `TheSecurityEvents_AreLoggedWithoutTheEmailNorThePassword` (HTTP) |
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
-| Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
-| Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:73-74` | **Sin test propio** (ver "Controles sin test") |
+| Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:78-79` | **Sin test propio** (ver "Controles sin test") |
 | **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:133` | `RotateRefreshTokenAsync_WithValidToken_...` |
 | Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `OpaqueToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | Usar dos veces la misma invitación | Un solo uso + versión de fila: gana una | `Invitation.cs`, `InvitationConfiguration.cs` | `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` |
 | Un invitante que se queda con la contraseña de otro | La persona elige la suya al aceptar; el invitante solo fija email y rol | `AcceptInvitationCommand.cs` | `ThePersonCanThenLogInWithTheirOwnPassword` |
-| Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:49-52` | **Sin test propio** (ver "Controles sin test") |
-| El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:63` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
+| Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:54-60` | **Sin test propio** (ver "Controles sin test") |
+| El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:68` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
 
 ---
 
