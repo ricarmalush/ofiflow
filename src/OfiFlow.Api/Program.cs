@@ -62,6 +62,7 @@ app.MapAuthEndpoints();
 app.MapCustomerEndpoints();
 app.MapInvitationEndpoints();
 app.MapUserEndpoints();
+app.MapMfaEndpoints();
 app.MapJobEndpoints();
 
 app.Run();

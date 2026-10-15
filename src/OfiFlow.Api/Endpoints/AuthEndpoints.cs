@@ -5,6 +5,7 @@ using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
+using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
 
 namespace OfiFlow.Api.Endpoints;
 
@@ -45,8 +46,17 @@ public static class AuthEndpoints
                 }
             })
             .WithName("Login")
-            .WithSummary("Autentica al usuario y emite Access Token + Refresh Token.")
+            .WithSummary("Autentica con email y contraseña. Sin segundo factor devuelve Access Token + Refresh Token; con él devuelve 200 { mfaRequired, challenge, expiresAt } (sin sesión) y hay que canjear el desafío en /auth/mfa/verify.")
             .RequireRateLimiting(RateLimiting.Login);
+
+        group.MapPost("/mfa/verify", async (VerifyMfaChallengeCommand command, ISender sender, CancellationToken cancellationToken) =>
+            {
+                var result = await sender.Send(command, cancellationToken);
+                return result is null ? Results.Unauthorized() : Results.Ok(result);
+            })
+            .WithName("VerifyMfaChallenge")
+            .WithSummary("Segundo paso del login: canjea el desafío con un código de la app o de recuperación y devuelve la sesión. Todos los fallos dan el mismo 401.")
+            .RequireRateLimiting(RateLimiting.MfaVerify);
 
         group.MapPost("/refresh", async (RefreshTokenCommand command, ISender sender, CancellationToken cancellationToken) =>
             {

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace OfiFlow.Api.Tests.Common;
 
@@ -16,5 +17,8 @@ public sealed class OfiFlowApiFactory : WebApplicationFactory<Program>
     {
         builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
         builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+
+        // Solo en tests: cada petición puede declarar su IP (ver TestClientIpStartupFilter). Sin la cabecera no cambia nada.
+        builder.ConfigureServices(services => services.AddTransient<IStartupFilter, TestClientIpStartupFilter>());
     }
 }

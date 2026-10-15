@@ -28,9 +28,9 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 445 | ~1 s | No |
 | `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 220 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 257 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 300 | ~15 s | **Sí**, en parte |
 
-En total, **1121 casos**. Un "caso" no es lo mismo que un método de test: hay unos 631 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **1164 casos**. Un "caso" no es lo mismo que un método de test: hay unos 652 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -177,6 +177,16 @@ Y los del **login en dos pasos** (spec 010, bloque 5), que repiten el reparto de
 - **SQL Server real, el contador.** `SecondFactorLoginTests` prueba el punto más fino: con MFA, la contraseña correcta **no reinicia** el contador (sin MFA, sí: control), y un ataque simulado que intercala la contraseña correcta entre los fallos sigue acabando en bloqueo al quinto.
 - **Arquitectura.** Un test fija que solo **dos ficheros** llaman a `IssueTokensAsync` (el login y el canje), y otro que, dentro del login, la rama «falta el segundo factor» termina con un `return` **antes** de la línea que emite la sesión. Es el equivalente, para el segundo factor, de la lista blanca de `IgnoreQueryFilters()`.
 
+Y los **tests HTTP del segundo factor** (spec 010, bloque 6), en la clase de API con SQL Server real:
+
+- **Las rutas existen y exigen sesión.** Una teoría recorre las seis (cinco de la cuenta y el reinicio) sin token y exige 401; y los cinco roles ven el estado de su cuenta. La ruta de canjear el desafío, en cambio, es **anónima**: con tres formas distintas de fallo (desafío inventado, desafío mal escrito, código mal escrito) la respuesta es **el mismo cuerpo**, y un texto de 5000 caracteres es un 400 de validación (no se hashea).
+- **Los errores llevan su código.** `mfa.invalid_password`, `mfa.setup_required`, `mfa.invalid_code` y `mfa.not_enabled` salen con 400 y su código estable; un código que no son 6 dígitos ni siquiera llega al handler. Y el contrato de errores gana las cinco filas `mfa.*` (cada código, su estado y su mensaje del diccionario).
+- **El secreto no se cachea.** Pedir el secreto devuelve `Cache-Control: no-store`, el estado nunca lo repite, y un error no lleva esa cabecera.
+- **El reinicio por un gestor, con su jerarquía:** el `Owner` puede (y repetirlo no falla), `Manager`/`Employee`/`Technician` reciben 403, un `Admin` no puede con otro `Admin` pero sí con un `Technician` (control positivo), nadie se reinicia a sí mismo, y un miembro de **otra empresa** da el mismo 404 y el mismo mensaje que uno inexistente.
+- **Los límites de peticiones.** Con el limitador **antes** de la autenticación, se prueba sin sesión: diez peticiones a cada ruta de gestión dan 401 y la undécima, **429**; igual con canjear el desafío (10 por minuto). Cada ruta usa su propia IP de prueba, porque el límite es por IP y por política.
+
+Todavía **no** hay aquí un código TOTP real: confirmar, desactivar y regenerar con códigos válidos, y cada ataque, son el bloque 7.
+
 Y `MfaPersistenceTests`, para el **almacén del segundo factor** (spec 010, bloque 2), con la misma idea: lo que solo una base de datos de verdad puede garantizar.
 
 - **Los índices únicos:** una cuenta no puede tener dos secretos TOTP (su clave primaria es la propia cuenta), y dos códigos de recuperación o dos desafíos no pueden compartir hash, ni siquiera de cuentas distintas.
@@ -253,7 +263,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **946 casos son unos 631 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **946 casos son unos 652 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

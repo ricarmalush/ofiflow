@@ -1,6 +1,8 @@
 using MediatR;
+using OfiFlow.Api.Common;
 using OfiFlow.Application.Tenancy.Commands.ChangeUserRole;
 using OfiFlow.Application.Tenancy.Commands.RemoveUser;
+using OfiFlow.Application.Tenancy.Commands.ResetUserMfa;
 using OfiFlow.Application.Tenancy.Queries.GetUsers;
 using OfiFlow.Domain.Tenancy;
 
@@ -41,6 +43,15 @@ public static class UserEndpoints
             })
             .WithName("RemoveUser")
             .WithSummary("Quita a un miembro de la empresa: se borran su cuenta y sus datos y se desasignan sus trabajos sin terminar.");
+
+        group.MapDelete("/{id:guid}/mfa", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(new ResetUserMfaCommand(id), cancellationToken);
+                return Results.NoContent();
+            })
+            .WithName("ResetUserMfa")
+            .WithSummary("Reinicia el segundo factor de un miembro que perdió el móvil y los códigos: borra su secreto y sus códigos y cierra sus sesiones. Sigue la jerarquía de roles; no se puede usar sobre el Owner ni sobre uno mismo.")
+            .RequireRateLimiting(RateLimiting.MfaManage);
     }
 }
 

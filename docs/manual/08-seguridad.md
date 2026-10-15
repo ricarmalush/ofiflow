@@ -114,6 +114,8 @@ Para frenar la **fuerza bruta** (probar contraseñas sin parar) y la saturación
 | `login` | 5 por minuto |
 | `refresh` | 20 por minuto |
 | `accept-invitation` | 10 por hora (es anónima y cara: hashea una contraseña) |
+| `mfa/verify` | 10 por minuto (es anónima, toca la base de datos y es la vía obvia para probar códigos de 6 dígitos) |
+| Gestión del segundo factor (`setup`, `enable`, `disable`, `recovery-codes` y reiniciar el de un miembro) | 10 por hora (son operaciones raras) |
 
 Al pasarse, responde **429** (*demasiadas peticiones*) con la cabecera `Retry-After` (cuántos segundos esperar), en el mismo formato de error del capítulo 7. Cada rechazo genera el evento de seguridad `1101`.
 
@@ -167,6 +169,20 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | `PUT /api/v1/users/{id}/role` | `Users.Manage` | 204 | Cuerpo: `{ "role": <número> }` |
 | `DELETE /api/v1/users/{id}` | `Users.Manage` | 204 | Baja completa: cuenta, ficha, sesiones y trabajos |
 | `POST /api/v1/auth/accept-invitation` | anónima | 204 sin cuerpo | **10 por hora y por IP**; no devuelve tokens |
+
+**Las rutas del segundo factor (spec 010).** Las de la propia cuenta no llevan ningún Id: la cuenta sale del token, así que nadie puede tocar el segundo factor de otra persona por aquí.
+
+| Ruta | Permiso | Éxito | Notas |
+|---|---|---|---|
+| `GET /api/v1/account/mfa` | `Mfa.Manage` | 200 | `{ enabled, setupPending, recoveryCodesRemaining }`: nunca un secreto ni un código |
+| `POST /api/v1/account/mfa/setup` | `Mfa.Manage` | 200 con el secreto | Cuerpo: `{ password }`. **`no-store`**: el secreto y la URI `otpauth://` se muestran una sola vez. 10 por hora y por IP |
+| `POST /api/v1/account/mfa/enable` | `Mfa.Manage` | 200 con 10 códigos | Cuerpo: `{ code }` (6 dígitos). **`no-store`**; cierra todas las sesiones de la cuenta |
+| `POST /api/v1/account/mfa/disable` | `Mfa.Manage` | 204 | Cuerpo: `{ password, code }` (código de la app o de recuperación); cierra las sesiones |
+| `POST /api/v1/account/mfa/recovery-codes` | `Mfa.Manage` | 200 con 10 códigos | Cuerpo: `{ password, code }`. **`no-store`**; los anteriores dejan de valer |
+| `DELETE /api/v1/users/{id}/mfa` | `Users.Manage` + jerarquía | 204 | Reinicia el MFA de un miembro (el Id es el de la pertenencia); idempotente; nunca sobre el `Owner` ni sobre uno mismo |
+| `POST /api/v1/auth/mfa/verify` | anónima | 200 con la sesión | Cuerpo: `{ challenge, code }`. **10 por minuto y por IP**. Todos los fallos dan el **mismo 401** |
+
+El **login** (`POST /api/v1/auth/login`) cambia de forma solo para las cuentas con segundo factor: en vez de los tokens devuelve `200 { mfaRequired: true, challenge, expiresAt }`, con **`no-store`** y **sin ninguna sesión**. Los errores del segundo factor llevan su código estable (`mfa.invalid_password`, `mfa.invalid_code`, `mfa.already_enabled`, `mfa.not_enabled`, `mfa.setup_required`), todos con estado 400.
 
 Las denegaciones por jerarquía o por intentar gestionarse a uno mismo son **403** con su propio código (`tenant_user.role_not_manageable`, `tenant_user.cannot_manage_self`); un miembro o una invitación que no existe en tu empresa, **404**. Quitar o degradar a un miembro ya surte efecto **en su siguiente petición** (ver abajo: el rol sale de la base de datos). Puedes probarlas en Swagger o en la sección 6 de la colección `OfiFlow.Api.http`.
 

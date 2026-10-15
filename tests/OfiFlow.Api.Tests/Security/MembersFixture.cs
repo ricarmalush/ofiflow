@@ -34,6 +34,11 @@ public sealed class MembersFixture : IAsyncLifetime
 
     public Guid OwnerUserId { get; private set; }
 
+    /// <summary>Las credenciales del Owner, para las operaciones que piden la contraseña de nuevo (spec 010).</summary>
+    public string OwnerEmail { get; private set; } = string.Empty;
+
+    public string OwnerPassword { get; private set; } = string.Empty;
+
     public async Task InitializeAsync()
     {
         await Factory.StartAsync();
@@ -41,6 +46,8 @@ public sealed class MembersFixture : IAsyncLifetime
 
         var email = $"miembros-{Guid.NewGuid():N}@example.com";
         var password = NewPassword();
+        OwnerEmail = email;
+        OwnerPassword = password;
 
         var register = await Anonymous.PostAsJsonAsync("/api/v1/auth/register",
             new { companyName = "Empresa de miembros", userName = "Dueña de pruebas", email, password });
@@ -127,7 +134,7 @@ public sealed class MembersFixture : IAsyncLifetime
         var login = await Anonymous.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
         var tokens = await ReadAsync<AuthResultDto>(login);
 
-        return new Company(tenantId, email, ClientWithToken(tokens.AccessToken));
+        return new Company(tenantId, email, ClientWithToken(tokens.AccessToken), password);
     }
 
     /// <summary>Hace caducar una invitación directamente en la base de datos (no se puede esperar 7 días).</summary>
@@ -173,7 +180,7 @@ public sealed class MembersFixture : IAsyncLifetime
             .SingleAsync();
     }
 
-    public sealed record Company(Guid TenantId, string OwnerEmail, HttpClient OwnerClient);
+    public sealed record Company(Guid TenantId, string OwnerEmail, HttpClient OwnerClient, string OwnerPassword = "");
 
     public HttpClient ClientWithToken(string token)
     {
