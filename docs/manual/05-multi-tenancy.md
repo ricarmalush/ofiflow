@@ -59,13 +59,14 @@ public interface ITenantOwned
 }
 ```
 
-Es una **marca**: "esta entidad pertenece a una empresa". Las tres entidades que la llevan hoy:
+Es una **marca**: "esta entidad pertenece a una empresa". Las cuatro entidades que la llevan hoy:
 
 | Entidad | ¿`ITenantOwned`? | Por qué |
 |---|---|---|
 | `Customer` | ✅ | Los clientes son de una empresa |
 | `Job` | ✅ | Los trabajos son de una empresa |
 | `TenantUser` | ✅ | La pertenencia de una persona a **esa** empresa (con su rol) |
+| `Invitation` | ✅ | La invitación para que una persona entre en **esa** empresa (spec 009): una empresa nunca ve las invitaciones de otra |
 | `Tenant` | ❌ | Es la propia empresa; no pertenece a ninguna |
 | `User` | ❌ | Una persona puede estar en varias empresas, así que no es de ninguna en concreto |
 
@@ -73,7 +74,7 @@ La marca es lo que **activa** el filtro automático de la pieza ③.
 
 ## Pieza ② — El tenant viaja dentro del token
 
-Cuando alguien inicia sesión, el servidor emite un token JWT **firmado** que contiene, entre otras cosas, la empresa en la que trabaja. Está en [`TokenService.cs:93-100`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs):
+Cuando alguien inicia sesión, el servidor emite un token JWT **firmado** que contiene, entre otras cosas, la empresa en la que trabaja. Está en [`TokenService.cs:103-110`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs):
 
 ```csharp
 Claim[] claims =

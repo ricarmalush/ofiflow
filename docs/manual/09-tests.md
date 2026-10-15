@@ -26,10 +26,10 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 180 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 88 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 56 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 73 | ~12 s | **Sí**, en parte |
 | `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 156 | ~15 s | **Sí**, en parte |
 
-En total, **480 casos**. Un "caso" no es lo mismo que un método de test: hay unos 240 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **497 casos**. Un "caso" no es lo mismo que un método de test: hay unos 257 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -129,7 +129,14 @@ Detalles de diseño:
 - **Un contenedor por clase de test**, no por test (`IClassFixture`): arrancar uno tarda unos segundos, y repetirlo en cada test multiplicaría el tiempo por veinte. Para que los tests de una misma clase no se pisen, **cada test usa empresas nuevas** (`Guid.NewGuid()`).
 - Requiere **Docker arrancado** en tu máquina. El pipeline de GitHub ya lo trae.
 
-Aquí viven el test obligatorio de aislamiento (`TenantIsolationIntegrationTests`) y los de escritura entre empresas (`CrossTenantWriteIsolationTests`), que ejecutan los handlers reales contra SQL Server real.
+Aquí viven el test obligatorio de aislamiento (`TenantIsolationIntegrationTests`) y los de escritura entre empresas (`CrossTenantWriteIsolationTests`), que ejecutan los handlers reales contra SQL Server real. Con la spec 009 se añade `InvitationPersistenceTests`, que comprueba lo que una base en memoria **no puede** comprobar:
+
+- **Los índices únicos:** dos invitaciones no pueden compartir el hash del token, ni siquiera de empresas distintas.
+- **La concurrencia:** dos peticiones que aceptan la misma invitación a la vez leen las dos "pendiente"; al guardar, la base de datos obliga a que **solo una gane** (`DbUpdateConcurrencyException`). Un `if` en el código no lo garantiza, porque comprobar y escribir serían dos pasos.
+- **Que las migraciones coinciden con el modelo** (`HasPendingModelChanges`): si alguien cambia una entidad y se olvida de generar la migración, falla este test y no la base de producción.
+- **Que una baja es todo o nada:** quitar a un miembro borra su cuenta, su ficha, su pertenencia y sus sesiones en una transacción; si una parte falla, **nada** se borra, y si todo va bien no queda ninguna fila huérfana.
+
+Cada uno va con su control positivo (un caso que sí funciona, para que el "falla" no se deba a un error de preparación), y se verificaron rompiendo la **migración** a propósito, que es como se rompería de verdad el esquema.
 
 ## Parte 4 — Api: tres clases de test en un mismo proyecto
 
