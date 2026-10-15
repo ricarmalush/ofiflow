@@ -119,6 +119,7 @@ public class CurrentUserTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Jwt:Secret"] = Convert.ToBase64String(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray()),
+            ["Mfa:EncryptionKey"] = Convert.ToBase64String(new byte[32]),
             ["Jwt:Issuer"] = "OfiFlow.Tests",
             ["Jwt:Audience"] = "OfiFlow.Tests",
             ["ConnectionStrings:Default"] = "Server=no-se-usa;Database=no-se-usa"

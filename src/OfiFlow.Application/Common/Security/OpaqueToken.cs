@@ -2,15 +2,16 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace OfiFlow.Application.Tenancy;
+namespace OfiFlow.Application.Common.Security;
 
 /// <summary>
-/// El token de una invitación y su hash (ADR-013, spec 009 R2). Es el único sitio que sabe cómo se genera
-/// y cómo se calcula el hash, para que crear y aceptar usen exactamente la misma regla.
-/// El valor en claro solo existe en el momento de crearlo (se le entrega al invitante) y al aceptar
-/// (llega en la petición); en la base de datos solo se guarda el hash.
+/// Un token opaco y su hash: valor aleatorio de 256 bits del que en la base de datos solo se guarda el hash. Es el
+/// único sitio que sabe cómo se genera y cómo se calcula el hash, para que crear y canjear usen exactamente la misma
+/// regla. Lo usan los tokens de las **invitaciones** (ADR-013, spec 009 R2) y los **desafíos del login en dos pasos**
+/// (ADR-014, spec 010 R11). El valor en claro solo existe al crearlo (se entrega una vez) y al canjearlo (llega en la
+/// petición); no es un JWT, así que no se puede presentar como token de acceso.
 /// </summary>
-public static class InvitationToken
+public static class OpaqueToken
 {
     /// <summary>256 bits de un generador criptográficamente seguro: imposible de adivinar.</summary>
     public const int ByteLength = 32;

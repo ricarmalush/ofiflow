@@ -57,7 +57,7 @@ La carpeta de primer nivel es siempre un **contexto de negocio** (capítulo 2, s
 | `Customers/` | `Customer`, `CustomerType`, `PhoneNumber`, `CustomerErrors` | Todo lo que es un cliente |
 | `Jobs/` | `Job`, `JobStatus`, `JobPriority`, `JobErrors` | Todo lo que es un trabajo y sus transiciones de estado |
 | `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `Permission`, `RolePermissions`, `ManageableRoles`, `Invitation`, `InvitationStatus`, `TenancyErrors`, `InvitationErrors` | La empresa, la pertenencia de una persona a ella con un rol, y **qué puede hacer cada rol**: `Permission` son los permisos (`Customers.Write`, `Jobs.Assign`, `Users.Manage`...), `RolePermissions` es la tabla única rol → permisos y `ManageableRoles` la tabla única "a qué roles puede gestionar cada rol". `Invitation` es la invitación para que una persona entre en la empresa (spec 009) |
-| `Identity/` | `User`, `IdentityErrors` | Los **datos de negocio** de la persona. Las credenciales (contraseña) no están aquí: viven en Infrastructure |
+| `Identity/` | `User`, `IdentityErrors`, `MfaErrors` | Los **datos de negocio** de la persona (y los códigos de error del segundo factor, spec 010). Las credenciales (contraseña) no están aquí: viven en Infrastructure |
 
 Dos interfaces de `Common/` merecen atención, porque son "etiquetas" que activan comportamientos automáticos en otras capas:
 
@@ -127,8 +127,8 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 |---|---|
 | `Customers/` | Crear, ver, listar, modificar y eliminar clientes |
 | `Jobs/` | Crear, ver, listar, modificar, empezar, completar, cancelar y asignar trabajos |
-| `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token) |
-| `Tenancy/` | Las **invitaciones y los miembros** (spec 009): `InviteUser`, `RevokeInvitation`, `GetInvitations`, `GetUsers`, `ChangeUserRole` y `RemoveUser`, más `InvitationToken` (cómo se genera el token y su hash). El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
+| `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token). Además, `AuthenticationPolicy` (los números de la política de bloqueo y de segundo factor, en un único sitio) y la subcarpeta **`Mfa/`** (spec 010): `Totp` (el código de 6 dígitos, RFC 6238), `TotpSecret` (generar el secreto y la URI para el QR), `Base32` y `RecoveryCodes`. Son funciones puras, sin base de datos ni reloj propio. Y las **seis operaciones del segundo factor** (spec 010): `GetMfaStatus`, `StartMfaSetup`, `EnableMfa`, `DisableMfa` y `RegenerateRecoveryCodes` (de la propia cuenta, en `Mfa/Commands` y `Mfa/Queries`), con su puerto `IMfaService` y `MfaDtos`; el reinicio por un gestor, `ResetUserMfa`, está en `Tenancy` junto a `RemoveUser` |
+| `Tenancy/` | Las **invitaciones y los miembros** (spec 009): `InviteUser`, `RevokeInvitation`, `GetInvitations`, `GetUsers`, `ChangeUserRole`, `RemoveUser` y `ResetUserMfa` (reiniciar el segundo factor de un miembro, con la misma jerarquía). El generador del token y su hash, `OpaqueToken`, ya no vive aquí sino en `Common/Security/`, porque lo comparten las invitaciones y el desafío del login. El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
 
 **La carpeta `Common/`**, lo transversal:
 
@@ -214,7 +214,7 @@ Existe para que esos detalles se puedan **cambiar sin tocar las reglas del negoc
 | `Persistence/Interceptors/` | `AuditableEntitySaveChangesInterceptor` | Rellena `CreatedAt` y `UpdatedAt` al guardar, sin que ningún handler lo haga |
 | `Persistence/Migrations/` | Una clase por cambio del esquema | El historial de la base de datos, generado con `dotnet ef`. Es un registro, no se escribe a mano |
 | `Persistence/` (otros) | `ApplicationDbContextFactory`, `ConnectionStringNames` | La fábrica la usa solo `dotnet ef` para generar migraciones; los nombres evitan repetir cadenas mágicas |
-| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario y la empresa, y **comprueba en la base de datos** el rol y la pertenencia en cada petición |
+| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` y, del segundo factor (spec 010), `MfaService`, `AesGcmSecretProtector`, `AccountLockout`, `PasswordHasherChecker` y las entidades `MfaCredential`, `RecoveryCode` y `MfaChallenge` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario y la empresa, y **comprueba en la base de datos** el rol y la pertenencia en cada petición |
 | `Tenancy/` | `TenantContext` | Lee el `tenant_id` del token del usuario autenticado. Implementa `ITenantContext` |
 
 Y en la raíz, [`DependencyInjection.cs`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs): `AddInfrastructure()` conecta el `DbContext`, los servicios y la validación de tokens JWT. **Si falta el secreto `Jwt:Secret`, la aplicación se niega a arrancar** con un mensaje que indica cómo configurarlo, antes que arrancar de forma insegura.

@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using FluentValidation.TestHelper;
 using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
@@ -52,7 +53,7 @@ public class InvitationValidatorTests
     // ===== Aceptar =====
 
     private static AcceptInvitationCommand ValidAccept() =>
-        new(InvitationToken.Generate().Value, "Ana Pérez", "contraseña-segura");
+        new(OpaqueToken.Generate().Value, "Ana Pérez", "contraseña-segura");
 
     [Fact]
     public void Accept_AValidCommand_Passes()

@@ -101,7 +101,13 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new NotFoundException(InvitationErrors.NotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "invitation.not_found" },
         { new NotFoundException(TenancyErrors.TenantUserNotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "tenant_user.not_found" },
         { new ForbiddenException(TenancyErrors.RoleNotManageable), HttpStatusCode.Forbidden, "tenant_user.role_not_manageable" },
-        { new ForbiddenException(TenancyErrors.CannotManageSelf), HttpStatusCode.Forbidden, "tenant_user.cannot_manage_self" }
+        { new ForbiddenException(TenancyErrors.CannotManageSelf), HttpStatusCode.Forbidden, "tenant_user.cannot_manage_self" },
+        // Spec 010: el segundo factor.
+        { new BusinessRuleException(MfaErrors.AlreadyEnabled), HttpStatusCode.BadRequest, "mfa.already_enabled" },
+        { new BusinessRuleException(MfaErrors.NotEnabled), HttpStatusCode.BadRequest, "mfa.not_enabled" },
+        { new BusinessRuleException(MfaErrors.SetupRequired), HttpStatusCode.BadRequest, "mfa.setup_required" },
+        { new BusinessRuleException(MfaErrors.InvalidCode), HttpStatusCode.BadRequest, "mfa.invalid_code" },
+        { new BusinessRuleException(MfaErrors.InvalidPassword), HttpStatusCode.BadRequest, "mfa.invalid_password" }
     };
 
     [Theory]
@@ -177,6 +183,7 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.ConfigureTestServices(services => services.AddSingleton<ISender>(new ThrowingSender(this)));
         }
     }

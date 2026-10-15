@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
@@ -37,7 +38,7 @@ public class AcceptInvitationIntegrationTests(SqlServerContainerFixture fixture)
     {
         var tenantId = Guid.NewGuid();
         var email = $"{Guid.NewGuid():N}@example.com";
-        var (token, hash) = InvitationToken.Generate();
+        var (token, hash) = OpaqueToken.Generate();
 
         await using var db = _fixture.CreateDbContext(tenantId);
         db.Invitations.Add(Invitation.Create(tenantId, Email.Create(email), role, hash, Guid.NewGuid(), DateTime.UtcNow));
@@ -67,7 +68,7 @@ public class AcceptInvitationIntegrationTests(SqlServerContainerFixture fixture)
         Assert.Equal(TenantRole.Manager, membership.Role);
         Assert.Equal(1, await check.Users.CountAsync(u => u.Id == membership.UserId));
         Assert.NotNull(await new IdentityService(check, NullLogger<IdentityService>.Instance)
-            .ValidateCredentialsAsync(email, Password, CancellationToken.None));
+            .ValidateCredentialsWithoutLockoutAsync(email, Password, CancellationToken.None));
         Assert.NotNull((await check.Invitations.SingleAsync()).AcceptedAt);
     }
 

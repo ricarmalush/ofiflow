@@ -33,7 +33,7 @@ Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para cons
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
 | `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
 
-(Los límites están en [`RateLimiting.cs:29-33`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
+(Los límites están en [`RateLimiting.cs:35-44`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
 
 ---
 
@@ -53,7 +53,7 @@ Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para cons
 Si se guardara primero el usuario y fallara la creación de la empresa, quedaría una persona con contraseña **sin empresa**: no podría entrar y su email estaría ocupado. Para evitarlo, [`IdentityService.CreateUserAsync`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs) **no guarda nada**:
 
 ```csharp
-// IdentityService.cs:30-32
+// IdentityService.cs:40-41
 // Deliberadamente sin SaveChangesAsync: RegisterCommandHandler confirma esta fila
 // junto con Tenant/User/TenantUser en una única transacción (spec 002).
 dbContext.ApplicationUsers.Add(user);
@@ -86,17 +86,17 @@ No necesitamos volver a leer la contraseña de Marta: solo necesitamos saber si 
 
 ### Un hash lento y con sal
 
-No vale cualquier hash. OfiFlow usa el `PasswordHasher` de ASP.NET Core ([`IdentityService.cs:13`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs)), que aplica **PBKDF2**, diseñado para ser:
+No vale cualquier hash. OfiFlow usa el `PasswordHasher` de ASP.NET Core ([`IdentityService.cs:18`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs)), que aplica **PBKDF2**, diseñado para ser:
 
 - **Lento a propósito.** Para el servidor, comprobar una contraseña cuesta una fracción de segundo; para un atacante que prueba millones de combinaciones, esa lentitud multiplicada es un muro.
 - **Con sal** (*salt*): un valor aleatorio distinto por contraseña, guardado junto al hash. Dos personas con la misma contraseña tienen hashes distintos, y un atacante no puede usar tablas precalculadas.
 
 ```csharp
-// IdentityService.cs:28 (al crear)
+// IdentityService.cs:38 (al crear)
 user.PasswordHash = PasswordHasher.HashPassword(user, password);
 
-// IdentityService.cs:73 (al entrar)
-var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
+// PasswordHasherChecker.cs:34 (al entrar)
+return Hasher.VerifyHashedPassword(NoUser, storedHash, password) != PasswordVerificationResult.Failed;
 ```
 
 ### Longitud mínima y máxima
@@ -114,7 +114,7 @@ var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, passwo
  email + contraseña
         │
         ▼
- ① IdentityService.ValidateCredentialsAsync   ¿existe el email? ¿el hash coincide?
+ ① IdentityService.AuthenticateAsync          ¿existe? ¿bloqueada? ¿el hash coincide?
         │  no → null  ─────────────────────────────────────────▶ 401
         ▼
  ② LoginCommandHandler busca la empresa del usuario   (TenantUser)
@@ -128,11 +128,25 @@ var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, passwo
 
 Dos decisiones de seguridad en este flujo:
 
-**Una sola respuesta de fallo.** Tanto si el email no existe como si la contraseña es incorrecta, la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:30`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
+**Una sola respuesta de fallo.** Tanto si el email no existe, como si la contraseña es incorrecta, como si la cuenta está bloqueada (más abajo), la API responde exactamente lo mismo: un **401** sin explicación (`default: return Results.Unauthorized();` del `switch` sobre el resultado del login, [`AuthEndpoints.cs:45`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
 
-**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:67-69`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
+**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:90` y `:109`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
-El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:29`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:34`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+
+### El bloqueo de cuenta (spec 010)
+
+El límite de 5 logins por minuto es **por IP**: no frena a quien reparte los intentos entre muchas IP contra una misma cuenta. Por eso la spec 010 añade un contador **por cuenta**: al quinto fallo (contraseña errónea), la cuenta se bloquea **15 minutos**. Lo importante no es el número, sino *cómo* se cuenta:
+
+**1. El intento se reserva antes de comprobar la contraseña.** La idea ingenua es "leer el contador, comprobar la contraseña y sumar uno si falla". Falla con peticiones **simultáneas**: 50 peticiones leen a la vez "0 fallos", las 50 comprueban la contraseña y el bloqueo llega tarde; el atacante ha tenido 50 intentos en vez de 5. OfiFlow lo hace al revés: una única sentencia SQL, atómica, comprueba que la cuenta no está bloqueada **y** suma el intento, todo a la vez ([`AccountLockout.cs`](../../src/OfiFlow.Infrastructure/Identity/AccountLockout.cs)). Solo los intentos que consiguen reservar llegan a comprobar la contraseña, así que el máximo es 5 **aunque lleguen a la vez**. El intento que alcanza el umbral fija en la misma sentencia la hora de fin del bloqueo: no hay un hueco entre «llegó a 5» y «quedó bloqueada». Es la única sentencia SQL del proyecto fuera de LINQ, va parametrizada y está en una lista blanca que un test vigila.
+
+**2. Bloqueada, ni la contraseña correcta entra.** Si entrara, bloquear no serviría de nada frente a quien sigue probando. Los intentos durante el bloqueo ni cuentan ni lo alargan.
+
+**3. Desde fuera no se nota.** Una cuenta bloqueada, un email que no existe y una contraseña errónea dan **la misma respuesta** (401, mismos encabezados, mismo cuerpo) y **tardan lo mismo**: en los tres casos se hace una verificación de contraseña completa, contra un hash ficticio cuando no hay una real que comprobar. Ese hash se genera al arrancar a partir de un secreto que nadie conoce, así que verificar contra él no puede salir bien nunca. Esto cierra además el límite anotado en ADR-009: antes, un email inexistente respondía enseguida y uno existente tardaba el tiempo del hash, y medirlo delataba qué emails tenían cuenta. Cómo se comprueba sin cronómetros (que serían intermitentes): un verificador que **cuenta las llamadas** (capítulo 9).
+
+**4. Una contraseña correcta pone el contador a cero** (por ahora, porque es un acceso completo). Cuando exista el segundo factor, una contraseña correcta en una cuenta con MFA **no** lo reiniciará: si lo hiciera, quien conoce la contraseña podría reiniciar el contador y seguir adivinando códigos.
+
+**Lo que el bloqueo no hace.** No cierra las sesiones ya abiertas (quien las abrió tenía la contraseña; bloquearle a él castigaría a la víctima), y tiene un coste: quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito cada 15 minutos. Es el precio de bloquear por cuenta, y se mitiga con el límite por IP y con los eventos `1005` y `1006`, que hacen visible una ráfaga (capítulo 8).
 
 ---
 
@@ -170,7 +184,7 @@ Lo escribe [`TokenService.GenerateAccessToken`](../../src/OfiFlow.Infrastructure
 
 La firma es la clave. El servidor calcula la firma con un secreto que solo él conoce. Si alguien cambia `"role": "Technician"` por `"Owner"`, o `tenant_id` por el de otra empresa, la firma que viaja **ya no corresponde** al contenido, y el servidor la rechaza con un 401. Para falsificar un token válido habría que conocer el secreto.
 
-En cada petición, el servidor comprueba el token con estas reglas ([`DependencyInjection.cs:67-74`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)):
+En cada petición, el servidor comprueba el token con estas reglas ([`DependencyInjection.cs:72-79`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)):
 
 | Qué se comprueba | Qué evita |
 |---|---|
@@ -187,7 +201,7 @@ Y en la configuración, un detalle que dio un susto de verdad: `options.MapInbou
 El secreto que firma los tokens es lo más delicado de todo el sistema: quien lo tenga puede fabricar un token de cualquiera. Por eso:
 
 - **Nunca está en el repositorio.** En local vive en `dotnet user-secrets` (fuera del proyecto); en producción, en una variable de entorno o un almacén de secretos.
-- **Si falta, la aplicación no arranca**, con un mensaje que indica el comando exacto ([`DependencyInjection.cs:49-52`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)). Prefiere no funcionar a funcionar con una clave débil por defecto.
+- **Si falta, la aplicación no arranca**, con un mensaje que indica el comando exacto ([`DependencyInjection.cs:54-60`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)). Prefiere no funcionar a funcionar con una clave débil por defecto.
 - En los tests se genera uno distinto en cada ejecución.
 
 ### Un límite inevitable
@@ -277,7 +291,7 @@ Es la misma idea del capítulo anterior, y por las mismas razones:
 - **256 bits aleatorios** de un generador criptográfico: imposible de adivinar (se codifica en 43 caracteres aptos para un enlace).
 - **Solo se guarda su hash** (SHA-256). Si roban la base de datos, no encuentran tokens utilizables.
 - **Un solo uso y caduca a los 7 días.** Se puede revocar mientras esté pendiente.
-- Se genera y se hashea en **un único sitio**, [`InvitationToken`](../../src/OfiFlow.Application/Tenancy/InvitationToken.cs), para que crear y aceptar usen exactamente la misma regla.
+- Se genera y se hashea en **un único sitio**, [`OpaqueToken`](../../src/OfiFlow.Application/Common/Security/OpaqueToken.cs), para que crear y aceptar usen exactamente la misma regla. Está en `Common/Security/` porque desde la spec 010 lo usa también el **desafío del login en dos pasos** (Parte 7): mismo generador, mismo hash, distinto uso.
 
 Un detalle que se parece a la sal y no lo es: este hash **no lleva sal**, a diferencia del de las contraseñas. Una sal sirve para que dos contraseñas iguales no den el mismo hash y para frenar diccionarios; un token ya es aleatorio de 256 bits, no hay diccionario que atacar, y hace falta un hash **determinista** para poder buscarlo en el índice.
 
@@ -311,28 +325,124 @@ La corrección fue tratar ambos fallos de la confirmación como lo mismo (ambos 
 
 ---
 
+## Parte 7 — El segundo factor: lo que ya existe (spec 010, en construcción)
+
+La spec 010 añade un **segundo factor** (un código de 6 dígitos que cambia cada 30 segundos, en una app del móvil) y el bloqueo de cuenta. **Todavía no hay rutas**: se construye por bloques y, de momento, existen las piezas internas y el almacén donde vivirán los secretos. Lo que conviene entender ya es *cómo se guarda*, porque es la decisión que más se parece a una trampa.
+
+### Por qué el secreto se cifra y no se hashea
+
+Una contraseña se guarda como hash (Parte 2) porque el servidor **solo necesita comprobar** si lo que escribes coincide. El secreto TOTP es distinto: para calcular el código correcto de este instante, el servidor necesita **el secreto en claro**. Un hash no sirve, porque no se puede deshacer. Hay que guardarlo de forma que se pueda recuperar, y por eso se **cifra**: quien robe la base de datos se lleva texto ilegible, no los secretos de todos.
+
+### AES-256-GCM, y lo que añade cada pieza
+
+El cifrado es **AES-256 en modo GCM**, que además de ocultar el contenido lo **autentica**: si alguien cambia un solo byte del texto guardado, al descifrar no sale basura, sale un error. Lo guardado en la columna es `versión | nonce | etiqueta | texto cifrado`, en Base64 ([`AesGcmSecretProtector`](../../src/OfiFlow.Infrastructure/Identity/AesGcmSecretProtector.cs)):
+
+| Pieza | Para qué |
+|---|---|
+| **Nonce** (12 bytes aleatorios, distinto en cada cifrado) | Repetirlo con la misma clave rompe GCM por completo. Por eso se genera uno nuevo cada vez, y un test cifra el mismo secreto mil veces y comprueba que no se repite ninguno |
+| **Etiqueta** (16 bytes) | La que detecta cualquier manipulación |
+| **Id de la cuenta como *dato asociado*** | No se cifra, pero queda atado al resultado. Si alguien con acceso a la base de datos copia el secreto de una cuenta a la fila de otra, **no se descifra**: el Id ya no coincide |
+| **Byte de versión** | El día que haya que cambiar la clave, lo ya guardado dice con cuál se cifró |
+
+### La clave es otro secreto más
+
+Quien tenga la base de datos **y** la clave puede descifrar. Por eso la clave (`Mfa:EncryptionKey`) vive **fuera** de la base de datos, en user-secrets o en una variable de entorno (capítulo 1), y la API **no arranca sin ella** o si no mide 32 bytes: el mensaje de error dice qué pasa pero nunca reproduce el valor. Es el mismo trato que `Jwt:Secret`, y la razón por la que no se usó la herramienta de protección de datos de ASP.NET (guarda su llavero normalmente en la misma base de datos, así que no protegería frente a su robo).
+
+### Tres tablas, ninguna de una empresa
+
+| Tabla | Qué guarda |
+|---|---|
+| `MfaCredentials` | El secreto cifrado de la cuenta (como mucho uno, porque su clave es el propio Id de la cuenta), si ya está confirmado y el último paso de 30 s aceptado |
+| `RecoveryCodes` | El **hash** de cada código de recuperación (10 por cuenta) y si se usó |
+| `MfaChallenges` | El hash del desafío del login en dos pasos, cuándo caduca y cuántos códigos erróneos lleva |
+
+Como `ApplicationUser` y `RefreshToken`, son credenciales de una **cuenta**: no llevan filtro de empresa (capítulo 5). Y como `RefreshToken`, **no tienen clave foránea** hacia la cuenta, así que la base de datos no las borra sola. Por eso `DeleteUserAsync` las borra explícitamente al quitar a un miembro, y un test contra SQL Server comprueba que no queda ninguna fila suya (y que las de otra persona siguen ahí).
+
+Las tres llevan la columna de versión de fila (`rowversion`) de las invitaciones: cuando llegue la verificación, **dos peticiones simultáneas con el mismo código** leerán el mismo último paso, y solo una podrá guardar.
+
+### Activar, desactivar y regenerar (bloque 4)
+
+Todas estas operaciones son sobre **la propia cuenta** (permiso `Mfa.Manage`, que tienen los cinco roles): la cuenta sale del token, así que no hay ningún Id en la petición que manipular. Los pasos, y el porqué de cada uno:
+
+| Paso | Qué exige | Por qué |
+|---|---|---|
+| **1. Pedir el secreto** | La **contraseña actual** | Un token de acceso robado (vale 30 minutos) no debe bastar para enrolar el móvil del atacante. La contraseña se comprueba **antes** que el estado de la cuenta: quien solo tiene el token no averigua, por un error distinto, si ya hay MFA |
+| **2. Confirmar** | Un código válido de la app, del secreto pendiente | Hasta que no se demuestra que el móvil lo ha escaneado bien, el MFA **no cuenta como activo** (si no, un error al escanear dejaría a la persona fuera). Se devuelven **diez códigos de recuperación**, una sola vez |
+| **3. Desactivar** | Contraseña **y** un código (de la app o de recuperación) | Quien solo tenga la contraseña, o solo un token, no puede quitar el segundo factor |
+| **4. Regenerar códigos** | Contraseña y un código | Los anteriores, usados o no, dejan de valer |
+
+**Activar y desactivar cierran todas las sesiones de la cuenta.** Lo que cambia es *cómo se demuestra quién eres*, y las sesiones abiertas se abrieron con las reglas antiguas. Se hace en el **mismo `SaveChanges`** que el cambio, para que sea todo o nada. El token de acceso ya emitido sigue valiendo hasta 30 minutos (el límite de siempre).
+
+**Un código no se acepta dos veces, ni siquiera a la vez.** El estándar (RFC 6238) lo exige: quien viera el código por encima del hombro podría reutilizarlo durante los 30 segundos de su vida. Se guarda el último paso aceptado, y se anota con un `UPDATE` condicional (`... WHERE LastUsedTimeStep < `): de cuatro peticiones simultáneas con el mismo código, **solo una cambia una fila**. Un `if` en el código no lo garantizaría, porque comprobar y escribir serían dos pasos. Con los códigos de recuperación pasa igual (`... WHERE UsedAt IS NULL`). Y cuando se acepta un código de un paso *posterior*, los anteriores dejan de valer aunque aún estén en la ventana de ±30 segundos.
+
+**Los fallos cuentan para el bloqueo de cuenta** (Parte 3): la contraseña errónea y el código erróneo, al pedir el secreto, desactivar o regenerar, reservan y suman un intento como en el login. Con un matiz que se pensó a propósito: un **acierto** devuelve el intento pero **no pone el contador a cero**, porque no es un inicio de sesión; si lo hiciera, quien tuviera un token robado y la contraseña podría reiniciar el contador de otro ataque en curso. Los fallos al **confirmar** el primer código, en cambio, *no* cuentan: quien se equivoca al escanear el QR no debe quedarse 15 minutos sin poder entrar (se limitan por IP).
+
+**Si se pierde el móvil.** Primero, los **códigos de recuperación**: diez de 80 bits, de un solo uso, de los que solo se guarda el hash. Y si faltan, **un gestor puede reiniciar el segundo factor** del miembro, con la misma jerarquía de roles de la spec 009 (capítulo 8): borra su secreto y sus códigos y cierra sus sesiones. Es idempotente (si no había MFA, no falla) y no se puede usar sobre uno mismo ni sobre el `Owner`.
+
+**Por qué SHA-256 basta para los códigos de recuperación y no para una contraseña.** Una contraseña la elige una persona, así que existe un diccionario de candidatos y hace falta un hash lento (PBKDF2). Un código de recuperación es **aleatorio de 80 bits**: no hay diccionario, y probar 2^80 candidatos es inviable aunque alguien robe la base de datos.
+
+### El login en dos pasos (bloque 5)
+
+Con el segundo factor activo, la contraseña **ya no da sesión**. El recorrido:
+
+```
+ POST /auth/login  { email, contraseña }
+        │
+        ▼
+ ① IdentityService.AuthenticateAsync     ¿existe? ¿bloqueada? ¿la contraseña coincide?
+        │  sin MFA  → sesión como siempre ───────────────────────────────▶ 200 { accessToken, ... }
+        │  con MFA  → devuelve la reserva (NO pone el contador a cero)
+        ▼
+ ② LoginCommandHandler                  crea un DESAFÍO (solo se guarda su hash) ▶ 200 { mfaRequired, challenge, expiresAt }
+        │                                        ^ aquí no se emite ni un token
+        ▼
+ POST /auth/mfa/verify  { challenge, código }       (el desafío no es un token de acceso)
+        │
+        ▼
+ ③ MfaService.RedeemChallengeAsync       ¿desafío vivo? ¿código válido? → lo canjea, UNA vez
+        ▼
+ ④ VerifyMfaChallengeCommandHandler      busca la empresa de la cuenta ▶ 200 { accessToken, ... }
+```
+
+**El desafío es opaco, no un JWT.** Sería tentador devolver «un token provisional» firmado. Pero un JWT del mismo emisor es un token como cualquier otro: un error de audiencia lo convertiría en un token de acceso. El desafío son **256 bits aleatorios** (el mismo generador que las invitaciones: `OpaqueToken`), de los que solo se guarda el **hash**, y no tiene la forma de un JWT, así que ni por error se acepta como sesión. Además, al guardarse en la base de datos puede hacerse lo que un JWT no permite: que **dure 5 minutos**, que **se use una sola vez** y que **muera a los 5 códigos erróneos**.
+
+**Un solo uso, de verdad.** Canjearlo es una única sentencia condicional (`... WHERE ConsumedAt IS NULL AND ExpiresAt > ahora AND FailedAttempts < 5`): de cuatro canjes simultáneos, solo uno cambia la fila. Y como el código TOTP ya se anota de forma atómica (arriba), ni siquiera dos códigos distintos canjean el mismo desafío dos veces.
+
+**Todos los fallos del segundo paso son iguales desde fuera** (401): desafío inventado, caducado, usado o agotado, código erróneo o repetido, cuenta bloqueada, o texto con la forma equivocada. El motivo real va al registro (`1504`). Por eso el validador de la petición solo pone un tope de tamaño y **no** comprueba la forma: un validador respondería 400, y esa diferencia ya diría que «la forma estaba mal».
+
+**Qué cuenta contra el bloqueo.** Cada código erróneo suma uno al contador de la cuenta **y** gasta uno de los 5 intentos del desafío. Un desafío desconocido o caducado **no** cuenta contra la cuenta: no hay nadie intentando adivinar nada, y si contara, cualquiera podría bloquear una cuenta ajena inventando desafíos.
+
+**La pieza clave: la contraseña correcta no reinicia el contador (R17).** Si lo reiniciara, un atacante que ya conoce la contraseña probaría 4 códigos, pondría la contraseña para volver a cero, probaría 4 más… y adivinaría el código sin límite (un código de 6 dígitos tiene un millón de valores). Por eso, con MFA, la contraseña correcta **devuelve** su intento reservado en vez de poner el contador a cero, y solo un **acceso completo** (contraseña y segundo factor) lo reinicia. Un test intercala la contraseña correcta entre los fallos y comprueba que el contador sigue donde estaba y que el quinto fallo bloquea la cuenta.
+
+**Quién puede emitir sesiones.** Es la promesa de todo el segundo factor, y se vigila con un test de arquitectura: solo el login (rama sin MFA) y el canje del desafío llaman a `IssueTokensAsync`. Si alguien añade mañana otro camino (un «login con Google», un «recordar dispositivo»), el test falla y obliga a decidir, a propósito, qué pasa allí con el segundo factor. Otro test comprueba que, dentro del login, la rama «falta el segundo factor» termina con un `return` **antes** de la línea que emite la sesión.
+
+**Un fallo que solo cazó la prueba de extremo a extremo.** El diseño inicial tenía un agujero sutil. Con **4 fallos previos**, el quinto intento *reserva*, el contador llega a 5 y la cuenta se bloquea **antes de saber si la contraseña era buena**. Si era buena (cuenta con MFA), devolver la reserva bajaba el contador a 4 pero **dejaba el bloqueo puesto**: una persona legítima que por fin acertaba con su contraseña quedaba fuera 15 minutos por un intento que no fue un fallo. Los tests de cada pieza por separado pasaban, porque cada uno probaba una parte; lo cazó el test que hace el recorrido entero (4 fallos, login con MFA completo, 4 fallos más). La corrección está en `ReleaseAsync`: si al devolver el intento el contador baja del umbral, **levanta también el bloqueo que esa misma reserva provocó**; un bloqueo de verdad (5 fallos reales) no se toca, porque el contador sigue en el umbral o por encima. Hay un test en cada nivel (el servicio, el login y el recorrido HTTP).
+
+
+---
+
 ## Cómo se protege todo el flujo
 
 Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenazas final del manual). Las técnicas **T1110** son de MITRE ATT&CK, que verás en CyberOps:
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP | `RateLimiting.cs:29` | `RateLimitingTests` |
-| Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:13,28` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
+| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP, **y bloqueo por cuenta** (5 fallos / 15 min, con el intento reservado antes de comprobar) | `RateLimiting.cs:35`, `AccountLockout.cs` | `RateLimitingTests`, `FiftySimultaneousWrongAttempts_PerformExactlyFiveRealVerifications_AndLockTheAccount` |
+| Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:18,38` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
 | Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
-| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:30` | `Handle_WithInvalidCredentials_ReturnsNull` |
-| Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs:67-69` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEventWithoutEmailOrPassword` |
+| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:45` | `Handle_WithInvalidCredentials_IsRejected` |
+| Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs` (`LogLoginFailed` y los dos eventos del bloqueo) | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` (SQL real) y `TheSecurityEvents_AreLoggedWithoutTheEmailNorThePassword` (HTTP) |
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
-| Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
-| Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:73-74` | **Sin test propio** (ver "Controles sin test") |
+| Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:78-79` | **Sin test propio** (ver "Controles sin test") |
 | **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:133` | `RotateRefreshTokenAsync_WithValidToken_...` |
-| Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `InvitationToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
-| Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `InvitationToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
+| Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `OpaqueToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
+| Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | Usar dos veces la misma invitación | Un solo uso + versión de fila: gana una | `Invitation.cs`, `InvitationConfiguration.cs` | `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` |
 | Un invitante que se queda con la contraseña de otro | La persona elige la suya al aceptar; el invitante solo fija email y rol | `AcceptInvitationCommand.cs` | `ThePersonCanThenLogInWithTheirOwnPassword` |
-| Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:49-52` | **Sin test propio** (ver "Controles sin test") |
-| El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:63` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
+| Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:54-60` | **Sin test propio** (ver "Controles sin test") |
+| El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:68` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
 
 ---
 
@@ -340,9 +450,9 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 
 Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos están anotados como pendientes en el ADR-009:
 
-**1. No hay bloqueo de cuenta.** El límite de peticiones es **por IP**, no por cuenta. Un ataque de *credential stuffing* (T1110.004: probar pares email/contraseña filtrados en otros sitios) repartido entre **miles de IPs**, con un intento por IP, no lo vería. Falta un contador de fallos por cuenta (*account lockout*).
+**1. ✅ Cerrado (spec 010): hay bloqueo de cuenta.** Antes, el límite de peticiones era solo **por IP**: un ataque de *credential stuffing* (T1110.004: probar pares email/contraseña filtrados en otros sitios) repartido entre miles de IPs, con un intento por IP, no lo habría visto. Ahora hay un contador por cuenta (5 fallos → 15 minutos) que resiste las peticiones simultáneas (Parte 3). **Riesgo aceptado:** se puede mantener bloqueada una cuenta ajena fallando a propósito.
 
-**2. El tiempo de respuesta delata si un email existe.** La respuesta es idéntica, pero tarda distinto: si el email no existe, el servidor contesta enseguida; si existe, calcula el hash de la contraseña (lento a propósito). Un atacante que mida el tiempo puede distinguirlos. La solución es hacer el mismo trabajo en ambos casos; está en el ADR-009 como pendiente.
+**2. ✅ Cerrado (spec 010): el tiempo de respuesta del login ya no delata si un email existe.** Antes, un email inexistente respondía enseguida y uno existente tardaba lo que cuesta el hash. Ahora se hace la misma verificación completa en los tres casos (desconocido, bloqueada, contraseña errónea). Sigue abierto, aparte, que el **registro** diga «el email ya está registrado».
 
 **3. El registro revela si un email ya está en uso.** Responde "el email ya está registrado". Es cómodo para el usuario, pero permite comprobar si alguien tiene cuenta. Se revisará cuando exista confirmación de email.
 

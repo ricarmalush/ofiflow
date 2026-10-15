@@ -13,6 +13,7 @@
 #     Rol de un miembro: 0 = Owner, 1 = Admin, 2 = Manager, 3 = Technician, 4 = Employee.
 #     Las respuestas los devuelven como texto.
 #   - Hay límites de peticiones por IP: el registro admite 3 por hora, aceptar una invitación 10 por hora,
+#     el segundo paso del login 10 por minuto, gestionar el segundo factor 10 por hora,
 #     el login 5 por minuto y la renovación 20 por minuto. Si te pasas, la API responde 429 con la
 #     cabecera Retry-After.
 #   - El token de acceso dura 30 minutos. Pasado ese tiempo, usa la petición "Renovar sesión".
@@ -455,3 +456,92 @@ Content-Type: application/json
   "email": "ana-{{suffix}}@example.com",
   "password": "{{password}}"
 }
+
+
+###############################################################################
+# 7. SEGUNDO FACTOR (spec 010): activarlo, entrar en dos pasos y desactivarlo
+###############################################################################
+# Necesitas una app de autenticación (Google Authenticator, Microsoft Authenticator, Authy...).
+# Esta colección no puede calcular el código de 6 dígitos: lo lees en la app y lo pegas en
+# @mfaCode (cambia cada 30 segundos y cada código solo vale UNA vez; si falla, espera al siguiente).
+# Ejecuta estas peticiones con el token de la empresa A (sección 1). Si activas el segundo factor,
+# las sesiones de la cuenta se cierran: vuelve a entrar con "Segundo paso" más abajo.
+
+@mfaCode = 000000
+
+### Estado del segundo factor de TU cuenta (nunca devuelve secretos ni códigos)
+GET {{host}}/api/v1/account/mfa
+Authorization: Bearer {{tokenA}}
+
+### Pedir el secreto (exige tu contraseña). La respuesta lleva Cache-Control: no-store.
+### Copia "secret" en tu app (añadir cuenta manualmente) o abre "otpAuthUri" como QR. Se muestra UNA vez.
+# @name setupMfa
+POST {{host}}/api/v1/account/mfa/setup
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "password": "{{password}}"
+}
+
+### Confirmar con el primer código de la app: activa el MFA, cierra las sesiones y devuelve
+### 10 códigos de recuperación (guárdalos: se muestran UNA sola vez)
+POST {{host}}/api/v1/account/mfa/enable
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "code": "{{mfaCode}}"
+}
+
+### Login de una cuenta con segundo factor: la contraseña NO da sesión, da un desafío (caduca a los 5 minutos)
+# @name loginMfaA
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "demo-a-{{suffix}}@example.com",
+  "password": "{{password}}"
+}
+
+@challengeA = {{loginMfaA.response.body.$.challenge}}
+
+### Segundo paso: canjear el desafío con un código NUEVO de la app (o uno de recuperación,
+### con o sin guiones). Un desafío, un código erróneo o una cuenta bloqueada dan SIEMPRE el mismo 401.
+# @name verifyMfaA
+POST {{host}}/api/v1/auth/mfa/verify
+Content-Type: application/json
+
+{
+  "challenge": "{{challengeA}}",
+  "code": "{{mfaCode}}"
+}
+
+### Con 5 códigos o contraseñas erróneas seguidos, la cuenta se bloquea 15 minutos (aunque la
+### contraseña sea la correcta). La respuesta es la misma 401 que una contraseña errónea.
+
+### Regenerar los códigos de recuperación (contraseña y un código): los anteriores dejan de valer
+POST {{host}}/api/v1/account/mfa/recovery-codes
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "password": "{{password}}",
+  "code": "{{mfaCode}}"
+}
+
+### Desactivar el segundo factor (contraseña y un código): cierra las sesiones de la cuenta
+POST {{host}}/api/v1/account/mfa/disable
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "password": "{{password}}",
+  "code": "{{mfaCode}}"
+}
+
+### Reiniciar el segundo factor de OTRO miembro (para quien perdió el móvil y los códigos).
+### {id} es el Id de la PERTENENCIA (el que devuelve GET /api/v1/users). Sigue la jerarquía de roles:
+### nunca sobre el Owner ni sobre uno mismo (403). Es idempotente (204 aunque no tuviera MFA).
+DELETE {{host}}/api/v1/users/00000000-0000-0000-0000-000000000000/mfa
+Authorization: Bearer {{tokenA}}

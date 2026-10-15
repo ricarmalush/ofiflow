@@ -51,6 +51,10 @@ jobs:
       - name: Generar Jwt__Secret efímero
         run: echo "JWT_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
+      # Igual: la clave que cifra los secretos del segundo factor (spec 010). Sin ella la API no arranca.
+      - name: Generar Mfa__EncryptionKey efímera
+        run: echo "MFA_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
       - name: Aplicar migraciones
         working-directory: src/OfiFlow.Infrastructure
         run: dotnet ef database update
@@ -65,6 +69,7 @@ jobs:
           ASPNETCORE_URLS: http://localhost:5279
           ConnectionStrings__Default: "Server=localhost,1433;Database=OfiFlow;User Id=sa;Password=CiOnly!DastPassw0rd;TrustServerCertificate=True;"
           Jwt__Secret: ${{ env.JWT_SECRET }}
+          Mfa__EncryptionKey: ${{ env.MFA_KEY }}
           Jwt__Issuer: "OfiFlow.Api.Dast"
           Jwt__Audience: "OfiFlow.Client.Dast"
 

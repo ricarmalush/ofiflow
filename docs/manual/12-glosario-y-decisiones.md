@@ -21,14 +21,17 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Autorización** (*authorization*) | Saber **qué puedes hacer** (permisos y roles) | 6, 8 |
 | **Behavior** (de MediatR) | Un paso que se ejecuta antes o después de cada operación, para todas: autorización y validación | 4 |
 | **Bearer** | Esquema de autenticación en el que el token se envía en la cabecera `Authorization: Bearer <token>` | 6 |
+| **Bloqueo de cuenta** (*account lockout*) | Tras 5 contraseñas o códigos erróneos, la cuenta no deja entrar durante 15 minutos, ni con la contraseña correcta. Se cuenta **reservando el intento antes de comprobarlo**, para que las peticiones simultáneas no lo esquiven | 6, 8 |
 | **Caso de uso** (*use case*) | Una cosa que se puede hacer con el sistema ("crear un trabajo"). En OfiFlow, un *Command* o una *Query* | 3 |
 | **Claim** | Un dato dentro de un token (quién es, de qué empresa). Está firmado: no se puede alterar sin que se note | 6 |
 | **Clean Architecture** | Organizar el código en capas concéntricas donde las dependencias apuntan hacia dentro | 2 |
 | **CodeQL** | Analizador de GitHub que sigue el flujo de los datos buscando vulnerabilidades | 10 |
+| **Código de recuperación** (*recovery code*) | Uno de diez códigos de un solo uso (80 bits, solo se guarda su hash) que permite entrar si se pierde el móvil | 6 |
 | **Command / Query** | Una operación que cambia algo / una que solo lee | 3 |
 | **Concurrencia optimista** (*optimistic concurrency*) | Dos peticiones leen lo mismo; al guardar, la base de datos solo deja confirmar a una (columna `rowversion`) | 6 |
 | **CQRS** | Separar las operaciones que cambian datos de las que los leen | 2 |
 | **CSP** (*Content-Security-Policy*) | Cabecera que le dice al navegador qué puede cargar o ejecutar una respuesta | 8 |
+| **Desafío** (*challenge*) | Lo que recibe quien pone bien la contraseña en una cuenta con segundo factor: un valor opaco (no un JWT) que caduca en 5 minutos, se canjea una vez con un código y muere a los 5 intentos | 6 |
 | **DAST** | Probar la aplicación **en ejecución**, desde fuera, como un atacante (OWASP ZAP) | 10 |
 | **DDD** (*Domain-Driven Design*) | Modelar el código alrededor de las reglas del negocio | 2 |
 | **Defensa en profundidad** (*defense in depth*) | Varias protecciones seguidas, para que si una falla la siguiente aún proteja | 8 |
@@ -64,11 +67,13 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Permiso** (*permission*) | Lo que se puede hacer, con el formato `Entidad.Acción` (`Jobs.Assign`) | 8 |
 | **ProblemDetails** (RFC 9457) | El formato estándar de las respuestas de error de la API | 7 |
 | **PR** (*Pull Request*) | La petición de fusionar una rama en `master`, donde corren las comprobaciones | 10, 11 |
+| **Reserva atómica del intento** | Sumar el intento fallido y comprobar el límite en una sola sentencia SQL, antes de comprobar la contraseña. Es lo que impide que 50 peticiones simultáneas den 50 intentos | 6 |
 | **Rate limiting** | Limitar cuántas peticiones puede hacer una IP en una ventana de tiempo | 8 |
 | **RBAC** (*Role-Based Access Control*) | Autorización basada en roles: cada rol tiene unos permisos | 8 |
 | **Refresh token** | Un segundo token, de larga duración, para renovar la sesión; se rota en cada uso | 6 |
 | **Revalidación** | Comprobar en cada petición, en la base de datos, que la persona sigue en la empresa y con qué rol | 8 |
 | **Rol** (*role*) | Un conjunto de permisos con nombre: `Owner`, `Admin`, `Manager`, `Technician`, `Employee` | 8 |
+| **Segundo factor** (*MFA*, *2FA*) | Una segunda prueba de quién eres además de la contraseña: aquí, el código TOTP de la app del móvil. Opcional por ahora | 6, 8 |
 | **SAST** | Analizar el **código** sin ejecutarlo para buscar vulnerabilidades | 10 |
 | **SCA** | Vigilar las **dependencias** por vulnerabilidades conocidas (NuGetAudit, Dependabot) | 10 |
 | **Spec-Driven Development** | Escribir la especificación antes que el código | 11 |
@@ -76,6 +81,7 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Tenant** | Una empresa cliente de OfiFlow | 5 |
 | **Testcontainers** | Librería que arranca un SQL Server real en Docker desde el propio test | 9 |
 | **TimeProvider** | La forma de pedir la hora en .NET, sustituible en los tests para no esperar | 11 |
+| **TOTP** (*Time-based One-Time Password*, RFC 6238) | El código de 6 dígitos que cambia cada 30 segundos y sale de un secreto compartido y de la hora. Cada paso solo se acepta una vez | 6 |
 | **Token** | Una credencial de un solo valor secreto (de acceso, de renovación o de invitación) | 6 |
 | **Value object** | Un objeto sin identidad propia, definido por su valor (`Email`) | 3 |
 | **ZAP** | Herramienta de OWASP que ataca automáticamente una API en ejecución | 10 |
@@ -111,6 +117,7 @@ Cada ADR está en [`docs/adr/`](../adr/). El manual **explica cómo funciona**; 
 | [011](../adr/ADR-011-errores-codigos-diccionario.md) Errores | Códigos estables y un diccionario de mensajes; ProblemDetails | 7 |
 | [012](../adr/ADR-012-autorizacion-rbac.md) Autorización | Permisos `Entidad.Acción` en una tabla única rol → permisos, comprobados antes que la validación | 8 |
 | [013](../adr/ADR-013-gestion-de-usuarios.md) Gestión de usuarios | Invitación con token de un solo uso; jerarquía de roles como tabla; el rol se lee de la base de datos en cada petición | 6, 8 |
+| [014](../adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) Segundo factor y bloqueo de cuenta | TOTP opcional con el secreto cifrado (AES-GCM) y un desafío opaco de un solo uso para el login; bloqueo por cuenta con el intento reservado antes de comprobarlo | 6, 8 |
 
 ## Las especificaciones
 
@@ -127,10 +134,11 @@ Cada spec está en [`docs/specs/`](../specs/) con su `spec.md` y su `tasks.md`.
 | **007** Aislamiento endurecido | Guardarraíles y tests que garantizan que una empresa nunca ve los datos de otra |
 | **008** RBAC | Los cinco roles se comprueban: permisos por operación y `AuthorizationBehavior` |
 | **009** Gestión de usuarios | Invitar, aceptar, listar, cambiar el rol y quitar; revalidación del rol en cada petición |
+| **010** Segundo factor y bloqueo de cuenta | TOTP opcional, login en dos pasos, códigos de recuperación, reinicio por un gestor y bloqueo de cuenta por intentos fallidos |
 
 ## Lo que viene
 
-Lo que **aún no existe** está explicado con honestidad en cada capítulo (sección "Dónde están hoy los límites") y resumido en el [capítulo 0](./00-que-es-ofiflow.md). Lo más relevante: el panel de operador de la plataforma, la agenda y la asignación de técnicos (Fase 2), el envío de invitaciones por email, el doble factor de autenticación y el bloqueo de cuentas, y que un técnico solo vea sus trabajos.
+Lo que **aún no existe** está explicado con honestidad en cada capítulo (sección "Dónde están hoy los límites") y resumido en el [capítulo 0](./00-que-es-ofiflow.md). Lo más relevante: el panel de operador de la plataforma, la agenda y la asignación de técnicos (Fase 2), el envío de invitaciones por email, el segundo factor obligatorio (para `Owner` y `Admin`, con pantallas) y las *passkeys*, recuperar y cambiar la contraseña, y que un técnico solo vea sus trabajos.
 
 ## Siguiente capítulo
 

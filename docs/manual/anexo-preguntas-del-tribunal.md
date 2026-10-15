@@ -67,10 +67,28 @@ Es un JWT firmado (HMAC-SHA256) con el usuario, la empresa y el rol; dura **30 m
 Vale hasta que caduque (un JWT no se puede anular), **pero** el rol y la pertenencia a la empresa se revalidan en la base de datos en cada petición, así que un token de alguien al que se quitó ya no autoriza nada. *(Cap. 6 y 8)*
 
 **¿Cómo se frena la fuerza bruta?**
-Con un límite de peticiones por IP: 5 logins por minuto, 3 registros por hora, 10 aceptaciones de invitación por hora. Al pasarse, un 429 y un evento de seguridad. **Límite honesto:** no hay bloqueo por cuenta (un ataque repartido entre muchas IP no lo ve). *(Cap. 8)*
+Con un límite de peticiones por IP: 5 logins por minuto, 3 registros por hora, 10 aceptaciones de invitación por hora. Al pasarse, un 429 y un evento de seguridad. **Además, desde la spec 010, **cada cuenta se bloquea 15 minutos tras 5 fallos** aunque los intentos vengan de IP distintas, y el intento se reserva antes de comprobar la contraseña para que 50 peticiones simultáneas no den 50 intentos. **Límite honesto:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito. *(Cap. 6 y 8)*
 
 **¿Se puede saber si un email está registrado?**
-El login responde un único 401 para "email desconocido" y "contraseña incorrecta". **Pero** el registro dice "ya está registrado" y el tiempo de respuesta del login delata si el email existe: son dos límites conocidos y anotados. *(Cap. 6, 8)*
+El login responde un único 401 para "email desconocido", "contraseña incorrecta" y "cuenta bloqueada", y tarda lo mismo en los tres (se hace siempre una verificación completa, contra un hash ficticio si no hay cuenta). **Pero** el registro sí dice "ya está registrado": un límite conocido y anotado. *(Cap. 6, 8)*
+
+**¿Por qué TOTP y no SMS?**
+El SMS es el factor más débil (se secuestra la línea con un duplicado de SIM) y exige un proveedor de pago con un dato personal más. El TOTP es gratis, no depende de nadie y lo entiende cualquier app. **Límite honesto:** no resiste al *phishing*; las *passkeys* sí, y son el siguiente paso. *(ADR-014; cap. 6)*
+
+**¿Por qué el secreto TOTP se cifra y no se hashea?**
+Porque el servidor necesita el secreto **en claro** para calcular el código de este instante: un hash no se puede deshacer. Se cifra con AES-256-GCM (cifrado autenticado), con la clave **fuera** de la base de datos y atado al Id de la cuenta, de modo que un secreto copiado a la fila de otra cuenta no se descifra. *(Cap. 6)*
+
+**¿Qué pasa si llegan 50 intentos de login a la vez contra la misma cuenta?**
+Que solo 5 llegan a comprobar la contraseña. El intento se **reserva con una sola sentencia SQL atómica antes de comprobarlo**; con «leer el contador, comprobar y sumar si falla», las 50 leerían «0 fallos» y el atacante tendría 50 intentos. Hay un test con 50 peticiones simultáneas contra SQL Server real, y otro por HTTP. *(Cap. 6, 9)*
+
+**¿Por qué la contraseña correcta no reinicia el contador del bloqueo en una cuenta con segundo factor?**
+Porque si lo reiniciara, quien ya conoce la contraseña probaría 4 códigos, pondría la contraseña para volver a cero, probaría 4 más… y adivinaría un código de 6 dígitos sin límite. Solo un acceso completo (contraseña y código) lo reinicia. *(Cap. 6)*
+
+**¿Por qué SHA-256 basta para los códigos de recuperación y no para una contraseña?**
+Una contraseña la elige una persona, así que existe un diccionario de candidatos y hace falta un hash lento. Un código de recuperación es aleatorio de 80 bits: no hay diccionario, y probar 2^80 candidatos es inviable aunque se robe la base de datos. *(Cap. 6)*
+
+**¿Qué error real encontrasteis con el segundo factor?**
+Uno que solo cazó el test de extremo a extremo: con 4 fallos previos, el quinto intento reserva, llega a 5 y bloquea la cuenta *antes de saber si la contraseña es buena*; con segundo factor, devolver la reserva no levantaba el bloqueo y una persona legítima quedaba fuera 15 minutos. Los tests de cada pieza pasaban; lo cazó el recorrido entero. Se corrigió y hay un test en tres niveles. *(Cap. 6, 9)*
 
 ## 4. Autorización y gestión de usuarios
 
@@ -161,7 +179,7 @@ Porque obliga a pensar antes (las decisiones difíciles se descubren al escribir
 
 **¿Qué NO está hecho? (la pregunta más importante)**
 Con honestidad y de lo más a lo menos preocupante:
-- **No hay doble factor de autenticación ni bloqueo de cuenta** tras intentos fallidos.
+- **El segundo factor es opcional y el TOTP no resiste al *phishing*:** obligarlo para `Owner` y `Admin` exige pantallas, y las *passkeys* son el siguiente paso. Tampoco se puede cambiar ni recuperar la contraseña, y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma.
 - **El token de invitación no se envía por email**: lo recibe quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
@@ -174,7 +192,7 @@ Con honestidad y de lo más a lo menos preocupante:
 *(Secciones "Dónde están hoy los límites" de los capítulos 6, 8, 9 y 10)*
 
 **¿Qué cerrarías primero?**
-Una respuesta defendible: el **doble factor y el bloqueo de cuenta**, porque la cuenta del dueño de una empresa (y más adelante la del operador de la plataforma) es el objetivo más valioso y hoy solo la protege una contraseña y un límite por IP. Lo siguiente, que el técnico solo vea sus trabajos. **Lo importante es poder explicar por qué eliges ese**, no cuál eliges.
+Una respuesta defendible: **recuperar y cambiar la contraseña, y hacer obligatorio el segundo factor para `Owner` y `Admin`** en cuanto haya pantallas que lo guíen, porque el segundo factor ya existe (spec 010) pero es opcional, y es lo único que separa una contraseña robada de una cuenta tomada. Lo siguiente, el panel de operador de la plataforma (que usará este mismo segundo factor) y que el técnico solo vea sus trabajos. **Lo importante es poder explicar por qué eliges ese**, no cuál eliges.
 
 **¿Qué no harías igual hoy?**
 Hay decisiones que se tomaron y conviene reconocer: no existe todavía una ADR que explique por qué se usa EF Core y no SQL a mano; la imagen de SQL Server de los tests está escrita en dos ficheros; y algunas listas blancas se mantienen a mano. Reconocerlo, con su plan, suma.

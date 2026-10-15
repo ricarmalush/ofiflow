@@ -15,8 +15,24 @@ public interface IIdentityService
     /// </summary>
     Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken);
 
-    /// <returns>The user's Id if the credentials are valid, otherwise null — never reveals which of the two failed.</returns>
-    Task<Guid?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken);
+    /// <summary>
+    /// Autentica con email y contraseña, <b>con bloqueo de cuenta</b> (ADR-014, spec 010). Cuenta cada intento,
+    /// bloquea tras demasiados fallos y registra los eventos de seguridad. No hay otra forma de comprobar una
+    /// contraseña desde Application: así no se puede olvidar el bloqueo.
+    /// </summary>
+    /// <returns>
+    /// La cuenta y si le falta el segundo factor, si las credenciales son correctas; <c>null</c> en cualquier otro caso (email desconocido,
+    /// contraseña errónea o cuenta bloqueada) sin revelar cuál: la respuesta y el tiempo son los mismos.
+    /// </returns>
+    Task<PasswordAuthentication?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Vuelve a pedir la contraseña a alguien que ya tiene sesión, antes de una operación sensible (activar o desactivar
+    /// el segundo factor): un token de acceso robado no basta (spec 010 R5-R7). <b>Cuenta para el bloqueo de cuenta</b>:
+    /// un fallo suma un intento, un acierto lo devuelve (no es un inicio de sesión, así que no pone el contador a cero).
+    /// Falso si la contraseña es errónea o la cuenta está bloqueada, sin distinguirlo.
+    /// </summary>
+    Task<bool> ConfirmPasswordAsync(Guid userId, string password, CancellationToken cancellationToken);
 
     /// <summary>
     /// Borra las credenciales de un usuario, y con ellas su email deja de estar ocupado (spec 009 R14d).
@@ -32,3 +48,11 @@ public sealed record IdentityCreationResult(bool Succeeded, IReadOnlyCollection<
 
     public static IdentityCreationResult Failure(IEnumerable<string> errors) => new(false, errors.ToList());
 }
+
+/// <summary>El resultado de una contraseña correcta.</summary>
+/// <param name="UserId">La cuenta autenticada.</param>
+/// <param name="SecondFactorRequired">
+/// La cuenta tiene el segundo factor activo: la contraseña sola <b>no</b> da sesión, hay que superar también el desafío
+/// (spec 010 R10). En ese caso el intento reservado se devolvió en vez de poner el contador a cero (R17).
+/// </param>
+public sealed record PasswordAuthentication(Guid UserId, bool SecondFactorRequired);

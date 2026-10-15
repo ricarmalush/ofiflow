@@ -25,12 +25,12 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
-| `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 194 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 245 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 96 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 235 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 445 | ~1 s | No |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 223 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 325 | ~15 s | **Sí**, en parte |
 
-En total, **770 casos**. Un "caso" no es lo mismo que un método de test: hay unos 406 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **1192 casos**. Un "caso" no es lo mismo que un método de test: hay unos 680 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -72,7 +72,7 @@ public void Create_WithoutTitle_Throws(string title)
 
 ## Parte 1 — Domain: tests puros
 
-Las reglas del negocio (que un trabajo no se pueda completar sin empezarlo, que un email tenga formato válido) se prueban sin nada alrededor: ni base de datos, ni servidor. Por eso son los más rápidos (una décima de segundo para casi 200 casos) y los más fáciles de escribir. Aquí también viven las dos **tablas de seguridad**: la matriz de permisos, con una celda "rol × permiso" por caso (50 celdas, `RolePermissionsTests`), y la de jerarquía de roles, con una celda "quién actúa × a quién gestiona" por caso (25 celdas, `ManageableRolesTests`). Y las reglas de las invitaciones (`InvitationTests`): que caduquen, que se usen una sola vez y que el rol `Owner` no se pueda conceder.
+Las reglas del negocio (que un trabajo no se pueda completar sin empezarlo, que un email tenga formato válido) se prueban sin nada alrededor: ni base de datos, ni servidor. Por eso son los más rápidos (una décima de segundo para casi 200 casos) y los más fáciles de escribir. Aquí también viven las dos **tablas de seguridad**: la matriz de permisos, con una celda "rol × permiso" por caso (55 celdas, `RolePermissionsTests`), y la de jerarquía de roles, con una celda "quién actúa × a quién gestiona" por caso (25 celdas, `ManageableRolesTests`). Y las reglas de las invitaciones (`InvitationTests`): que caduquen, que se usen una sola vez y que el rol `Owner` no se pueda conceder.
 
 ## Parte 2 — Application: casos de uso con dobles de prueba
 
@@ -84,7 +84,9 @@ Un *handler* necesita una base de datos y otras piezas (quién es el usuario, c�
 | `FakeTenantContext` | "¿En qué empresa estoy?" | `Common/FakeTenantContext.cs` |
 | `FakeCurrentUser` | "¿Quién soy y qué rol tengo?" Distingue el rol **efectivo** (el de la base de datos) del que diría el token, para probar que decide el primero, y cuenta cuántas veces se verifica la pertenencia | `Common/FakeCurrentUser.cs` |
 | `FakeTimeProvider` | "¿Qué hora es?" (para probar que una invitación caduca a los 7 días **sin esperar 7 días**: el test avanza el reloj) | `Common/FakeTimeProvider.cs` |
-| `FakeIdentityService`, `FakeTokenService` | Las contraseñas y los tokens | `Common/` |
+| `FakeIdentityService`, `FakeTokenService` | Las contraseñas (`AuthenticateAsync`, sin bloqueo real) y los tokens | `Common/` |
+
+**Pruebas de oro: los vectores de las RFC (spec 010).** El código de 6 dígitos del segundo factor (`Totp`) no se prueba comparándolo con lo que calcula el propio código, que sería darle la razón a lo que se prueba, sino con los **valores que publican las propias RFC**: los diez de HOTP (RFC 4226, Apéndice D) y los seis de TOTP (RFC 6238, Apéndice B). Si alguien cambia una máscara, un desplazamiento o el orden de los bytes, falla un caso con el código esperado concreto. Igual con Base32 (RFC 4648) y con el hash de los códigos de recuperación, cuyo valor de referencia se calculó con OpenSSL y no con este proyecto. Son funciones puras (el reloj entra por parámetro), por eso no necesitan ningún doble.
 
 Un test típico de un handler:
 
@@ -147,6 +149,61 @@ Y `CurrentUserMembershipTests`, para la **revalidación en cada petición** (tam
 - **Solo cuenta la pertenencia a esa empresa y a esa persona:** ni la de otra empresa ni la de otro usuario de la misma.
 - **Fail-closed:** hasta verificar no hay rol, y un token sin usuario o sin empresa se deniega **sin tocar la base de datos**.
 - **El coste:** un interceptor cuenta las consultas y comprueba que verificar cuesta **exactamente una**, aunque se pregunte varias veces. Es la forma de que "una consulta por petición" no sea solo una promesa del manual.
+
+Y `AccountLockoutTests`, para el **bloqueo de cuenta** (spec 010, bloque 3), con la técnica que más conviene entender del capítulo: probar una **carrera**.
+
+- **El esquema ingenuo falla justo aquí.** «Leer el contador, comprobar la contraseña y sumar si falla» parece correcto, y todos los tests secuenciales pasan. Pero con 50 peticiones simultáneas las 50 leen «0 fallos». El test lanza **50 peticiones a la vez**, cada una con su propio contexto como en la API real, contra SQL Server de verdad, y exige que **solo 5 lleguen a comprobar la contraseña** y que la cuenta quede bloqueada. Existe otra versión por HTTP, con la API entera.
+- **Contar sin cronómetros.** El test no mide milisegundos (serían intermitentes): el verificador de contraseñas es una pieza sustituible (`IPasswordChecker`) y el test usa una versión que **cuenta las llamadas** y si fueron contra un hash real o contra el ficticio. Así se comprueba que «email desconocido», «cuenta bloqueada» y «contraseña errónea» hacen cada uno **exactamente una verificación completa**: igual coste, sin medir tiempo.
+- **El reloj lo controla el test** (`FakeTimeProvider`): el bloqueo de 15 minutos se prueba avanzando el reloj 14 y luego 1 minuto más, incluido el límite exacto, sin esperar nada.
+- **Invariante, no solo ejemplos.** Cinco rondas de 20 peticiones simultáneas comprueban que el contador **nunca pasa de 5** y que la hora de bloqueo existe exactamente cuando llega a 5, sea cual sea el reparto.
+- **Los controles positivos de siempre:** antes de los fallos la contraseña correcta entra; con 4 fallos y un quinto intento correcto, entra; tras 15 minutos, entra; y los fallos de una cuenta no tocan a otra.
+
+Y `MfaServiceTests`, para **lo que los handlers del segundo factor dan por supuesto** (spec 010, bloque 4), siempre contra SQL Server real porque son garantías de base de datos:
+
+- **El mismo código, a la vez.** Cuatro peticiones simultáneas con el mismo código TOTP, y otras cuatro con el mismo código de recuperación: **exactamente una** es válida. Sin la anotación atómica del paso (o del `UsedAt`), las cuatro lo darían por bueno. Con 20 a la vez, el bloqueo puede dejar fuera incluso a la correcta; el test solo exige lo que no puede pasar nunca: que entren **dos**.
+- **Los pasos del tiempo.** Un código de un paso posterior invalida los anteriores aunque estén en la ventana de ±30 s; el paso siguiente trae un código nuevo; el mismo código dos veces falla la segunda. El reloj lo controla el test.
+- **Los fallos cuentan, los aciertos no reinician.** Un código erróneo suma uno; cinco bloquean la cuenta y entonces ni el correcto entra; un acierto devuelve su intento **sin** poner el contador a cero (hay un test con dos fallos previos que exige que siga en dos).
+- **Falla cerrado.** Un secreto cifrado copiado a la fila de otra cuenta no se descifra: la comprobación lanza un error criptográfico, nunca "código válido".
+- **Ningún secreto en el registro:** tras varios aciertos, repetidos y fallos, ningún evento contiene el código, el secreto (en Base64 ni Base32) ni los códigos de recuperación.
+
+`PasswordReconfirmationTests` repite para la contraseña que se pide de nuevo antes de una operación sensible lo que `AccountLockoutTests` hace con el login: los tres casos hacen una sola verificación completa, 50 peticiones simultáneas dan 5 comprobaciones reales, y un acierto no reinicia el contador.
+
+Los handlers se prueban en Application con un **doble del servicio** (`FakeMfaService`): ahí solo importa el **orden** y los **datos** (la contraseña antes que el estado, el código antes de borrar, las sesiones cerradas en el mismo guardado, y que los hashes guardados sean exactamente los de los códigos que se muestran). Los 25 casos de la **jerarquía del reinicio** se escriben aparte de la tabla de producción, copiados literales, igual que las matrices de las specs 008 y 009.
+
+Y los del **login en dos pasos** (spec 010, bloque 5), que repiten el reparto de siempre:
+
+- **Application, con dobles.** `LoginCommandHandlerTests` comprueba la promesa central con un contador en el doble del servicio de tokens: con el segundo factor activo y la contraseña correcta, **`IssuedSessions == 0`**. No se emitió ni un token. También que el desafío guardado es el *hash* del entregado, que caduca a los 5 minutos y que cada login recibe uno distinto. `VerifyMfaChallengeCommandHandlerTests` comprueba que un canje rechazado, una forma mal escrita o una cuenta sin empresa no dan sesión, y que la sesión sale para la empresa **de la pertenencia** (la petición no tiene campo para elegirla: un test lo fija mirando las propiedades del comando).
+- **SQL Server real, el canje.** El desafío se canjea **una sola vez** (cuatro canjes simultáneos, una sesión; y dos códigos *distintos* a la vez, también una), muere a los 5 códigos erróneos **aunque se levante a mano el bloqueo de la cuenta** (para aislar los dos topes), caduca justo a los 5 minutos (con un control positivo a los 4:59), un desafío desconocido o caducado **no** suma contra la cuenta, y el desafío de una cuenta no se canjea con el código de otra.
+- **SQL Server real, el contador.** `SecondFactorLoginTests` prueba el punto más fino: con MFA, la contraseña correcta **no reinicia** el contador (sin MFA, sí: control), y un ataque simulado que intercala la contraseña correcta entre los fallos sigue acabando en bloqueo al quinto.
+- **Arquitectura.** Un test fija que solo **dos ficheros** llaman a `IssueTokensAsync` (el login y el canje), y otro que, dentro del login, la rama «falta el segundo factor» termina con un `return` **antes** de la línea que emite la sesión. Es el equivalente, para el segundo factor, de la lista blanca de `IgnoreQueryFilters()`.
+
+Y los **tests HTTP del segundo factor** (spec 010, bloque 6), en la clase de API con SQL Server real:
+
+- **Las rutas existen y exigen sesión.** Una teoría recorre las seis (cinco de la cuenta y el reinicio) sin token y exige 401; y los cinco roles ven el estado de su cuenta. La ruta de canjear el desafío, en cambio, es **anónima**: con tres formas distintas de fallo (desafío inventado, desafío mal escrito, código mal escrito) la respuesta es **el mismo cuerpo**, y un texto de 5000 caracteres es un 400 de validación (no se hashea).
+- **Los errores llevan su código.** `mfa.invalid_password`, `mfa.setup_required`, `mfa.invalid_code` y `mfa.not_enabled` salen con 400 y su código estable; un código que no son 6 dígitos ni siquiera llega al handler. Y el contrato de errores gana las cinco filas `mfa.*` (cada código, su estado y su mensaje del diccionario).
+- **El secreto no se cachea.** Pedir el secreto devuelve `Cache-Control: no-store`, el estado nunca lo repite, y un error no lleva esa cabecera.
+- **El reinicio por un gestor, con su jerarquía:** el `Owner` puede (y repetirlo no falla), `Manager`/`Employee`/`Technician` reciben 403, un `Admin` no puede con otro `Admin` pero sí con un `Technician` (control positivo), nadie se reinicia a sí mismo, y un miembro de **otra empresa** da el mismo 404 y el mismo mensaje que uno inexistente.
+- **Los límites de peticiones.** Con el limitador **antes** de la autenticación, se prueba sin sesión: diez peticiones a cada ruta de gestión dan 401 y la undécima, **429**; igual con canjear el desafío (10 por minuto). Cada ruta usa su propia IP de prueba, porque el límite es por IP y por política.
+
+Todavía **no** hay aquí un código TOTP real: confirmar, desactivar y regenerar con códigos válidos, y cada ataque, son el bloque 7.
+
+Y **el recorrido entero** (spec 010, bloque 7): `MfaEndToEndTests`, con la API real, SQL Server real y **códigos TOTP de verdad**. Aquí está la técnica nueva de este bloque: el **reloj controlado**. El TOTP cambia cada 30 segundos y cada paso solo se acepta una vez, así que probar «login con MFA, otra vez, otra vez» con el reloj real obligaría a esperar. La fábrica de pruebas sustituye el `TimeProvider` de la API por uno que el test avanza a voluntad: 30 s para tener un código nuevo, 5 minutos para caducar un desafío, 15 para terminar un bloqueo. El test hace de app del móvil: decodifica el secreto Base32 que recibe y calcula el código con la misma clase `Totp` que ya se validó contra las RFC.
+
+- **El ciclo completo, en un solo test:** registrar → pedir el secreto → confirmar → comprobar que la sesión anterior ya no renueva → login (que da un desafío y **ni un token**) → canjearlo con un código → usar un código de recuperación → desactivar → comprobar que el login vuelve a ser de un paso.
+- **Cada ataque, con su control positivo:** fuerza bruta del código (acaba en bloqueo, y ni el código bueno entra después), código ya usado en un desafío nuevo, desafío ya canjeado, desafío caducado, desafío de una cuenta con el código de otra, y el desafío presentado como token de acceso en **cinco rutas** (con el token de verdad, las cinco dan 200).
+- **Los seis fallos del segundo paso son indistinguibles.** Desconocido, ya usado, caducado, código erróneo, forma equivocada del desafío y código mal escrito: se comparan la respuesta completa (estado, cabeceras y cuerpo) y las seis cadenas tienen que ser **la misma**.
+- **Carreras por HTTP:** cuatro canjes simultáneos del mismo desafío con el mismo código dan **una** sesión, y tres confirmaciones simultáneas activan el MFA **una** vez (las otras reciben un 400, nunca un 500).
+- **Que no quede nada en ningún sitio.** Tras un ciclo, se leen las tres tablas **tal cual** (con SQL directo) y no contienen el secreto, ni los códigos de recuperación, ni el desafío en claro; y los eventos de seguridad (`1501`–`1507`, `1005`, `1006`) se registran **sin** ningún secreto, código, desafío, contraseña ni email (se busca cada valor conocido y, además, cualquier cosa con forma de email).
+- **El error que solo cazó este nivel.** Un test que hacía 4 fallos y luego un login legítimo con MFA falló: la cuenta quedaba bloqueada por un intento que no fue un fallo (capítulo 6). Los tests de cada pieza por separado pasaban. Es la razón de ser de los tests de extremo a extremo: lo que se rompe en la **unión** de las piezas.
+
+Y `MfaPersistenceTests`, para el **almacén del segundo factor** (spec 010, bloque 2), con la misma idea: lo que solo una base de datos de verdad puede garantizar.
+
+- **Los índices únicos:** una cuenta no puede tener dos secretos TOTP (su clave primaria es la propia cuenta), y dos códigos de recuperación o dos desafíos no pueden compartir hash, ni siquiera de cuentas distintas.
+- **La concurrencia, tres veces:** dos usos simultáneos del mismo código de recuperación, dos canjes del mismo desafío y dos actualizaciones del último paso aceptado de un secreto. En las tres solo una gana (`DbUpdateConcurrencyException`).
+- **Que el secreto no queda en claro:** se lee la columna tal cual la guarda SQL Server, sin pasar por el modelo, y se comprueba que no contiene el secreto ni en Base64 ni en hexadecimal, y que con la clave se recupera.
+- **Que borrar una cuenta no deja huérfanos:** desaparecen su secreto, sus códigos y sus desafíos, y los de otra persona siguen intactos; y si no se confirma la baja entera, no se borra nada.
+
+Aparte, sin base de datos, `SecretProtectorTests` prueba el cifrado como lo que es: una función que debe **negarse**. Cualquier byte cambiado (nonce, etiqueta o texto), otra clave, otra cuenta o una versión desconocida acaban en `CryptographicException`, nunca en datos corruptos; y `MfaOptionsTests` junto con `MfaStartupTests` comprueban que la API entera **no arranca** sin la clave o con una de tamaño incorrecto (en entorno de producción, para que los user-secrets de la máquina no tapen el fallo).
 
 ## Parte 4 — Api: tres clases de test en un mismo proyecto
 
@@ -215,7 +272,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **770 casos son unos 406 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **1192 casos son unos 680 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

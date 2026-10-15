@@ -36,5 +36,12 @@ public enum Permission
     UsersRead,
 
     /// <summary>Users.Manage: invitar, ver y revocar invitaciones, cambiar el rol de un miembro y quitarlo (spec 009).</summary>
-    UsersManage
+    UsersManage,
+
+    /// <summary>
+    /// Mfa.Manage: gestionar el segundo factor <b>de la propia cuenta</b> (ver el estado, activarlo, desactivarlo,
+    /// regenerar los códigos de recuperación). Lo tienen los cinco roles: no toca datos de la empresa y nadie debe
+    /// depender de otro para proteger su cuenta (spec 010). Reiniciar el de otro miembro es <see cref="UsersManage"/>.
+    /// </summary>
+    MfaManage
 }

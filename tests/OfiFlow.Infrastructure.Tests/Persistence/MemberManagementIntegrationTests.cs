@@ -191,7 +191,7 @@ public class MemberManagementIntegrationTests(SqlServerContainerFixture fixture)
         Assert.Equal(0, await check.RefreshTokens.CountAsync(rt => rt.UserId == target.UserId));
 
         // Ya no puede entrar ni renovar la sesión, y su email vuelve a estar libre.
-        Assert.Null(await Identity(check).ValidateCredentialsAsync(email, Password, CancellationToken.None));
+        Assert.Null(await Identity(check).ValidateCredentialsWithoutLockoutAsync(email, Password, CancellationToken.None));
         Assert.Null(await Tokens(check).RotateRefreshTokenAsync(refreshToken, CancellationToken.None));
         Assert.False(await Identity(check).IsEmailRegisteredAsync(email, CancellationToken.None));
 

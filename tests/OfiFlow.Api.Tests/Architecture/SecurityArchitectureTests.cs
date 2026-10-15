@@ -19,6 +19,8 @@ public class SecurityArchitectureTests
         "src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs",
         // aceptar una invitación: la persona aún no tiene cuenta ni empresa activa, la invitación se busca por el hash de su token (ADR-013)
         "src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs",
+        // canjear el desafío del login en dos pasos: la petición es anónima y aún no hay empresa activa; la pertenencia se busca por la cuenta del desafío (ADR-014)
+        "src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs",
         // el refresh relee el rol del usuario en su tenant
         "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
     ];
@@ -29,6 +31,9 @@ public class SecurityArchitectureTests
     /// cualquier sitio. Un handler nuevo que lea Users o Tenants vería a todas las empresas, así que
     /// leerlos exige añadir aquí el fichero con su motivo.
     /// </summary>
+    private const string MfaServiceFile = "src/OfiFlow.Infrastructure/Identity/MfaService.cs";
+    private const string MfaStoreFile = "src/OfiFlow.Infrastructure/Identity/MfaStore.cs";
+
     private static readonly Dictionary<string, string[]> GlobalDbSetReadAllowList = new()
     {
         // la ficha de una persona solo se lee desde las pertenencias de la empresa activa: listar los miembros (join con
@@ -40,7 +45,22 @@ public class SecurityArchitectureTests
         ],
         ["Tenants"] = [],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
-        ["ApplicationUsers"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
+        ["ApplicationUsers"] = [
+            "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
+            // el contador de intentos y el bloqueo se actualizan por el Id de la cuenta (spec 010)
+            "src/OfiFlow.Infrastructure/Identity/AccountLockout.cs",
+            // el email de la cuenta (nombre en la app del móvil) y la contraseña a reconfirmar, siempre por el Id de la cuenta (spec 010)
+            MfaServiceFile
+        ],
+        // el segundo factor (spec 010): credenciales de una cuenta, siempre por su Id (comprobar, borrar al desactivar o al quitar a un miembro)
+        ["MfaCredentials"] = [
+            MfaServiceFile,
+            MfaStoreFile,
+            // el login consulta si la cuenta que se autentica tiene el segundo factor activo (siempre por su Id): decide si basta la contraseña (spec 010 R10)
+            "src/OfiFlow.Infrastructure/Identity/IdentityService.cs"
+        ],
+        ["RecoveryCodes"] = [MfaServiceFile, MfaStoreFile],
+        ["MfaChallenges"] = [MfaServiceFile, MfaStoreFile],
         // se buscan por el hash del token, que es secreto y único
         ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"]
     };
@@ -55,6 +75,133 @@ public class SecurityArchitectureTests
         Assert.True(offenders.Count == 0,
             $"'{forbiddenApi}' está prohibido (ADR-009 R1: riesgo de inyección SQL). " +
             $"Usa LINQ, o FromSql/SqlQuery con interpolación (parametrizado). Aparece en: {string.Join(", ", offenders)}");
+    }
+
+    /// <summary>
+    /// El único fichero que ejecuta SQL fuera de LINQ: la reserva atómica del intento de login (spec 010 R18). Va
+    /// parametrizado (interpolación), pero es una superficie de inyección SQL, así que se limita a una y se justifica.
+    /// </summary>
+    private const string RawSqlAllowedFile = "src/OfiFlow.Infrastructure/Identity/AccountLockout.cs";
+
+    [Theory]
+    [InlineData("SqlQuery<")]
+    [InlineData("FromSql(")]
+    [InlineData("FromSqlInterpolated")]
+    [InlineData("ExecuteSql(")]
+    [InlineData("ExecuteSqlAsync(")]
+    [InlineData("ExecuteSqlInterpolated")]
+    public void ParameterizedRawSql_IsOnlyUsedInTheLockout(string api)
+    {
+        var offenders = SourceCode.FilesContaining(api).Where(path => path != RawSqlAllowedFile).ToList();
+
+        Assert.True(offenders.Count == 0,
+            $"'{api}' ejecuta SQL fuera de LINQ y solo está permitido en {RawSqlAllowedFile} (ADR-014: la reserva atómica del " +
+            $"intento). Un uso nuevo hay que justificarlo y añadirlo aquí a propósito. Aparece en: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void TheRawSqlScan_FindsTheLegitimateUse()
+    {
+        // Control positivo: si AccountLockout dejara de usar SQL (o el fichero se moviera), el test de arriba
+        // pasaría en vacío. Este avisa de que la lista blanca ya no corresponde a nada.
+        Assert.Contains(RawSqlAllowedFile, SourceCode.FilesContaining("SqlQuery<"));
+    }
+
+    [Fact]
+    public void ThePasswordCheckWithoutLockout_IsNotUsedOutsideIdentityService()
+    {
+        // Comprobar una contraseña sin contar el intento es justo lo que el bloqueo prohíbe. Solo existe en el
+        // propio IdentityService; para entrar se usa IIdentityService.AuthenticateAsync, que sí cuenta (R18).
+        var offenders = SourceCode.FilesContaining("ValidateCredentialsWithoutLockoutAsync")
+            .Where(path => path != "src/OfiFlow.Infrastructure/Identity/IdentityService.cs")
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            "ValidateCredentialsWithoutLockoutAsync no cuenta intentos ni bloquea; usa IIdentityService.AuthenticateAsync. " +
+            $"Aparece en: {string.Join(", ", offenders)}");
+        Assert.Contains("src/OfiFlow.Infrastructure/Identity/IdentityService.cs", SourceCode.FilesContaining("ValidateCredentialsWithoutLockoutAsync"));
+    }
+
+    /// <summary>
+    /// El único sitio donde se usa HMAC-SHA1 y se suprime el aviso CA5350: el TOTP, porque la RFC 6238 lo exige
+    /// (ADR-014). Un uso nuevo de SHA-1 en cualquier otro sitio tiene que justificarse y añadirse aquí a propósito.
+    /// </summary>
+    private const string WeakAlgorithmAllowedFile = "src/OfiFlow.Application/Identity/Mfa/Totp.cs";
+
+    [Theory]
+    [InlineData("HMACSHA1")]
+    [InlineData("CA5350")]
+    public void Sha1_IsOnlyUsedByTheTotpImplementation(string marker)
+    {
+        var offenders = SourceCode.FilesContaining(marker).Where(path => path != WeakAlgorithmAllowedFile).ToList();
+
+        Assert.True(offenders.Count == 0,
+            $"'{marker}' solo puede aparecer en {WeakAlgorithmAllowedFile} (ADR-014: HMAC-SHA1 es lo que exige el TOTP; " +
+            $"para cualquier otra cosa se usa SHA-256 o más). Aparece en: {string.Join(", ", offenders)}");
+
+        // Control positivo: el escaneo encuentra el uso legítimo. Si el fichero se moviera, este test avisaría
+        // de que ya no vigila nada en vez de pasar en silencio.
+        Assert.Contains(WeakAlgorithmAllowedFile, SourceCode.FilesContaining(marker));
+    }
+
+    /// <summary>
+    /// Los ÚNICOS sitios que emiten una sesión nueva (spec 010 R12): el login de una cuenta sin segundo factor y el canje
+    /// del desafío, que exige el código. El refresh no emite sesiones nuevas: rota una que ya existe.
+    /// </summary>
+    private static readonly string[] SessionIssuers =
+    [
+        "src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs",
+        "src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs"
+    ];
+
+    [Fact]
+    public void OnlyTheLoginAndTheChallengeRedemption_CanIssueANewSession()
+    {
+        // Es la promesa del segundo factor: una cuenta con MFA no recibe sesión sin un código válido. Si alguien añade
+        // un camino nuevo que llame a IssueTokensAsync (un "login con Google", un "recordar dispositivo"...), este test
+        // falla y obliga a decidir, a propósito, qué pasa con el segundo factor en ese camino.
+        var definitions = new[]
+        {
+            "src/OfiFlow.Application/Common/Abstractions/ITokenService.cs",
+            "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
+        };
+
+        var callers = SourceCode.FilesContaining("IssueTokensAsync(").Where(path => !definitions.Contains(path)).Order().ToList();
+
+        Assert.True(callers.SequenceEqual(SessionIssuers.Order()),
+            "Solo el login y el canje del desafío pueden emitir una sesión (ADR-014, spec 010 R12). " +
+            $"Hoy la emiten: {string.Join(", ", callers)}");
+    }
+
+    [Fact]
+    public void TheLoginBranchThatNeedsASecondFactor_ReturnsBeforeIssuingAnySession()
+    {
+        // En el login, la rama "falta el segundo factor" debe terminar (return) ANTES de la llamada que emite la sesión.
+        var login = SourceCode.Files("OfiFlow.Application/Identity/Commands/Login")
+            .Single(file => file.Path.EndsWith("LoginCommandHandler.cs", StringComparison.Ordinal)).Content;
+
+        var secondFactorBranch = login.IndexOf("if (authentication.SecondFactorRequired)", StringComparison.Ordinal);
+        var issue = login.IndexOf("IssueTokensAsync(", StringComparison.Ordinal);
+
+        Assert.True(secondFactorBranch >= 0, "No se encuentra la rama del segundo factor en el login.");
+        Assert.True(issue > secondFactorBranch,
+            "La emisión de la sesión debe ir DESPUÉS de la rama que exige el segundo factor, que termina con un return.");
+        Assert.Contains("return new LoginResult.SecondFactorRequired", login[secondFactorBranch..issue]);
+    }
+
+    [Fact]
+    public void TheTotpCodeComparison_IsConstantTime()
+    {
+        // Comparar el código con == o SequenceEqual sale al primer carácter distinto, y el tiempo que tarda
+        // enseñaría cuántos dígitos se han acertado. FixedTimeEquals tarda lo mismo acierte lo que acierte
+        // (spec 010 R4). Por comportamiento no se puede probar (es una cuestión de tiempo), así que se vigila la fuente.
+        var totp = SourceCode.Files("OfiFlow.Application/Identity/Mfa").Single(file => file.Path.EndsWith("/Totp.cs", StringComparison.Ordinal));
+
+        Assert.Contains("CryptographicOperations.FixedTimeEquals(", totp.Content);
+        Assert.DoesNotContain("SequenceEqual", totp.Content);
+        Assert.DoesNotContain("string.Equals", totp.Content);
+        Assert.DoesNotContain("== code", totp.Content);
+        Assert.DoesNotContain("== expected", totp.Content);
     }
 
     [Fact]
@@ -73,7 +220,7 @@ public class SecurityArchitectureTests
         var offenders = TenantAccessRules.GlobalEntityAccessOffenders(SourceCode.Files(), GlobalDbSetReadAllowList);
 
         Assert.True(offenders.Count == 0,
-            "Users, Tenants, ApplicationUsers y RefreshTokens no tienen filtro de tenant (spec 007, ADR-009 R2): " +
+            "Users, Tenants, ApplicationUsers, RefreshTokens y las tablas del segundo factor no tienen filtro de tenant (spec 007, ADR-009 R2): " +
             "leerlos puede exponer datos de todas las empresas. Solo se leen en los ficheros de GlobalDbSetReadAllowList; " +
             $"para añadir uno, justifícalo ahí. Accesos no permitidos: {string.Join("; ", offenders)}");
     }

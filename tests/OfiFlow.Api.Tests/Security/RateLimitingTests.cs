@@ -56,4 +56,55 @@ public class RateLimitingTests : IClassFixture<OfiFlowApiFactory>
         Assert.Equal("application/problem+json", rejected.Content.Headers.ContentType?.MediaType);
         Assert.True(rejected.Headers.Contains("Retry-After"));
     }
+
+    [Fact]
+    public async Task MfaVerify_EleventhAttemptWithinAMinute_IsRejectedWith429()
+    {
+        // Probar códigos de 6 dígitos sin freno sería la vía obvia contra el segundo factor (spec 010). Un cuerpo con un
+        // tamaño absurdo se rechaza con 400 de validación sin tocar la base de datos, pero cada intento cuenta.
+        var invalid = new { challenge = new string('a', 5000), code = "123456" };
+
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            var allowed = await _client.PostAsJsonAsync("/api/v1/auth/mfa/verify", invalid);
+            Assert.Equal(HttpStatusCode.BadRequest, allowed.StatusCode);
+        }
+
+        var rejected = await _client.PostAsJsonAsync("/api/v1/auth/mfa/verify", invalid);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.Equal("application/problem+json", rejected.Content.Headers.ContentType?.MediaType);
+        Assert.True(rejected.Headers.Contains("Retry-After"));
+    }
+
+    [Theory]
+    [InlineData("POST", "/api/v1/account/mfa/setup")]
+    [InlineData("POST", "/api/v1/account/mfa/enable")]
+    [InlineData("POST", "/api/v1/account/mfa/disable")]
+    [InlineData("POST", "/api/v1/account/mfa/recovery-codes")]
+    [InlineData("DELETE", "/api/v1/users/00000000-0000-0000-0000-000000000001/mfa")]
+    public async Task EveryMfaManagementRoute_IsLimitedToTenPerHourAndIp(string method, string path)
+    {
+        // El limitador va ANTES de la autenticación (para no gastar CPU en lo que se rechaza), así que sin sesión cada
+        // intento da 401 pero cuenta igualmente. Cada ruta tiene su propia IP de prueba, porque el límite es por IP y por política.
+        var ip = TestClientIpStartupFilter.NewIp();
+
+        HttpRequestMessage NewRequest()
+        {
+            var request = new HttpRequestMessage(new HttpMethod(method), path) { Content = JsonContent.Create(new { password = "x", code = "123456" }) };
+            request.Headers.Add(TestClientIpStartupFilter.HeaderName, ip);
+            return request;
+        }
+
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(NewRequest())).StatusCode);
+        }
+
+        var rejected = await _client.SendAsync(NewRequest());
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.Equal("application/problem+json", rejected.Content.Headers.ContentType?.MediaType);
+        Assert.True(rejected.Headers.Contains("Retry-After"));
+    }
 }

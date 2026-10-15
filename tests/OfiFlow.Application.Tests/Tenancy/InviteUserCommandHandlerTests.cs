@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using Microsoft.EntityFrameworkCore;
 using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
@@ -52,8 +53,8 @@ public class InviteUserCommandHandlerTests
 
         var stored = await _db.Invitations.SingleAsync();
 
-        Assert.True(InvitationToken.IsWellFormed(created.Token));
-        Assert.Equal(InvitationToken.Hash(created.Token), stored.TokenHash);
+        Assert.True(OpaqueToken.IsWellFormed(created.Token));
+        Assert.Equal(OpaqueToken.Hash(created.Token), stored.TokenHash);
         Assert.NotEqual(created.Token, stored.TokenHash);
         // El valor en claro no está en ningún campo de lo guardado.
         Assert.DoesNotContain(created.Token, stored.TokenHash);
@@ -222,7 +223,7 @@ public class InviteUserCommandHandlerTests
         Assert.Contains("Technician", entry.Message);
         Assert.DoesNotContain("ana.secreta@example.com", entry.Message);
         Assert.DoesNotContain(created.Token, entry.Message);
-        Assert.DoesNotContain(InvitationToken.Hash(created.Token), entry.Message);
+        Assert.DoesNotContain(OpaqueToken.Hash(created.Token), entry.Message);
     }
 
     [Fact]

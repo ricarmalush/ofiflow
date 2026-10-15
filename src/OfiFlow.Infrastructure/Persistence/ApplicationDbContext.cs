@@ -37,6 +37,13 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     internal DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    /// <summary>El segundo factor (spec 010): tampoco forma parte de IApplicationDbContext, solo lo toca Infrastructure.</summary>
+    internal DbSet<MfaCredential> MfaCredentials => Set<MfaCredential>();
+
+    internal DbSet<RecoveryCode> RecoveryCodes => Set<RecoveryCode>();
+
+    internal DbSet<MfaChallenge> MfaChallenges => Set<MfaChallenge>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);

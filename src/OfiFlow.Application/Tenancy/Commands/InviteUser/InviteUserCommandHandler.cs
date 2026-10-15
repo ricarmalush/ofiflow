@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -61,7 +62,7 @@ public sealed partial class InviteUserCommandHandler(
             throw new BusinessRuleException(InvitationErrors.LimitReached);
         }
 
-        var (token, hash) = InvitationToken.Generate();
+        var (token, hash) = OpaqueToken.Generate();
         var invitation = Invitation.Create(tenantContext.TenantId, email, request.Role, hash, currentUser.UserId!.Value, now);
 
         dbContext.Invitations.Add(invitation);

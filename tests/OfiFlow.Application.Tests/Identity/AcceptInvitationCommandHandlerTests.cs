@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using Microsoft.EntityFrameworkCore;
 using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
@@ -27,7 +28,7 @@ public class AcceptInvitationCommandHandlerTests
     private async Task<(Invitation Invitation, string Token)> SeedAsync(
         string email = "Ana@Example.com", TenantRole role = TenantRole.Technician, DateTime? issuedAt = null)
     {
-        var (token, hash) = InvitationToken.Generate();
+        var (token, hash) = OpaqueToken.Generate();
         var invitation = Invitation.Create(_tenantId, Email.Create(email), role, hash, Guid.NewGuid(), issuedAt ?? Now);
         _db.Invitations.Add(invitation);
         await _db.SaveChangesAsync(CancellationToken.None);
@@ -65,8 +66,8 @@ public class AcceptInvitationCommandHandlerTests
         await AcceptAsync(token, password: "Mi-propia-clave-1");
 
         var user = await _db.Users.SingleAsync();
-        Assert.Equal(user.Id, await _identity.ValidateCredentialsAsync("Ana@Example.com", "Mi-propia-clave-1", CancellationToken.None));
-        Assert.Null(await _identity.ValidateCredentialsAsync("Ana@Example.com", "otra", CancellationToken.None));
+        Assert.Equal(user.Id, (await _identity.AuthenticateAsync("Ana@Example.com", "Mi-propia-clave-1", CancellationToken.None))?.UserId);
+        Assert.Null(await _identity.AuthenticateAsync("Ana@Example.com", "otra", CancellationToken.None));
     }
 
     [Theory]
@@ -103,7 +104,7 @@ public class AcceptInvitationCommandHandlerTests
     [Fact]
     public async Task UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing()
     {
-        var unknown = InvitationToken.Generate().Value; // bien formado, pero no existe
+        var unknown = OpaqueToken.Generate().Value; // bien formado, pero no existe
 
         var (_, expiredToken) = await SeedAsync("caducada@example.com", issuedAt: Now.AddDays(-8));
 
@@ -140,7 +141,7 @@ public class AcceptInvitationCommandHandlerTests
         Assert.Contains("Revoked", entry.Message); // el analista sí ve el motivo real
         Assert.Contains(revoked.Id.ToString(), entry.Message);
         Assert.DoesNotContain(token, entry.Message);
-        Assert.DoesNotContain(InvitationToken.Hash(token), entry.Message);
+        Assert.DoesNotContain(OpaqueToken.Hash(token), entry.Message);
         Assert.DoesNotContain("ana.secreta@example.com", entry.Message);
     }
 
@@ -150,7 +151,7 @@ public class AcceptInvitationCommandHandlerTests
     public async Task TheLoggedReason_DistinguishesExpiredFromUnknown(string expected)
     {
         var token = expected == "Unknown"
-            ? InvitationToken.Generate().Value
+            ? OpaqueToken.Generate().Value
             : (await SeedAsync(issuedAt: Now.AddDays(-8))).Token;
 
         await Assert.ThrowsAsync<DomainException>(() => AcceptAsync(token));

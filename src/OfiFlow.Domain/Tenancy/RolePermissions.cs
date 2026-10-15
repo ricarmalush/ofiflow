@@ -16,32 +16,32 @@ public static class RolePermissions
         [TenantRole.Owner] = Set(
             Permission.CustomersRead, Permission.CustomersWrite, Permission.CustomersDelete,
             Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsCancel, Permission.JobsExecute,
-            Permission.UsersRead, Permission.UsersManage),
+            Permission.UsersRead, Permission.UsersManage, Permission.MfaManage),
 
         // Mismos permisos que Owner. Se diferencian en a quién pueden gestionar (ManageableRoles, spec 009):
         // el Admin no gestiona a otros Admin.
         [TenantRole.Admin] = Set(
             Permission.CustomersRead, Permission.CustomersWrite, Permission.CustomersDelete,
             Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsCancel, Permission.JobsExecute,
-            Permission.UsersRead, Permission.UsersManage),
+            Permission.UsersRead, Permission.UsersManage, Permission.MfaManage),
 
         // Gestiona el trabajo diario, pero no borra clientes (borrado físico e irreversible). Ve quién hay en
         // la empresa (para asignar trabajos), pero no gestiona usuarios.
         [TenantRole.Manager] = Set(
             Permission.CustomersRead, Permission.CustomersWrite,
             Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsCancel, Permission.JobsExecute,
-            Permission.UsersRead),
+            Permission.UsersRead, Permission.MfaManage),
 
         // Personal de oficina: da de alta y modifica clientes y trabajos, pero no asigna, cancela ni ejecuta.
         [TenantRole.Employee] = Set(
             Permission.CustomersRead, Permission.CustomersWrite,
-            Permission.JobsRead, Permission.JobsWrite),
+            Permission.JobsRead, Permission.JobsWrite, Permission.MfaManage),
 
         // Ve clientes y trabajos y los ejecuta; no crea ni modifica. Limitación conocida (ADR-012): puede
         // ejecutar cualquier trabajo de su empresa, no solo los asignados a él.
         [TenantRole.Technician] = Set(
             Permission.CustomersRead,
-            Permission.JobsRead, Permission.JobsExecute)
+            Permission.JobsRead, Permission.JobsExecute, Permission.MfaManage)
     }.ToFrozenDictionary();
 
     /// <summary>Los roles que tienen su fila en la tabla.</summary>

@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -24,7 +25,7 @@ public sealed partial class AcceptInvitationCommandHandler(
         // Todavía no hay empresa activa (la persona no tiene cuenta): la invitación se busca por el hash de su
         // token, que es único y de 256 bits, así que esta consulta ignora el filtro de tenant de forma explícita
         // (excepción prevista y auditada: ADR-002, ADR-013; está en la lista blanca del test de arquitectura).
-        var hash = InvitationToken.Hash(request.Token);
+        var hash = OpaqueToken.Hash(request.Token);
         var invitation = await dbContext.Invitations
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(i => i.TokenHash == hash, cancellationToken);

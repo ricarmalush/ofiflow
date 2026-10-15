@@ -20,6 +20,12 @@ public static partial class RateLimiting
     public const string Register = "auth-register";
     public const string AcceptInvitation = "auth-accept-invitation";
 
+    /// <summary>Canjear el desafío del login en dos pasos (anónimo y con acceso a la base de datos): 10 por minuto y por IP (spec 010).</summary>
+    public const string MfaVerify = "auth-mfa-verify";
+
+    /// <summary>Gestionar el segundo factor (pedir el secreto, confirmar, desactivar, regenerar, reiniciar): 10 por hora y por IP (spec 010).</summary>
+    public const string MfaManage = "mfa-manage";
+
     public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services)
     {
         services.AddRateLimiter(options =>
@@ -31,6 +37,11 @@ public static partial class RateLimiting
             options.AddPolicy(Register, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
             // Anónima y cara (hashea una contraseña con PBKDF2): sin límite sería una vía de agotamiento de CPU (spec 009 D7).
             options.AddPolicy(AcceptInvitation, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
+            // Probar códigos de 6 dígitos sin freno sería la vía obvia contra el segundo factor: además del tope de 5 intentos por
+            // desafío y del bloqueo por cuenta, un límite por IP para quien reparte los intentos entre muchos desafíos (spec 010, valores iniciales).
+            options.AddPolicy(MfaVerify, context => PerIp(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
+            // Operaciones raras (activar, desactivar, regenerar): pocas por hora es más que suficiente y frena el abuso.
+            options.AddPolicy(MfaManage, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
 
             options.OnRejected = async (rejected, cancellationToken) =>
             {
