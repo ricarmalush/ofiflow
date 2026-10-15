@@ -133,6 +133,20 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Crear y modificar trabajos | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Asignar / cancelar trabajos | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Iniciar y completar trabajos | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
+
+> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados, pero **todavía ninguna operación los exige**: las operaciones de invitar y gestionar usuarios llegan en los siguientes bloques de esa spec. Hasta entonces, esas dos filas no se pueden ejercer desde la API.
+
+**Quién puede gestionar a quién.** Tener `Users.Manage` no basta: sería una vía de escalada de privilegios (un `Admin` comprometido podría ascender a cómplices). Por eso hay una **segunda tabla** en Domain, [`ManageableRoles`](../../src/OfiFlow.Domain/Tenancy/ManageableRoles.cs), que dice a qué roles puede conceder, cambiar y quitar cada rol:
+
+| El que actúa ↓ / el rol objetivo → | Owner | Admin | Manager | Technician | Employee |
+|---|:-:|:-:|:-:|:-:|:-:|
+| **Owner** | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Admin** | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Manager, Technician, Employee | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+Tres consecuencias: **nadie puede gestionar al `Owner`** (es único por empresa y no se concede), **un `Admin` no toca a otros `Admin`** (solo el `Owner` nombra o quita administradores) y, para **cambiar** un rol, hacen falta las dos cosas: poder gestionar el rol actual **y** el nuevo (así un `Admin` no asciende a un `Manager` a `Admin`). Como la tabla de permisos, va compilada e inmutable y tiene un test por cada celda, escrito aparte de la tabla de producción. Verificado rompiéndola a propósito: dar al `Admin` poder sobre otro `Admin`, hacer gestionable al `Owner` o cambiar el "y" por "o" en el cambio de rol pone tests en rojo.
 
 Tres propiedades de diseño que merece la pena saber explicar:
 

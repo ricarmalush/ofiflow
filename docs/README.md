@@ -42,7 +42,7 @@
 | [006-error-codes-dictionary](./specs/006-error-codes-dictionary/spec.md) | Códigos de error y diccionario de mensajes (implementa ADR-011) | Implementada |
 | [007-tenant-isolation-hardening](./specs/007-tenant-isolation-hardening/spec.md) | Guardarraíles y tests que endurecen el aislamiento entre empresas (amplía ADR-009 R2) | Implementada |
 | [008-rbac-authorization](./specs/008-rbac-authorization/spec.md) | Autorización por rol: comprobar los permisos de cada operación (implementa ADR-012) | Implementada |
-| [009-user-management](./specs/009-user-management/spec.md) | Invitar y gestionar usuarios de una empresa: invitaciones, cambio de rol y baja con efecto inmediato (implementa ADR-013) | Borrador |
+| [009-user-management](./specs/009-user-management/spec.md) | Invitar y gestionar usuarios de una empresa: invitaciones, cambio de rol y baja con efecto inmediato (implementa ADR-013) | Aprobada (en curso) |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

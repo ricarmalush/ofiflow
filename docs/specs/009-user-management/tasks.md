@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-013-gestion-de-usuarios.md](../../adr/ADR-013-gestion-de-usuarios.md)
-**Estado general:** Borrador (pendiente de aprobar la spec)
+**Estado general:** En curso (spec aprobada 2026-10-15). Bloque 1 hecho.
 
 ---
 
@@ -26,17 +26,17 @@ El manual técnico y el código avanzan **a la vez**. Cada bloque termina con su
 - [ ] [externo] Merge (con confirmación explícita)
 - [x] [manual] Capítulo 1 (poner en marcha): corregir lo que dice del arranque (LocalDB, Docker para los tests) y comprobarlo ejecutando los pasos desde cero — escrito y comprobado contra un SQL Server en Docker; pendiente de tu lectura y commit
 - [x] [manual] Corregir los `tasks.md` desfasados de las specs 007 y 008 (PR y merge ya hechos) — hecho; además README raíz (requisitos y estado actual); pendiente de commit
-- [ ] Rama `feature/009-user-management` desde `master` con la spec, las tareas y la ADR-013 ya aprobadas
+- [x] Spec, tareas y ADR-013 aprobadas (2026-10-15); se trabaja en la rama `spec/009-user-management`, ya actualizada con `master`
 
 ### Bloque 1 — Domain (≈ 3 h)
-- [ ] `Permission`: añadir `UsersRead` y `UsersManage`; `RolePermissions` ampliada según la spec (un permiso nuevo sin decidir no lo tiene nadie)
-- [ ] Actualizar el test de matriz de `RolePermissions` con las dos filas nuevas (10 celdas) copiadas literal de la spec
-- [ ] `ManageableRoles`: tabla única rol que actúa → roles que puede gestionar (inmutable)
-- [ ] Test de matriz de `ManageableRoles`: las 25 celdas de la spec; todo rol del enumerado tiene fila; `Owner` no es gestionable por nadie
-- [ ] `Invitation` (aggregate, `ITenantOwned`, `IAuditable`): creación con validaciones (rol distinto de `Owner` y definido, email, caducidad), `Accept`, `Revoke`, estado derivado; no se puede aceptar si no está pendiente
-- [ ] Errores en `TenancyErrors`/`IdentityErrors`: `invitation.invalid`, `invitation.already_pending`, `invitation.limit_reached`, `invitation.not_found`, y el 403 de jerarquía (`tenant_user.role_not_manageable`, `tenant_user.cannot_manage_self`)
-- [ ] Tests de `Invitation`: transiciones válidas e inválidas, caducidad, rol `Owner` rechazado
-- [ ] [manual] Capítulo 8 (permisos y matriz con `Users.Read`/`Users.Manage`) y capítulo 3 (carpetas: dónde vive `Invitation` y `ManageableRoles`)
+- [x] `Permission`: añadir `UsersRead` y `UsersManage`; `RolePermissions` ampliada según la spec (un permiso nuevo sin decidir no lo tiene nadie)
+- [x] Actualizar el test de matriz de `RolePermissions` con las dos filas nuevas (10 celdas) copiadas literal de la spec
+- [x] `ManageableRoles`: tabla única rol que actúa → roles que puede gestionar (inmutable)
+- [x] Test de matriz de `ManageableRoles`: las 25 celdas de la spec; todo rol del enumerado tiene fila; `Owner` no es gestionable por nadie
+- [x] `Invitation` (aggregate, `ITenantOwned`, `IAuditable`): creación con validaciones (rol distinto de `Owner` y definido, email, caducidad), `Accept`, `Revoke`, estado derivado; no se puede aceptar si no está pendiente
+- [x] Errores en `TenancyErrors`/`IdentityErrors`: `invitation.invalid`, `invitation.already_pending`, `invitation.limit_reached`, `invitation.not_found`, y el 403 de jerarquía (`tenant_user.role_not_manageable`, `tenant_user.cannot_manage_self`)
+- [x] Tests de `Invitation`: transiciones válidas e inválidas, caducidad, rol `Owner` rechazado
+- [x] [manual] Capítulo 8 (permisos y matriz con `Users.Read`/`Users.Manage`) y capítulo 3 (carpetas: dónde vive `Invitation` y `ManageableRoles`)
 
 ### Bloque 2 — Infrastructure: persistencia y credenciales (≈ 4 h)
 - [ ] `InvitationConfiguration`: tamaños con las constantes de Domain, índice único por `TokenHash`, índice `(TenantId, Email)`, token de concurrencia (`rowversion`)
@@ -103,3 +103,4 @@ El manual técnico y el código avanzan **a la vez**. Cada bloque termina con su
 - **Estimación total:** ≈ 30 h de código y ≈ 8 h de manual (repartidas por bloques) en 8 bloques + cierre. Es la spec más grande hasta ahora; se puede partir en dos PRs si prefieres (bloques 1-4 + 6-7 por un lado, revalidación por petición por otro), a costa de dejar unas semanas el riesgo del rol desfasado.
 - **Pendiente de decidir en el plan:** purga de invitaciones aceptadas, caducadas o revocadas (guardan el email).
 - **Orden de ramas:** el bloque 0 publica primero el manual (caps. 6–10) en `master`; después la spec 009 sale de `master` con el manual ya al día, y cada bloque lleva sus capítulos en la misma rama.
+- **Bloque 1 (2026-10-15):** en `Domain/Tenancy`: `Permission` con `UsersRead` y `UsersManage`; `RolePermissions` ampliada (Owner y Admin, ambos; Manager, solo `UsersRead`); `ManageableRoles` (tabla única inmutable, 5 filas, con `CanManage`, `CanChange` —exige poder gestionar el rol actual **y** el nuevo, R10— e `IsGrantable`); `Invitation` (agregado `ITenantOwned`, solo guarda el hash del token, caduca a los 7 días, estado deducido con `StatusAt(utcNow)`, la hora entra por parámetro) e `InvitationStatus`. **Desviaciones del plan:** (1) los 6 códigos de error y **sus mensajes en `ErrorMessages.resx`** se hicieron aquí y no en el bloque 6, para que el commit siga en verde (el test del diccionario exige un mensaje por cada código, igual que en la spec 008); (2) los códigos `invitation.*` van en una clase propia, `InvitationErrors`, y los `tenant_user.*` en `TenancyErrors`; (3) `Invitation` guarda además `NormalizedEmail` (el email en mayúsculas, como `ApplicationUser`) para buscar sin distinguir mayúsculas y para el índice `(TenantId, NormalizedEmail)` del bloque 2; (4) el rechazo del rol `Owner` al crear una invitación usa `tenant_user.role_not_manageable` (400 desde Domain; el 403 por jerarquía lo aplica Application antes). **Tests:** Domain pasa de 100 a 180 (+10 celdas de la matriz de permisos, +47 de `ManageableRolesTests` —25 celdas más coherencia y casos de `CanChange`—, +23 de `InvitationTests`). Suite completa: 480 casos en verde (180 + 88 + 56 + 156). **Mutaciones sobre el código real (10), restauradas desde copia:** el Admin gestiona a otro Admin → 5 en rojo; el Owner gestionable → 7; el Manager recibe `Users.Manage` → 1; el Owner pierde `Users.Manage` → 2; `Create` admite el rol Owner → 2; `Accept` sin comprobar que esté pendiente → 3; caducidad con `>` en vez de `>=` → 3; la caducidad manda sobre lo definitivo → 1; `CanChange` con O en vez de Y → 5; falta el mensaje de `invitation.invalid` → 1 (guarda del diccionario). **Incidente:** al correr la suite completa, 9 tests de integración fallaron porque el motor de Docker no estaba en marcha (no era el código); se arrancó Docker Desktop y todo pasó. **Manual (mismo bloque):** cap. 3 (carpeta `Tenancy`), cap. 7 (27 códigos y 35 entradas del diccionario, tabla de clases), cap. 8 (permisos nuevos, aviso de "en construcción" y la tabla de jerarquía) y cap. 9 (180 y 480 casos, 240 métodos y las nuevas tablas).
