@@ -36,4 +36,24 @@ public class RateLimitingTests : IClassFixture<OfiFlowApiFactory>
         Assert.Equal("application/problem+json", rejected.Content.Headers.ContentType?.MediaType);
         Assert.True(rejected.Headers.Contains("Retry-After"));
     }
+
+    [Fact]
+    public async Task AcceptInvitation_EleventhAttemptWithinAnHour_IsRejectedWith429()
+    {
+        // La aceptación es anónima y hashea una contraseña (PBKDF2): sin límite sería una vía de agotamiento de CPU (spec 009 D7).
+        // Un token con forma incorrecta se rechaza con 400 de validación sin tocar la base de datos, pero cada intento cuenta.
+        var malformed = new { token = "no-es-un-token", name = "Ana", password = "una-clave-larga-123" };
+
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            var allowed = await _client.PostAsJsonAsync("/api/v1/auth/accept-invitation", malformed);
+            Assert.Equal(HttpStatusCode.BadRequest, allowed.StatusCode);
+        }
+
+        var rejected = await _client.PostAsJsonAsync("/api/v1/auth/accept-invitation", malformed);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.Equal("application/problem+json", rejected.Content.Headers.ContentType?.MediaType);
+        Assert.True(rejected.Headers.Contains("Retry-After"));
+    }
 }

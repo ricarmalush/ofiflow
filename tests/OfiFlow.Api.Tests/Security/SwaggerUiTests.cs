@@ -108,8 +108,8 @@ public class SwaggerUiTests : IClassFixture<OfiFlowApiFactory>
             }
         }
 
-        // Salvaguarda: el test no puede pasar en vacío (13 operaciones autenticadas y 3 anónimas hoy).
-        Assert.True(protectedOperations >= 13, $"Se esperaban al menos 13 operaciones protegidas y hay {protectedOperations}.");
-        Assert.True(anonymousOperations >= 3, $"Se esperaban al menos 3 operaciones anónimas y hay {anonymousOperations}.");
+        // Salvaguarda: el test no puede pasar en vacío (19 operaciones autenticadas y 4 anónimas hoy).
+        Assert.True(protectedOperations >= 19, $"Se esperaban al menos 19 operaciones protegidas y hay {protectedOperations}.");
+        Assert.True(anonymousOperations >= 4, $"Se esperaban al menos 4 operaciones anónimas y hay {anonymousOperations}.");
     }
 }

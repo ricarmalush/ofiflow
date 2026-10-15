@@ -1,5 +1,6 @@
 using MediatR;
 using OfiFlow.Api.Common;
+using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
@@ -40,5 +41,16 @@ public static class AuthEndpoints
             .WithName("Refresh")
             .WithSummary("Rota un Refresh Token válido por un nuevo par de tokens.")
             .RequireRateLimiting(RateLimiting.Refresh);
+
+        group.MapPost("/accept-invitation", async (AcceptInvitationCommand command, ISender sender, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(command, cancellationToken);
+
+                // Sin tokens de sesión: la persona entra con el login de siempre, con la contraseña que acaba de elegir.
+                return Results.NoContent();
+            })
+            .WithName("AcceptInvitation")
+            .WithSummary("Acepta una invitación con su token: la persona elige su nombre y su contraseña y se crea su cuenta.")
+            .RequireRateLimiting(RateLimiting.AcceptInvitation);
     }
 }

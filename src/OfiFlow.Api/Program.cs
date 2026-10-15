@@ -60,6 +60,8 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapCustomerEndpoints();
+app.MapInvitationEndpoints();
+app.MapUserEndpoints();
 app.MapJobEndpoints();
 
 app.Run();

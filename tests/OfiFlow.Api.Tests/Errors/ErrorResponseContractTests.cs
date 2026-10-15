@@ -93,7 +93,15 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new BusinessRuleException(CustomerErrors.HasActiveJobs), HttpStatusCode.BadRequest, "customer.has_active_jobs" },
         { new NotFoundException(CustomerErrors.NotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "customer.not_found" },
         { new ForbiddenException(TenancyErrors.Forbidden), HttpStatusCode.Forbidden, "auth.forbidden" },
-        { new IdentityOperationException([IdentityErrors.EmailAlreadyRegistered]), HttpStatusCode.BadRequest, "user.email_already_registered" }
+        { new IdentityOperationException([IdentityErrors.EmailAlreadyRegistered]), HttpStatusCode.BadRequest, "user.email_already_registered" },
+        // Spec 009: invitaciones y gestión de miembros.
+        { new DomainException(InvitationErrors.Invalid), HttpStatusCode.BadRequest, "invitation.invalid" },
+        { new BusinessRuleException(InvitationErrors.AlreadyPending), HttpStatusCode.BadRequest, "invitation.already_pending" },
+        { new BusinessRuleException(InvitationErrors.LimitReached), HttpStatusCode.BadRequest, "invitation.limit_reached" },
+        { new NotFoundException(InvitationErrors.NotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "invitation.not_found" },
+        { new NotFoundException(TenancyErrors.TenantUserNotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "tenant_user.not_found" },
+        { new ForbiddenException(TenancyErrors.RoleNotManageable), HttpStatusCode.Forbidden, "tenant_user.role_not_manageable" },
+        { new ForbiddenException(TenancyErrors.CannotManageSelf), HttpStatusCode.Forbidden, "tenant_user.cannot_manage_self" }
     };
 
     [Theory]
