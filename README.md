@@ -155,4 +155,4 @@ OFIFLOW/
 
 ## Estado actual
 
-Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT, aislamiento de tenant y permisos por rol). ADR-001 a ADR-012 aceptadas. Implementadas las specs 001 a 004 y 006 a 008 (línea base de seguridad, diccionario de errores, aislamiento endurecido y RBAC incluidos); la 005 (pipeline DevSecOps) funciona y tiene pendientes dos pruebas manuales. Siguiente: gestión de usuarios (spec 009, en borrador). Detalle en [`docs/README.md`](./docs/README.md).
+Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT, aislamiento de tenant, permisos por rol y gestión del equipo: invitar, aceptar, cambiar roles y quitar miembros). ADR-001 a ADR-013 aceptadas. Implementadas las specs 001 a 004 y 006 a 009 (línea base de seguridad, diccionario de errores, aislamiento endurecido, RBAC y gestión de usuarios incluidos); la 005 (pipeline DevSecOps) funciona y tiene pendientes dos pruebas manuales. Siguiente: panel de operador de la plataforma (spec 010) y la Fase 2 (agenda y asignación de técnicos). Detalle en [`docs/README.md`](./docs/README.md).

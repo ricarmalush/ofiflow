@@ -1,6 +1,6 @@
 # Spec — 009-user-management
 
-**Estado:** Aprobada (2026-10-15), con las decisiones D1-D7 tal como están en la tabla de "Reglas de negocio"
+**Estado:** Implementada (2026-10-15), con las decisiones D1-D7 tal como se aprobaron
 **Fecha:** 2026-10-14
 **Bounded Context:** Tenancy + Identity (transversal: Domain, Application, Infrastructure y Api)
 **Depende de:** ADR-013 (gestión de usuarios, redactada junto a esta spec), ADR-012 (permisos por rol), ADR-004 (rol en `TenantUser`), ADR-007 (credenciales y refresh tokens), ADR-009 (seguridad base), ADR-011 (errores con código), spec 007 (aislamiento entre empresas), spec 008 (RBAC)

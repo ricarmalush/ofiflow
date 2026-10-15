@@ -1,6 +1,6 @@
 # ADR-013 — Gestión de usuarios de una empresa
 
-**Estado:** Propuesto (2026-10-14)
+**Estado:** Aceptado (2026-10-15)
 **Fecha:** 2026-10-14
 **Proyecto:** OfiFlow
 
@@ -89,6 +89,20 @@ Cada decisión tiene una opción cómoda que es insegura: crear al usuario con u
 - **NEXT:** recuperar contraseña, confirmar email, bloqueo por intentos (ADR-009).
 - **NEXT:** purga de invitaciones antiguas (guardan el email).
 - **LATER:** caché de la pertenencia si la consulta por petición llega a medirse como cuello de botella.
+
+---
+
+## Nota de estado (2026-10-15)
+
+Implementada por la spec 009 (bloques 1 a 7), con 770 tests en verde. Lo que la implementación aclaró y que conviene tener presente:
+
+- **La revalidación vive en `ICurrentUser`, no en un puerto aparte.** `VerifyMembershipAsync` hace la consulta (una sola vez por petición, por el índice único `(empresa, usuario)`) y fija `Role`, que pasa a significar el rol **efectivo** y es **nulo hasta verificar**. `TokenRole` conserva lo que dice el token, solo como información. El coste está medido con un test que cuenta las consultas: exactamente una.
+- **Aceptar dos veces el mismo token a la vez no falla como se esperaba.** La perdedora no recibía un error de concurrencia, sino una violación del índice único del email (las dos intentan crear una cuenta con el mismo email), que habría acabado en un 500. El handler captura ahora `DbUpdateException` (la base de la de concurrencia) y responde `invitation.invalid`. Lo cazó un test contra SQL Server real; los de base en memoria no podían verlo.
+- **Quitar borra las sesiones, no solo las revoca**, porque los refresh tokens guardan el `UserId` sin clave foránea y quedarían huérfanos. El efecto sobre el acceso lo da además, de forma independiente, el propio refresh, que comprueba la pertenencia.
+- **Tercer uso justificado de `IgnoreQueryFilters()`** (aceptar, que busca la invitación por el hash antes de conocer la empresa) y **lista blanca de lectura de `Users` con dos ficheros** (listar miembros con un *join* contra `TenantUsers`, y quitar). Los dos están en tests de arquitectura.
+- **La respuesta de invitar lleva `Cache-Control: no-store`**: contiene el único valor en claro del token.
+- **`TenantUser.ChangeRole` y `Invitation.Create` repiten dentro del dominio** las reglas del Owner (no se concede ni se cambia), como última barrera por debajo de `ManageableRoles`.
+- **Riesgos aceptados que se mantienen:** dos invitaciones *distintas* para el mismo email aceptadas a la vez dan `invitation.invalid` a la perdedora en vez de `user.email_already_registered` (ambos 400); dos invitaciones simultáneas del mismo email por el mismo invitante pueden crear dos pendientes (no hay índice único posible, porque la caducidad depende del reloj); y el invitante ve el token y podría aceptarlo él mismo (D1).
 
 ---
 

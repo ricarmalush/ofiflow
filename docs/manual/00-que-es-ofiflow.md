@@ -49,7 +49,7 @@ Hay cinco conceptos. Sus nombres en el código están en inglés, y conviene apr
 
 ¿Por qué existe `TenantUser` y no se pone el rol directamente en `User`? Porque **una misma persona puede trabajar en varias empresas con un rol distinto en cada una**. Un técnico autónomo puede ser *Owner* de la suya y *Technician* en la de un amigo. La relación entre persona y empresa es una cosa en sí misma, y por eso tiene su propia tabla.
 
-Los roles que existen (`TenantRole`) son: `Owner`, `Admin`, `Manager`, `Technician` y `Employee`. Cada rol tiene unos **permisos** y el sistema los comprueba en cada operación: un `Technician`, por ejemplo, puede ver clientes y trabajos y empezar o completar un trabajo, pero no crear un cliente ni eliminarlo (recibe un error 403). Es la spec 008. **Aviso:** hoy no se puede probar a mano, porque todo usuario que se registra es `Owner` y todavía no existen las invitaciones para crear usuarios con otro rol; se comprueba con tests (ver "Qué NO hace todavía").
+Los roles que existen (`TenantRole`) son: `Owner`, `Admin`, `Manager`, `Technician` y `Employee`. Cada rol tiene unos **permisos** y el sistema los comprueba en cada operación: un `Technician`, por ejemplo, puede ver clientes y trabajos y empezar o completar un trabajo, pero no crear un cliente ni eliminarlo (recibe un error 403). Es la spec 008. Para probarlo a mano, el `Owner` **invita** a una persona con el rol que quiera y ella acepta la invitación y entra (spec 009): así se pueden ver los 403 de verdad. El `Owner` es el responsable de su empresa (único e intocable); un `Admin` gestiona al equipo pero no a otros `Admin`.
 
 ### El ciclo de vida de un trabajo
 
@@ -81,7 +81,10 @@ OfiFlow, por ahora, es **solo una API** (un servidor al que se le hacen peticion
 | **Cuenta** (pública, sin iniciar sesión) | Registrarse | `POST /api/v1/auth/register` |
 | | Iniciar sesión | `POST /api/v1/auth/login` |
 | | Renovar la sesión | `POST /api/v1/auth/refresh` |
+| | Aceptar una invitación (elige nombre y contraseña) | `POST /api/v1/auth/accept-invitation` |
 | **Clientes** (requiere sesión) | Crear / ver uno / listar / modificar / eliminar | `POST`, `GET`, `GET`, `PUT`, `DELETE` en `/api/v1/customers` |
+| **Equipo** (requiere sesión; spec 009) | Invitar / ver pendientes / revocar | `POST`, `GET`, `DELETE` en `/api/v1/invitations` |
+| | Ver miembros / cambiar el rol / quitar a uno | `GET /api/v1/users`, `PUT /api/v1/users/{id}/role`, `DELETE /api/v1/users/{id}` |
 | **Trabajos** (requiere sesión) | Crear / ver uno / listar / modificar | `POST`, `GET`, `GET`, `PUT` en `/api/v1/jobs` |
 | | Empezar / completar / cancelar | `POST /api/v1/jobs/{id}/start`, `/complete`, `/cancel` |
 | | Asignar a un técnico | `POST /api/v1/jobs/{id}/assign` |
@@ -118,7 +121,8 @@ Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 - **Pantallas:** no hay frontend; solo la API.
 - **Agenda, presupuestos, facturas y pagos:** son las fases 2 a 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
-- **Invitar y gestionar usuarios de una empresa:** hoy cada empresa tiene un único usuario, su `Owner`. Los permisos por rol ya se comprueban, pero no hay forma de crear un `Technician` o un `Employee` desde la API.
+- **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009), pero el token se le entrega a quien invita en vez de enviarse por correo, y cada cuenta pertenece a una sola empresa.
+- **El panel de operador de la plataforma** (ver todas las empresas, como en IrrigationMaster): previsto como spec propia, solo con metadatos de empresa.
 - **Que un técnico solo vea los trabajos que tiene asignados:** hoy un `Technician` puede ver y ejecutar cualquier trabajo de su empresa, no solo los suyos.
 - **Bloqueo de cuentas tras varios intentos fallidos de login:** hoy solo hay un límite de peticiones por IP.
 

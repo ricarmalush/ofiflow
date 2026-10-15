@@ -100,8 +100,8 @@ Se decide **Opción 3 + Opción B + rol del token**, con estas reglas:
 
 ### Qué queda abierto para revisar más adelante
 - **NEXT:** restricción por recurso ("el técnico solo ve y avanza los trabajos que tiene asignados"), que necesita conocer el `TenantUser` del usuario actual.
-- **NEXT:** revalidar rol y pertenencia en cada petición (ver ADR-009).
-- **NEXT:** el permiso `Users.Manage` cuando exista la gestión de usuarios e invitaciones.
+- ~~**NEXT:** revalidar rol y pertenencia en cada petición (ver ADR-009).~~ — **cerrado en ADR-013 / spec 009** (2026-10-15).
+- ~~**NEXT:** el permiso `Users.Manage` cuando exista la gestión de usuarios e invitaciones.~~ — **cerrado en ADR-013 / spec 009**: existen `Users.Read` (Owner, Admin y Manager) y `Users.Manage` (Owner y Admin).
 - **LATER:** permisos configurables por empresa (Opción C).
 
 ---
@@ -113,7 +113,7 @@ Implementada por la spec 008 (bloques 1 a 5), con 389 tests en verde. Dos cosas 
 - **`JwtBearer` renombra los claims al validar** (por defecto, `role` pasa a `ClaimTypes.Role` y `sub` a `NameIdentifier`). `CurrentUser` no encontraba el rol y el `Owner` recibía 403 en todo; el riesgo que la spec pedía verificar con un token real lo cazó un test de extremo a extremo. Se corrige con `MapInboundClaims = false`. El `tenant_id` no tiene renombrado, y por eso el aislamiento entre empresas nunca lo notó. Si alguien reactivara el renombrado, 69 de los 76 tests de extremo a extremo de roles fallan.
 - **Una operación sin declarar se deniega en ejecución, y además falla un test de arquitectura** que exige que toda operación declare `[RequiresPermission]` o `[AllowAnonymousRequest]` (no ambas) y que el permiso declarado lo tenga algún rol.
 
-Los riesgos aceptados de arriba siguen vigentes: el rol puede estar desfasado hasta 30 minutos, y un `Technician` puede ejecutar cualquier trabajo de su empresa, no solo los asignados a él.
+De los riesgos aceptados de arriba, **el del rol desfasado se cerró** (spec 009, ADR-013): ahora el `AuthorizationBehavior` revalida la pertenencia y el rol en la base de datos en cada petición, así que su regla R5 "la comprobación no consulta la base de datos" **ya no es cierta** (una consulta indexada por petición, medida en tests). Sigue vigente que un `Technician` puede ejecutar cualquier trabajo de su empresa, no solo los asignados a él.
 
 ---
 

@@ -78,7 +78,7 @@ Se adopta la **Opción 3**, con estas reglas:
 
 ### R5 — Observabilidad y logs de seguridad
 - `GlobalExceptionHandler` registra los 500 con `LogError` (excepción completa en el log, mensaje genérico al cliente).
-- Eventos de seguridad con `LogWarning` y campos estructurados: login fallido, reutilización de refresh token revocado (posible robo), rate limit superado y, desde la spec 008 (ADR-012), **acceso denegado por falta de permiso** (evento `1301`, con `UserId`, `TenantId`, el rol y el nombre de la operación; nunca datos de la petición).
+- Eventos de seguridad con `LogWarning` y campos estructurados: login fallido, reutilización de refresh token revocado (posible robo), rate limit superado y, desde la spec 008 (ADR-012), **acceso denegado por falta de permiso** (evento `1301`, con `UserId`, `TenantId`, el rol y el nombre de la operación; nunca datos de la petición). Desde la spec 009 (ADR-013) se añaden `1302` (token válido de alguien que ya no pertenece a la empresa) y la familia `14xx`: `1401` invitación creada, `1402` aceptada, `1403` rechazada (con el motivo real, que no se le dice a quien lo intenta), `1404` revocada, `1405` rol cambiado y `1406` miembro quitado; todos con Ids, nunca emails, nombres ni tokens.
 - **Nunca se registran**: contraseñas, access/refresh tokens, cuerpos de petición, ni datos personales de Customer (email, teléfono, dirección, notas). Se registran **Ids** (`UserId`, `TenantId`, `EntityId`) y la IP.
 - `EnableSensitiveDataLogging()` de EF Core prohibido fuera de un depurado local puntual (nunca commiteado).
 
@@ -113,8 +113,8 @@ Se adopta la **Opción 3**, con estas reglas:
 
 ### Qué queda abierto para revisar más adelante
 - ~~**NEXT — RBAC dentro del tenant:** `AuthorizationBehavior` que compruebe `TenantUser.Role` por Command.~~ — **cerrado en ADR-012 / spec 008** (2026-10-06): permisos `Entidad.Acción` con una tabla única rol → permisos, comprobados por un `AuthorizationBehavior` fail-closed. Sigue abierto, como NEXT, que un técnico solo vea y avance los trabajos asignados a él (ADR-012).
-- **NEXT — Revalidar la pertenencia al tenant en cada petición** (spec 007, ADR-002): hoy solo se comprueba al renovar la sesión, así que un token sigue valiendo hasta que caduca (30 minutos) aunque el usuario ya no pertenezca a la empresa. Sin urgencia mientras no exista la operación de quitar usuarios de una empresa; necesita decidir el coste (una consulta por petición o una caché).
-- **NEXT — Login con varias empresas** (spec 007): el login toma la primera pertenencia del usuario. Hoy cada usuario tiene una sola; con invitaciones hará falta elegir empresa y poder cambiar de empresa.
+- ~~**NEXT — Revalidar la pertenencia al tenant en cada petición**~~ — **cerrado en ADR-013 / spec 009** (2026-10-15): el `AuthorizationBehavior` comprueba en la base de datos la pertenencia y el rol en cada petición autenticada (una consulta indexada), así que quitar o degradar a alguien surte efecto en su siguiente petición.
+- **NEXT — Login con varias empresas** (spec 007): el login toma la primera pertenencia del usuario. Las invitaciones (ADR-013) mantienen una empresa por cuenta (D4: no se invita a un email que ya tiene cuenta), así que esto sigue abierto: hará falta elegir empresa y poder cambiar de empresa cuando se permita pertenecer a varias.
 - **LATER — Row-Level Security de SQL Server** como segunda barrera a nivel de base de datos (defensa en profundidad), si el riesgo lo justifica. Requiere ADR propia.
 - **NEXT — Enumeración de usuarios:** igualar el tiempo del login cuando el email no existe (verificar contra un hash ficticio) y revisar el mensaje "El email ya está registrado" del registro cuando exista confirmación de email.
 - **NEXT — CORS** restringido al origen del frontend Angular, cuando exista.

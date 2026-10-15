@@ -78,20 +78,20 @@ El manual técnico y el código avanzan **a la vez**. Cada bloque termina con su
 - [x] [manual] Capítulo 8: tablas de límites de peticiones y de eventos de seguridad con los valores nuevos; capítulo 7: tabla de códigos de error y número de entradas del diccionario
 
 ### Bloque 7 — Extremo a extremo por HTTP (≈ 5 h)
-- [ ] Ciclo completo: el `Owner` invita, la persona acepta, hace login y actúa con su rol (sin sembrar datos: **primera vez que los 5 roles nacen por la API**)
-- [ ] Hacer que `RolesFixture` de la spec 008 cree sus usuarios por la API en vez de sembrarlos, o decidir y anotar por qué se mantiene
-- [ ] Un test por cada criterio de aceptación (token, jerarquía, quitar, revalidar, aislamiento), cada denegación con su control positivo
-- [ ] El token en claro no aparece en la base de datos ni en el log; ningún dato personal en los eventos nuevos
-- [ ] Concurrencia: dos aceptaciones simultáneas, exactamente una gana
-- [ ] Mutaciones sobre el código real: la jerarquía permite a `Admin` tocar `Admin`; `Owner` gestionable; quitar sin revocar refresh tokens; aceptar sin marcar usada; respuesta distinta para token caducado vs. desconocido
-- [ ] [manual] Capítulo 9 (tests): nueva familia de tests y nuevas cifras; capítulo 8: mapa de amenazas con las filas nuevas (escalada de privilegios, token de invitación, enumeración, baja con token vivo) y "Controles sin test propio" si queda alguno
+- [x] Ciclo completo: el `Owner` invita, la persona acepta, hace login y actúa con su rol (sin sembrar datos: **primera vez que los 5 roles nacen por la API**)
+- [x] Hacer que `RolesFixture` de la spec 008 cree sus usuarios por la API en vez de sembrarlos, o decidir y anotar por qué se mantiene
+- [x] Un test por cada criterio de aceptación (token, jerarquía, quitar, revalidar, aislamiento), cada denegación con su control positivo
+- [x] El token en claro no aparece en la base de datos ni en el log; ningún dato personal en los eventos nuevos
+- [x] Concurrencia: dos aceptaciones simultáneas, exactamente una gana
+- [x] Mutaciones sobre el código real: la jerarquía permite a `Admin` tocar `Admin`; `Owner` gestionable; quitar sin revocar refresh tokens; aceptar sin marcar usada; respuesta distinta para token caducado vs. desconocido
+- [x] [manual] Capítulo 9 (tests): nueva familia de tests y nuevas cifras; capítulo 8: mapa de amenazas con las filas nuevas (escalada de privilegios, token de invitación, enumeración, baja con token vivo) y "Controles sin test propio" si queda alguno
 
 ### Documentación y cierre (≈ 2-3 h)
-- [ ] ADR-013: de "Propuesto" a "Aceptado" con nota de estado de lo que aclaró la implementación
-- [ ] ADR-012 y ADR-009: marcar cerrados los NEXT de `Users.Manage` y de la revalidación por petición; ADR-012, riesgo del rol desfasado resuelto
-- [ ] `docs/README.md`: filas de la ADR-013 y de la spec 009
-- [ ] `OfiFlow.Api.http`: peticiones nuevas del ciclo de invitación
-- [ ] [manual] Revisión final de los capítulos 0, 5, 6, 7, 8, 9, 10 y 11 contra el repositorio (cifras de tests, códigos de error, eventos, límites conocidos) y capítulo 12 (glosario) con los términos nuevos
+- [x] ADR-013: de "Propuesto" a "Aceptado" con nota de estado de lo que aclaró la implementación
+- [x] ADR-012 y ADR-009: marcar cerrados los NEXT de `Users.Manage` y de la revalidación por petición; ADR-012, riesgo del rol desfasado resuelto
+- [x] `docs/README.md`: filas de la ADR-013 y de la spec 009
+- [x] `OfiFlow.Api.http`: peticiones nuevas del ciclo de invitación
+- [x] [manual] Revisión final de los capítulos 0, 5, 6, 7, 8, 9, 10 y 11 contra el repositorio (cifras de tests, códigos de error, eventos, límites conocidos) y capítulo 12 (glosario) con los términos nuevos
 - [ ] [externo] Push de la rama y PR contra `master`; los 4 checks en verde
 - [ ] [externo] Merge (con confirmación explícita)
 
