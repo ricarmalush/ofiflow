@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using FluentValidation;
 using OfiFlow.Application.Tenancy;
 using OfiFlow.Domain.Identity;
@@ -12,7 +13,7 @@ public sealed class AcceptInvitationCommandValidator : AbstractValidator<AcceptI
         // La forma exacta del token (longitud y alfabeto) se comprueba antes de hashear ni buscar nada: no se
         // procesa texto arbitrario de tamaño ilimitado (ADR-009 R3). Usa el mismo código que cualquier otro
         // fallo del token: quien lo intenta no aprende nada de por qué no sirve (spec 009 R7).
-        RuleFor(x => x.Token).Must(InvitationToken.IsWellFormed).WithErrorCode(InvitationErrors.Invalid);
+        RuleFor(x => x.Token).Must(OpaqueToken.IsWellFormed).WithErrorCode(InvitationErrors.Invalid);
 
         RuleFor(x => x.Name).NotEmpty().MaximumLength(User.NameMaxLength);
 

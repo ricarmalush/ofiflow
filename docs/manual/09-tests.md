@@ -26,11 +26,11 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 419 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 196 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 255 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 445 | ~1 s | No |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 220 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 257 | ~15 s | **Sí**, en parte |
 
-En total, **1069 casos**. Un "caso" no es lo mismo que un método de test: hay unos 587 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **1121 casos**. Un "caso" no es lo mismo que un método de test: hay unos 631 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -170,6 +170,13 @@ Y `MfaServiceTests`, para **lo que los handlers del segundo factor dan por supue
 
 Los handlers se prueban en Application con un **doble del servicio** (`FakeMfaService`): ahí solo importa el **orden** y los **datos** (la contraseña antes que el estado, el código antes de borrar, las sesiones cerradas en el mismo guardado, y que los hashes guardados sean exactamente los de los códigos que se muestran). Los 25 casos de la **jerarquía del reinicio** se escriben aparte de la tabla de producción, copiados literales, igual que las matrices de las specs 008 y 009.
 
+Y los del **login en dos pasos** (spec 010, bloque 5), que repiten el reparto de siempre:
+
+- **Application, con dobles.** `LoginCommandHandlerTests` comprueba la promesa central con un contador en el doble del servicio de tokens: con el segundo factor activo y la contraseña correcta, **`IssuedSessions == 0`**. No se emitió ni un token. También que el desafío guardado es el *hash* del entregado, que caduca a los 5 minutos y que cada login recibe uno distinto. `VerifyMfaChallengeCommandHandlerTests` comprueba que un canje rechazado, una forma mal escrita o una cuenta sin empresa no dan sesión, y que la sesión sale para la empresa **de la pertenencia** (la petición no tiene campo para elegirla: un test lo fija mirando las propiedades del comando).
+- **SQL Server real, el canje.** El desafío se canjea **una sola vez** (cuatro canjes simultáneos, una sesión; y dos códigos *distintos* a la vez, también una), muere a los 5 códigos erróneos **aunque se levante a mano el bloqueo de la cuenta** (para aislar los dos topes), caduca justo a los 5 minutos (con un control positivo a los 4:59), un desafío desconocido o caducado **no** suma contra la cuenta, y el desafío de una cuenta no se canjea con el código de otra.
+- **SQL Server real, el contador.** `SecondFactorLoginTests` prueba el punto más fino: con MFA, la contraseña correcta **no reinicia** el contador (sin MFA, sí: control), y un ataque simulado que intercala la contraseña correcta entre los fallos sigue acabando en bloqueo al quinto.
+- **Arquitectura.** Un test fija que solo **dos ficheros** llaman a `IssueTokensAsync` (el login y el canje), y otro que, dentro del login, la rama «falta el segundo factor» termina con un `return` **antes** de la línea que emite la sesión. Es el equivalente, para el segundo factor, de la lista blanca de `IgnoreQueryFilters()`.
+
 Y `MfaPersistenceTests`, para el **almacén del segundo factor** (spec 010, bloque 2), con la misma idea: lo que solo una base de datos de verdad puede garantizar.
 
 - **Los índices únicos:** una cuenta no puede tener dos secretos TOTP (su clave primaria es la propia cuenta), y dos códigos de recuperación o dos desafíos no pueden compartir hash, ni siquiera de cuentas distintas.
@@ -246,7 +253,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **946 casos son unos 587 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **946 casos son unos 631 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

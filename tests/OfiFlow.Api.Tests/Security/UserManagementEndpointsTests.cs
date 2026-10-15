@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Json;
@@ -77,7 +78,7 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
         Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
 
         var created = (await response.Content.ReadFromJsonAsync<InvitationCreatedDto>())!;
-        Assert.True(InvitationToken.IsWellFormed(created.Token));
+        Assert.True(OpaqueToken.IsWellFormed(created.Token));
         Assert.InRange(created.ExpiresAt, DateTime.UtcNow.AddDays(6), DateTime.UtcNow.AddDays(8));
     }
 
@@ -356,7 +357,7 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
         Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token)).StatusCode);
 
         var used = await AcceptAsync(created.Token);
-        var unknown = await AcceptAsync(InvitationToken.Generate().Value);
+        var unknown = await AcceptAsync(OpaqueToken.Generate().Value);
 
         // Quien lo intenta no aprende cuál de los dos es: mismo estado, mismo código, mismo texto.
         Assert.Equal(HttpStatusCode.BadRequest, used.StatusCode);

@@ -132,7 +132,7 @@ Dos decisiones de seguridad en este flujo:
 
 **El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:92` y `:111`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
-El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:29`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:34`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
 
 ### El bloqueo de cuenta (spec 010)
 
@@ -291,7 +291,7 @@ Es la misma idea del capítulo anterior, y por las mismas razones:
 - **256 bits aleatorios** de un generador criptográfico: imposible de adivinar (se codifica en 43 caracteres aptos para un enlace).
 - **Solo se guarda su hash** (SHA-256). Si roban la base de datos, no encuentran tokens utilizables.
 - **Un solo uso y caduca a los 7 días.** Se puede revocar mientras esté pendiente.
-- Se genera y se hashea en **un único sitio**, [`InvitationToken`](../../src/OfiFlow.Application/Tenancy/InvitationToken.cs), para que crear y aceptar usen exactamente la misma regla.
+- Se genera y se hashea en **un único sitio**, [`OpaqueToken`](../../src/OfiFlow.Application/Common/Security/OpaqueToken.cs), para que crear y aceptar usen exactamente la misma regla. Está en `Common/Security/` porque desde la spec 010 lo usa también el **desafío del login en dos pasos** (Parte 7): mismo generador, mismo hash, distinto uso.
 
 Un detalle que se parece a la sal y no lo es: este hash **no lleva sal**, a diferencia del de las contraseñas. Una sal sirve para que dos contraseñas iguales no den el mismo hash y para frenar diccionarios; un token ya es aleatorio de 256 bits, no hay diccionario que atacar, y hace falta un hash **determinista** para poder buscarlo en el índice.
 
@@ -381,6 +381,43 @@ Todas estas operaciones son sobre **la propia cuenta** (permiso `Mfa.Manage`, qu
 
 **Por qué SHA-256 basta para los códigos de recuperación y no para una contraseña.** Una contraseña la elige una persona, así que existe un diccionario de candidatos y hace falta un hash lento (PBKDF2). Un código de recuperación es **aleatorio de 80 bits**: no hay diccionario, y probar 2^80 candidatos es inviable aunque alguien robe la base de datos.
 
+### El login en dos pasos (bloque 5)
+
+Con el segundo factor activo, la contraseña **ya no da sesión**. El recorrido:
+
+```
+ POST /auth/login  { email, contraseña }
+        │
+        ▼
+ ① IdentityService.AuthenticateAsync     ¿existe? ¿bloqueada? ¿la contraseña coincide?
+        │  sin MFA  → sesión como siempre ───────────────────────────────▶ 200 { accessToken, ... }
+        │  con MFA  → devuelve la reserva (NO pone el contador a cero)
+        ▼
+ ② LoginCommandHandler                  crea un DESAFÍO (solo se guarda su hash) ▶ 200 { mfaRequired, challenge, expiresAt }
+        │                                        ^ aquí no se emite ni un token
+        ▼
+ POST /auth/mfa/verify  { challenge, código }       (el desafío no es un token de acceso)
+        │
+        ▼
+ ③ MfaService.RedeemChallengeAsync       ¿desafío vivo? ¿código válido? → lo canjea, UNA vez
+        ▼
+ ④ VerifyMfaChallengeCommandHandler      busca la empresa de la cuenta ▶ 200 { accessToken, ... }
+```
+
+**El desafío es opaco, no un JWT.** Sería tentador devolver «un token provisional» firmado. Pero un JWT del mismo emisor es un token como cualquier otro: un error de audiencia lo convertiría en un token de acceso. El desafío son **256 bits aleatorios** (el mismo generador que las invitaciones: `OpaqueToken`), de los que solo se guarda el **hash**, y no tiene la forma de un JWT, así que ni por error se acepta como sesión. Además, al guardarse en la base de datos puede hacerse lo que un JWT no permite: que **dure 5 minutos**, que **se use una sola vez** y que **muera a los 5 códigos erróneos**.
+
+**Un solo uso, de verdad.** Canjearlo es una única sentencia condicional (`... WHERE ConsumedAt IS NULL AND ExpiresAt > ahora AND FailedAttempts < 5`): de cuatro canjes simultáneos, solo uno cambia la fila. Y como el código TOTP ya se anota de forma atómica (arriba), ni siquiera dos códigos distintos canjean el mismo desafío dos veces.
+
+**Todos los fallos del segundo paso son iguales desde fuera** (401): desafío inventado, caducado, usado o agotado, código erróneo o repetido, cuenta bloqueada, o texto con la forma equivocada. El motivo real va al registro (`1504`). Por eso el validador de la petición solo pone un tope de tamaño y **no** comprueba la forma: un validador respondería 400, y esa diferencia ya diría que «la forma estaba mal».
+
+**Qué cuenta contra el bloqueo.** Cada código erróneo suma uno al contador de la cuenta **y** gasta uno de los 5 intentos del desafío. Un desafío desconocido o caducado **no** cuenta contra la cuenta: no hay nadie intentando adivinar nada, y si contara, cualquiera podría bloquear una cuenta ajena inventando desafíos.
+
+**La pieza clave: la contraseña correcta no reinicia el contador (R17).** Si lo reiniciara, un atacante que ya conoce la contraseña probaría 4 códigos, pondría la contraseña para volver a cero, probaría 4 más… y adivinaría el código sin límite (un código de 6 dígitos tiene un millón de valores). Por eso, con MFA, la contraseña correcta **devuelve** su intento reservado en vez de poner el contador a cero, y solo un **acceso completo** (contraseña y segundo factor) lo reinicia. Un test intercala la contraseña correcta entre los fallos y comprueba que el contador sigue donde estaba y que el quinto fallo bloquea la cuenta.
+
+**Quién puede emitir sesiones.** Es la promesa de todo el segundo factor, y se vigila con un test de arquitectura: solo el login (rama sin MFA) y el canje del desafío llaman a `IssueTokensAsync`. Si alguien añade mañana otro camino (un «login con Google», un «recordar dispositivo»), el test falla y obliga a decidir, a propósito, qué pasa allí con el segundo factor. Otro test comprueba que, dentro del login, la rama «falta el segundo factor» termina con un `return` **antes** de la línea que emite la sesión.
+
+**Una rareza aceptada.** Cinco inicios de sesión con la contraseña **correcta** lanzados exactamente a la vez en una cuenta con MFA pueden dejarla bloqueada 15 minutos: cada uno reserva un intento y el quinto fija el bloqueo antes de que los demás devuelvan el suyo. Solo lo puede provocar quien conoce la contraseña, y el bloqueo es temporal.
+
 ---
 
 ## Cómo se protege todo el flujo
@@ -399,8 +436,8 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 | Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:73-74` | **Sin test propio** (ver "Controles sin test") |
 | **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:133` | `RotateRefreshTokenAsync_WithValidToken_...` |
-| Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `InvitationToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
-| Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `InvitationToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
+| Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `OpaqueToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
+| Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | Usar dos veces la misma invitación | Un solo uso + versión de fila: gana una | `Invitation.cs`, `InvitationConfiguration.cs` | `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` |
 | Un invitante que se queda con la contraseña de otro | La persona elige la suya al aceptar; el invitante solo fija email y rol | `AcceptInvitationCommand.cs` | `ThePersonCanThenLogInWithTheirOwnPassword` |
 | Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:49-52` | **Sin test propio** (ver "Controles sin test") |

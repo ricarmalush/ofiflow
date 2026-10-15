@@ -59,6 +59,29 @@ public interface IMfaService
     /// <summary>Sustituye todos los códigos de recuperación por otros nuevos (los anteriores dejan de valer).</summary>
     Task ReplaceRecoveryCodesAsync(Guid userId, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Crea un desafío del login en dos pasos (solo su hash) y borra los de la cuenta que ya no sirven (caducados,
+    /// canjeados o agotados), para que la tabla no crezca con cada contraseña correcta. No confirma: lo hace el Handler.
+    /// </summary>
+    Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Canjea un desafío con un código (TOTP o de recuperación): es el segundo paso del login. Solo tiene éxito si el
+    /// desafío existe, no caducó, no se usó y no agotó sus intentos, y si el código es válido. <b>Todos los fallos son
+    /// iguales para quien llama</b> (el motivo real va al registro). Cada código erróneo suma un intento al desafío y al
+    /// bloqueo de la cuenta; un acierto pone el contador de la cuenta a cero (es un acceso completo, R17). Escribe en el
+    /// acto (no necesita SaveChanges).
+    /// </summary>
+    Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, CancellationToken cancellationToken);
+
     /// <summary>Borra el secreto, los códigos de recuperación y los desafíos de la cuenta. Idempotente.</summary>
     Task RemoveAllAsync(Guid userId, CancellationToken cancellationToken);
+}
+
+/// <summary>El resultado de canjear un desafío.</summary>
+/// <param name="Succeeded">El desafío era bueno y el código válido: el segundo factor se ha superado.</param>
+/// <param name="UserId">La cuenta del desafío; solo significa algo si <paramref name="Succeeded"/> es verdadero.</param>
+public sealed record ChallengeRedemption(bool Succeeded, Guid UserId)
+{
+    public static ChallengeRedemption Rejected { get; } = new(false, Guid.Empty);
 }

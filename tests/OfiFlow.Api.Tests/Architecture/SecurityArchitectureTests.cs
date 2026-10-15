@@ -19,6 +19,8 @@ public class SecurityArchitectureTests
         "src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs",
         // aceptar una invitación: la persona aún no tiene cuenta ni empresa activa, la invitación se busca por el hash de su token (ADR-013)
         "src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs",
+        // canjear el desafío del login en dos pasos: la petición es anónima y aún no hay empresa activa; la pertenencia se busca por la cuenta del desafío (ADR-014)
+        "src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs",
         // el refresh relee el rol del usuario en su tenant
         "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
     ];
@@ -51,7 +53,12 @@ public class SecurityArchitectureTests
             MfaServiceFile
         ],
         // el segundo factor (spec 010): credenciales de una cuenta, siempre por su Id (comprobar, borrar al desactivar o al quitar a un miembro)
-        ["MfaCredentials"] = [MfaServiceFile, MfaStoreFile],
+        ["MfaCredentials"] = [
+            MfaServiceFile,
+            MfaStoreFile,
+            // el login consulta si la cuenta que se autentica tiene el segundo factor activo (siempre por su Id): decide si basta la contraseña (spec 010 R10)
+            "src/OfiFlow.Infrastructure/Identity/IdentityService.cs"
+        ],
         ["RecoveryCodes"] = [MfaServiceFile, MfaStoreFile],
         ["MfaChallenges"] = [MfaServiceFile, MfaStoreFile],
         // se buscan por el hash del token, que es secreto y único
@@ -135,6 +142,51 @@ public class SecurityArchitectureTests
         // Control positivo: el escaneo encuentra el uso legítimo. Si el fichero se moviera, este test avisaría
         // de que ya no vigila nada en vez de pasar en silencio.
         Assert.Contains(WeakAlgorithmAllowedFile, SourceCode.FilesContaining(marker));
+    }
+
+    /// <summary>
+    /// Los ÚNICOS sitios que emiten una sesión nueva (spec 010 R12): el login de una cuenta sin segundo factor y el canje
+    /// del desafío, que exige el código. El refresh no emite sesiones nuevas: rota una que ya existe.
+    /// </summary>
+    private static readonly string[] SessionIssuers =
+    [
+        "src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs",
+        "src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs"
+    ];
+
+    [Fact]
+    public void OnlyTheLoginAndTheChallengeRedemption_CanIssueANewSession()
+    {
+        // Es la promesa del segundo factor: una cuenta con MFA no recibe sesión sin un código válido. Si alguien añade
+        // un camino nuevo que llame a IssueTokensAsync (un "login con Google", un "recordar dispositivo"...), este test
+        // falla y obliga a decidir, a propósito, qué pasa con el segundo factor en ese camino.
+        var definitions = new[]
+        {
+            "src/OfiFlow.Application/Common/Abstractions/ITokenService.cs",
+            "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
+        };
+
+        var callers = SourceCode.FilesContaining("IssueTokensAsync(").Where(path => !definitions.Contains(path)).Order().ToList();
+
+        Assert.True(callers.SequenceEqual(SessionIssuers.Order()),
+            "Solo el login y el canje del desafío pueden emitir una sesión (ADR-014, spec 010 R12). " +
+            $"Hoy la emiten: {string.Join(", ", callers)}");
+    }
+
+    [Fact]
+    public void TheLoginBranchThatNeedsASecondFactor_ReturnsBeforeIssuingAnySession()
+    {
+        // En el login, la rama "falta el segundo factor" debe terminar (return) ANTES de la llamada que emite la sesión.
+        var login = SourceCode.Files("OfiFlow.Application/Identity/Commands/Login")
+            .Single(file => file.Path.EndsWith("LoginCommandHandler.cs", StringComparison.Ordinal)).Content;
+
+        var secondFactorBranch = login.IndexOf("if (authentication.SecondFactorRequired)", StringComparison.Ordinal);
+        var issue = login.IndexOf("IssueTokensAsync(", StringComparison.Ordinal);
+
+        Assert.True(secondFactorBranch >= 0, "No se encuentra la rama del segundo factor en el login.");
+        Assert.True(issue > secondFactorBranch,
+            "La emisión de la sesión debe ir DESPUÉS de la rama que exige el segundo factor, que termina con un return.");
+        Assert.Contains("return new LoginResult.SecondFactorRequired", login[secondFactorBranch..issue]);
     }
 
     [Fact]

@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Logging;
+using OfiFlow.Application.Common.Security;
+using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Mfa;
 using OfiFlow.Infrastructure.Identity;
 using OfiFlow.Infrastructure.Persistence;
@@ -15,7 +17,7 @@ namespace OfiFlow.Infrastructure.Tests.Identity;
 /// handlers dan por supuestas: el secreto cifrado, un código TOTP que no se acepta dos veces ni siquiera si llega dos
 /// veces A LA VEZ, un código de recuperación que se consume una sola vez, y los fallos que cuentan para el bloqueo.
 /// </summary>
-public class MfaServiceTests(SqlServerContainerFixture fixture) : IClassFixture<SqlServerContainerFixture>
+public partial class MfaServiceTests(SqlServerContainerFixture fixture) : IClassFixture<SqlServerContainerFixture>
 {
     private static readonly DateTime Start = new(2026, 10, 15, 10, 0, 0, DateTimeKind.Utc);
 

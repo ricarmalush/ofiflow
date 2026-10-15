@@ -36,6 +36,7 @@ public class AuthorizationPipelineTests
         services.AddSingleton<IApplicationDbContext>(db);
         services.AddSingleton<IIdentityService>(new FakeIdentityService());
         services.AddSingleton<ITokenService>(new FakeTokenService());
+        services.AddSingleton<IMfaService>(new FakeMfaService());
 
         return (services.BuildServiceProvider(), db);
     }
@@ -119,7 +120,7 @@ public class AuthorizationPipelineTests
         // Credenciales inválidas para el fake: devuelve null, pero llega al handler (no se deniega).
         var result = await provider.GetRequiredService<ISender>().Send(new LoginCommand("nadie@example.com", "x"));
 
-        Assert.Null(result);
+        Assert.IsType<OfiFlow.Application.Identity.LoginResult.Rejected>(result);
     }
 
     [Fact]

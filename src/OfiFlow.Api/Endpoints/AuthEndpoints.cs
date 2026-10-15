@@ -1,5 +1,6 @@
 using MediatR;
 using OfiFlow.Api.Common;
+using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
@@ -24,10 +25,24 @@ public static class AuthEndpoints
             .WithSummary("Registra una nueva empresa (Tenant) y su primer usuario (Owner).")
             .RequireRateLimiting(RateLimiting.Register);
 
-        group.MapPost("/login", async (LoginCommand command, ISender sender, CancellationToken cancellationToken) =>
+        group.MapPost("/login", async (LoginCommand command, ISender sender, HttpContext httpContext, CancellationToken cancellationToken) =>
             {
                 var result = await sender.Send(command, cancellationToken);
-                return result is null ? Results.Unauthorized() : Results.Ok(result);
+
+                switch (result)
+                {
+                    case LoginResult.Authenticated authenticated:
+                        return Results.Ok(authenticated.Tokens);
+
+                    case LoginResult.SecondFactorRequired required:
+                        // Falta el segundo factor (spec 010 R10): no hay sesión, hay un desafío. Contiene un valor secreto que no
+                        // se vuelve a mostrar, así que ninguna caché debe guardarlo (igual que el token de una invitación).
+                        httpContext.Response.Headers.CacheControl = "no-store";
+                        return Results.Ok(new { mfaRequired = true, challenge = required.Challenge.Challenge, expiresAt = required.Challenge.ExpiresAt });
+
+                    default:
+                        return Results.Unauthorized();
+                }
             })
             .WithName("Login")
             .WithSummary("Autentica al usuario y emite Access Token + Refresh Token.")

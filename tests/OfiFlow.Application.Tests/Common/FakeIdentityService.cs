@@ -51,13 +51,16 @@ public sealed class FakeIdentityService : IIdentityService
         return Task.FromResult(_users.Values.Any(user => user.Id == userId && user.Password == password));
     }
 
-    public Task<Guid?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken)
+    /// <summary>Las cuentas que tienen el segundo factor activo: su contraseña sola no basta (spec 010 R10).</summary>
+    public HashSet<Guid> AccountsWithSecondFactor { get; } = [];
+
+    public Task<PasswordAuthentication?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken)
     {
         if (_users.TryGetValue(email, out var user) && user.Password == password)
         {
-            return Task.FromResult<Guid?>(user.Id);
+            return Task.FromResult<PasswordAuthentication?>(new PasswordAuthentication(user.Id, AccountsWithSecondFactor.Contains(user.Id)));
         }
 
-        return Task.FromResult<Guid?>(null);
+        return Task.FromResult<PasswordAuthentication?>(null);
     }
 }

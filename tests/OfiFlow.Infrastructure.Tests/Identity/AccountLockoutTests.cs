@@ -63,7 +63,7 @@ public class AccountLockoutTests(SqlServerContainerFixture fixture) : IClassFixt
     {
         await using var db = Open();
 
-        return await Service(db, clock, checker, logger).AuthenticateAsync(email, password, CancellationToken.None);
+        return (await Service(db, clock, checker, logger).AuthenticateAsync(email, password, CancellationToken.None))?.UserId;
     }
 
     // ===== El camino feliz y el contador =====

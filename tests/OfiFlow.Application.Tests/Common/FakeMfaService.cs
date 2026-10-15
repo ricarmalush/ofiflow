@@ -32,6 +32,14 @@ public sealed class FakeMfaService : IMfaService
 
     public int SecondFactorChecks { get; private set; }
 
+    /// <summary>Los desafíos creados (cuenta y hash).</summary>
+    public List<(Guid UserId, string Hash, DateTime ExpiresAt)> CreatedChallenges { get; } = [];
+
+    /// <summary>Cómo responde este doble al canjear un desafío (el test lo fija).</summary>
+    public ChallengeRedemption NextRedemption { get; set; } = ChallengeRedemption.Rejected;
+
+    public List<(string Hash, string Code)> Redemptions { get; } = [];
+
     public void Set(Guid userId, MfaStatus status) => _status[userId] = status;
 
     public Task<MfaStatus> GetStatusAsync(Guid userId, CancellationToken cancellationToken) =>
@@ -83,6 +91,18 @@ public sealed class FakeMfaService : IMfaService
     {
         ReplacedRecoveryCodes.Add((userId, recoveryCodeHashes));
         return Task.CompletedTask;
+    }
+
+    public Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, CancellationToken cancellationToken)
+    {
+        CreatedChallenges.Add((userId, tokenHash, expiresAt));
+        return Task.CompletedTask;
+    }
+
+    public Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, CancellationToken cancellationToken)
+    {
+        Redemptions.Add((tokenHash, code));
+        return Task.FromResult(NextRedemption);
     }
 
     public Task RemoveAllAsync(Guid userId, CancellationToken cancellationToken)

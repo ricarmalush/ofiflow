@@ -21,10 +21,10 @@ public interface IIdentityService
     /// contraseña desde Application: así no se puede olvidar el bloqueo.
     /// </summary>
     /// <returns>
-    /// El Id de la cuenta si las credenciales son correctas; <c>null</c> en cualquier otro caso (email desconocido,
+    /// La cuenta y si le falta el segundo factor, si las credenciales son correctas; <c>null</c> en cualquier otro caso (email desconocido,
     /// contraseña errónea o cuenta bloqueada) sin revelar cuál: la respuesta y el tiempo son los mismos.
     /// </returns>
-    Task<Guid?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken);
+    Task<PasswordAuthentication?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken);
 
     /// <summary>
     /// Vuelve a pedir la contraseña a alguien que ya tiene sesión, antes de una operación sensible (activar o desactivar
@@ -48,3 +48,11 @@ public sealed record IdentityCreationResult(bool Succeeded, IReadOnlyCollection<
 
     public static IdentityCreationResult Failure(IEnumerable<string> errors) => new(false, errors.ToList());
 }
+
+/// <summary>El resultado de una contraseña correcta.</summary>
+/// <param name="UserId">La cuenta autenticada.</param>
+/// <param name="SecondFactorRequired">
+/// La cuenta tiene el segundo factor activo: la contraseña sola <b>no</b> da sesión, hay que superar también el desafío
+/// (spec 010 R10). En ese caso el intento reservado se devolvió en vez de poner el contador a cero (R17).
+/// </param>
+public sealed record PasswordAuthentication(Guid UserId, bool SecondFactorRequired);

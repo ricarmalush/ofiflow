@@ -9,6 +9,7 @@ using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
+using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
 using OfiFlow.Application.Identity.Mfa.Commands.DisableMfa;
 using OfiFlow.Application.Identity.Mfa.Commands.EnableMfa;
 using OfiFlow.Application.Identity.Mfa.Commands.RegenerateRecoveryCodes;
@@ -35,7 +36,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 29 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009 y las del segundo factor de la spec 010) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 30 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009 y las del segundo factor de la spec 010) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -75,7 +76,8 @@ public class OperationPermissionsTests
         typeof(RegisterCommand),
         typeof(LoginCommand),
         typeof(RefreshTokenCommand),
-        typeof(AcceptInvitationCommand) // spec 009: anónima, el token de la invitación es la credencial
+        typeof(AcceptInvitationCommand), // spec 009: anónima, el token de la invitación es la credencial
+        typeof(VerifyMfaChallengeCommand) // spec 010: anónima, el desafío del primer paso es la credencial
     ];
 
     public static TheoryData<Type, Permission> Authenticated
@@ -138,7 +140,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(29, inTheTable.Count);
+        Assert.Equal(30, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

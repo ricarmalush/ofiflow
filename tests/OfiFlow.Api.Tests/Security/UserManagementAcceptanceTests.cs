@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using System.Net;
 using System.Net.Http.Json;
 using OfiFlow.Application.Identity;
@@ -91,7 +92,7 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
     [Fact]
     public async Task UnknownExpiredRevokedAndUsedTokens_GetExactlyTheSameResponse_AndCreateNothing()
     {
-        var unknown = InvitationToken.Generate().Value;
+        var unknown = OpaqueToken.Generate().Value;
 
         var expired = await InviteOkAsync(NewEmail("caducada"), TenantRole.Employee);
         await fixture.ExpireInvitationAsync(expired.Id);
@@ -183,12 +184,12 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         // Base de datos: ninguna columna de la invitación contiene el token en claro (solo su hash).
         var row = await fixture.InvitationRowAsTextAsync(created.Id);
         Assert.DoesNotContain(created.Token, row);
-        Assert.Contains(InvitationToken.Hash(created.Token), row);
+        Assert.Contains(OpaqueToken.Hash(created.Token), row);
 
         // Registro: ni el token ni la contraseña aparecen en NINGÚN log.
         var allLogs = fixture.Factory.Logs.Entries;
         Assert.DoesNotContain(allLogs, e => e.Message.Contains(created.Token));
-        Assert.DoesNotContain(allLogs, e => e.Message.Contains(InvitationToken.Hash(created.Token)));
+        Assert.DoesNotContain(allLogs, e => e.Message.Contains(OpaqueToken.Hash(created.Token)));
         Assert.DoesNotContain(allLogs, e => e.Message.Contains(password));
 
         // Eventos de seguridad: con los Ids, pero sin el email ni el nombre (control positivo: los eventos SÍ existen).

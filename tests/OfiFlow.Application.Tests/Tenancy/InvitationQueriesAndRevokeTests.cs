@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Security;
 using Microsoft.EntityFrameworkCore;
 using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
@@ -23,7 +24,7 @@ public class InvitationQueriesAndRevokeTests
 
     private async Task<Invitation> SeedAsync(string email, TenantRole role = TenantRole.Technician, DateTime? createdAt = null, DateTime? issuedAt = null)
     {
-        var invitation = Invitation.Create(_tenantId, Email.Create(email), role, InvitationToken.Generate().Hash, _actorId, issuedAt ?? Now);
+        var invitation = Invitation.Create(_tenantId, Email.Create(email), role, OpaqueToken.Generate().Hash, _actorId, issuedAt ?? Now);
         if (createdAt is not null)
         {
             invitation.CreatedAt = createdAt.Value; // normalmente lo rellena el interceptor de EF

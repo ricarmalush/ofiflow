@@ -70,7 +70,7 @@ public sealed partial class IdentityService(
     }
 
 
-    public async Task<Guid?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken)
+    public async Task<PasswordAuthentication?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken)
     {
         var normalizedEmail = email.ToUpperInvariant();
 
@@ -116,12 +116,24 @@ public sealed partial class IdentityService(
             return null;
         }
 
-        // Contraseña correcta y, por ahora, acceso completo: el contador vuelve a cero. Cuando exista el segundo
-        // factor (bloque 5), una cuenta que lo tenga NO llega aquí: devolverá la reserva (ReleaseAsync) en vez de
-        // ponerlo a cero, para que quien conoce la contraseña no pueda reiniciar el contador (R17).
-        await lockout.ClearAsync(user.Id, cancellationToken);
+        // Contraseña correcta. ¿Tiene la cuenta el segundo factor activo?
+        var secondFactorRequired = await dbContext.MfaCredentials
+            .AnyAsync(c => c.UserId == user.Id && c.ConfirmedAt != null, cancellationToken);
 
-        return user.Id;
+        if (secondFactorRequired)
+        {
+            // La contraseña sola NO es un acceso completo: falta el segundo factor. Se devuelve la reserva en vez de
+            // poner el contador a cero (R17): si una contraseña correcta lo reiniciara, quien la conoce podría reiniciar
+            // el contador después de cada 4 códigos fallados y seguir adivinando el código indefinidamente.
+            await lockout.ReleaseAsync(user.Id, cancellationToken);
+        }
+        else
+        {
+            // Sin segundo factor, la contraseña es todo el acceso: el contador vuelve a cero.
+            await lockout.ClearAsync(user.Id, cancellationToken);
+        }
+
+        return new PasswordAuthentication(user.Id, secondFactorRequired);
     }
 
     public async Task<bool> ConfirmPasswordAsync(Guid userId, string password, CancellationToken cancellationToken)
