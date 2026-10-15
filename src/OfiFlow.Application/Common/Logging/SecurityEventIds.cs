@@ -36,4 +36,10 @@ public static class SecurityEventIds
 
     /// <summary>Una invitación pendiente se revocó.</summary>
     public const int InvitationRevoked = 1404;
+
+    /// <summary>Se cambió el rol de un miembro de la empresa.</summary>
+    public const int UserRoleChanged = 1405;
+
+    /// <summary>Se quitó a un miembro de la empresa (su cuenta y sus datos personales se borran).</summary>
+    public const int UserRemoved = 1406;
 }

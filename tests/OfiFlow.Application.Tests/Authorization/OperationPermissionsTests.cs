@@ -17,16 +17,19 @@ using OfiFlow.Application.Jobs.Commands.StartJob;
 using OfiFlow.Application.Jobs.Commands.UpdateJob;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
+using OfiFlow.Application.Tenancy.Commands.ChangeUserRole;
 using OfiFlow.Application.Tenancy.Commands.InviteUser;
+using OfiFlow.Application.Tenancy.Commands.RemoveUser;
 using OfiFlow.Application.Tenancy.Commands.RevokeInvitation;
 using OfiFlow.Application.Tenancy.Queries.GetInvitations;
+using OfiFlow.Application.Tenancy.Queries.GetUsers;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 20 operaciones (las 16 de la spec 008 y las de invitaciones de la spec 009) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 23 operaciones (las 16 de la spec 008 y las de invitaciones y miembros de la spec 009) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -48,7 +51,10 @@ public class OperationPermissionsTests
         // Spec 009: invitar y gestionar usuarios. Cada una exige Users.Manage además de la jerarquía de roles.
         (typeof(InviteUserCommand), Permission.UsersManage),
         (typeof(GetInvitationsQuery), Permission.UsersManage),
-        (typeof(RevokeInvitationCommand), Permission.UsersManage)
+        (typeof(RevokeInvitationCommand), Permission.UsersManage),
+        (typeof(GetUsersQuery), Permission.UsersRead),
+        (typeof(ChangeUserRoleCommand), Permission.UsersManage),
+        (typeof(RemoveUserCommand), Permission.UsersManage)
     ];
 
     private static readonly Type[] AnonymousTable =
@@ -119,7 +125,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(20, inTheTable.Count);
+        Assert.Equal(23, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

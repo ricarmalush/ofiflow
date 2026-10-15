@@ -31,7 +31,13 @@ public class SecurityArchitectureTests
     /// </summary>
     private static readonly Dictionary<string, string[]> GlobalDbSetReadAllowList = new()
     {
-        ["Users"] = [],
+        // la ficha de una persona solo se lee desde las pertenencias de la empresa activa: listar los miembros (join con
+        // TenantUsers, que sí está filtrada) y quitar a uno (se busca a partir de su pertenencia). Spec 009.
+        ["Users"] =
+        [
+            "src/OfiFlow.Application/Tenancy/Queries/GetUsers/GetUsersQueryHandler.cs",
+            "src/OfiFlow.Application/Tenancy/Commands/RemoveUser/RemoveUserCommandHandler.cs"
+        ],
         ["Tenants"] = [],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
         ["ApplicationUsers"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],

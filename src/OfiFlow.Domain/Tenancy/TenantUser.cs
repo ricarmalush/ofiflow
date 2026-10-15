@@ -38,4 +38,20 @@ public sealed class TenantUser : AggregateRoot, ITenantOwned, IAuditable
 
     public static TenantUser Create(Guid tenantId, Guid userId, TenantRole role) =>
         new(Guid.NewGuid(), tenantId, userId, role);
+
+    /// <summary>
+    /// Cambia el rol de la persona en esta empresa (spec 009). Quién puede hacerlo y sobre quién lo decide
+    /// <see cref="ManageableRoles"/> en Application; esto es la última barrera, dentro del propio agregado:
+    /// el Owner no cambia de rol (es único por empresa, R12) y a nadie se le asigna Owner ni un rol que no existe.
+    /// </summary>
+    /// <exception cref="DomainException">Con <see cref="TenancyErrors.RoleNotManageable"/>.</exception>
+    public void ChangeRole(TenantRole newRole)
+    {
+        if (Role == TenantRole.Owner || !ManageableRoles.IsGrantable(newRole))
+        {
+            throw new DomainException(TenancyErrors.RoleNotManageable);
+        }
+
+        Role = newRole;
+    }
 }
