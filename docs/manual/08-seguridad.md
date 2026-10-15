@@ -298,6 +298,7 @@ Tres decisiones que debes saber explicar:
 
 - **Es JSON, un registro por línea, y no texto.** La ruta de la petición la elige quien llama y puede traer un salto de línea (`%0A`) seguido de una línea inventada (*log forging*, CWE-117). En un fichero de texto esa línea falsa parecería una entrada real; en JSON el salto queda escapado dentro del mismo registro. Se comprobó llamando a la API con una ruta así.
 - **Serilog es un proveedor más, no sustituye al de Microsoft.** Los handlers siguen usando `ILogger<T>`; no se tocó ninguno. La instalación habitual (`UseSerilog`) reemplaza la fábrica de loggers y los tests que comprueban los eventos de seguridad dejarían de ver los logs y pasarían en falso.
+- **Los fallos de arranque también quedan en el fichero.** Si la API no arranca (falta `Jwt:Secret` o `Mfa:EncryptionKey`, el puerto está ocupado...) no hay ningún manejador de peticiones que lo registre, así que `Program.cs` envuelve el arranque en un `try/catch` que lo escribe como `Fatal` con su traza y lo relanza (el proceso sigue cayendo). Se comprobó arrancando la API de verdad sin `Jwt`.
 - **El filtro de ruido es propio.** Serilog ignora el `Logging:LogLevel` de Microsoft; se filtra con `Serilog:MinimumLevel` (`Microsoft` y `System` en `Warning`, para que cada petición no añada dos líneas).
 
 Para encontrar un fallo, en PowerShell:
@@ -308,6 +309,8 @@ Get-Content src\OfiFlow.Api\logs\*.log -Encoding UTF8 | ConvertFrom-Json |
 ```
 
 Para seguir una petición concreta, filtra por su `TraceId` (el `traceId` que recibe el cliente en un error); para vigilar un evento, por `EventId.Id` (por ejemplo `1001`).
+
+**Qué no vas a encontrar en el fichero**, para no buscar donde no hay: los errores 4xx esperables (validación, «no encontrado», reglas de negocio; no son bugs, aunque los 403 sí quedan como evento `1301`), todo lo que el código capture y se trague sin registrar, y los niveles `Debug` y `Trace`. Y si el propio fichero falla (disco lleno, sin permisos), Serilog lo ignora en silencio.
 
 > **Límite importante:** hoy esto es **registro, no vigilancia**. Los eventos se escriben, pero nadie recibe una alerta ni hay un sistema (un SIEM) que los analice. Y no existe un **registro de auditoría persistente** ("quién creó o borró qué y cuándo"): solo queda `CreatedAt` en las filas. Está planificado para cuando existan facturas y pagos.
 
@@ -337,6 +340,7 @@ Estos tests no prueban una funcionalidad, sino que **la estructura del código r
 | `EveryFileSink_UsesAJsonFormatter` | Ningún log a fichero en texto plano (falsificación de entradas) |
 | `EveryRealEnvironment_WritesLogsToAFile` | Development y Production escriben a fichero (producción no se queda sin dónde mirar) |
 | `SerilogIsAProvider_NotAReplacementOfTheLoggerFactory` | Se usa `AddSerilog`, nunca `UseSerilog` |
+| `AStartupFailure_IsLoggedAsFatal_AndRethrown` | Un fallo de arranque queda en el fichero como `Fatal` y el proceso sigue cayendo |
 
 ### En el pipeline de GitHub
 

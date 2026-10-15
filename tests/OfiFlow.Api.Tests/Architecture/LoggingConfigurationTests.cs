@@ -53,6 +53,27 @@ public class LoggingConfigurationTests
         Assert.Contains($"src/{ApiFolder}/Program.cs", SourceCode.FilesContaining(".AddSerilog(", ApiFolder));
     }
 
+    [Fact]
+    public void AStartupFailure_IsLoggedAsFatal_AndRethrown()
+    {
+        // Un fallo de arranque (falta una clave, puerto ocupado...) ocurre antes de que exista ningún manejador de
+        // peticiones: sin este catch solo saldría por la consola y no quedaría en el fichero. Se comprueba el código
+        // y no el comportamiento porque WebApplicationFactory aborta Program antes de llegar a app.Run() y no
+        // reproduce un arranque real; el comportamiento se verificó arrancando la API de verdad (ADR-015).
+        var program = SourceCode.ReadText($"src/{ApiFolder}/Program.cs");
+
+        var run = program.IndexOf("app.Run();", StringComparison.Ordinal);
+        var catchBlock = program.IndexOf("catch (Exception exception) when (exception is not HostAbortedException)", StringComparison.Ordinal);
+        var fatal = program.IndexOf("fileLogger.Fatal(exception,", StringComparison.Ordinal);
+        var rethrow = program.IndexOf("throw;", StringComparison.Ordinal);
+
+        Assert.True(run >= 0 && catchBlock > run, "El catch debe ir justo después de app.Run(), rodeando todo el arranque.");
+        Assert.True(fatal > catchBlock, "El catch debe registrar el fallo como Fatal en el logger de fichero.");
+        Assert.True(rethrow > fatal, "Tras registrarlo hay que relanzar: el proceso debe seguir terminando con error.");
+        // HostAbortedException la lanzan a propósito dotnet ef y WebApplicationFactory: no es un fallo y debe pasar intacta.
+        Assert.Contains("is not HostAbortedException", program[catchBlock..fatal]);
+    }
+
     private static IEnumerable<(string File, string? Formatter)> FileSinks()
     {
         foreach (var file in SourceCode.FilesMatching(ApiFolder, "appsettings*.json"))
