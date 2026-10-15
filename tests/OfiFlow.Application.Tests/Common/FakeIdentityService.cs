@@ -20,6 +20,21 @@ public sealed class FakeIdentityService : IIdentityService
         return Task.FromResult(IdentityCreationResult.Success());
     }
 
+    /// <summary>Ids de los usuarios cuyas credenciales se han borrado, para que los tests lo comprueben.</summary>
+    public List<Guid> DeletedUsers { get; } = [];
+
+    public Task DeleteUserAsync(Guid id, CancellationToken cancellationToken)
+    {
+        DeletedUsers.Add(id);
+        var email = _users.FirstOrDefault(pair => pair.Value.Id == id).Key;
+        if (email is not null)
+        {
+            _users.Remove(email);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<Guid?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken)
     {
         if (_users.TryGetValue(email, out var user) && user.Password == password)

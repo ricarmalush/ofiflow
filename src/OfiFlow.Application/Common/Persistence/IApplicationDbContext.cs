@@ -22,5 +22,7 @@ public interface IApplicationDbContext
 
     DbSet<Job> Jobs { get; }
 
+    DbSet<Invitation> Invitations { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

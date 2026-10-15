@@ -34,6 +34,20 @@ public sealed partial class IdentityService(ApplicationDbContext dbContext, ILog
         return IdentityCreationResult.Success();
     }
 
+    public async Task DeleteUserAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var user = await dbContext.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+
+        if (user is null)
+        {
+            return;
+        }
+
+        // Deliberadamente sin SaveChangesAsync, igual que CreateUserAsync: el Handler confirma esta
+        // baja junto con la pertenencia, el User y los tokens en una única transacción (spec 009 R14).
+        dbContext.ApplicationUsers.Remove(user);
+    }
+
     public async Task<Guid?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken)
     {
         var normalizedEmail = email.ToUpperInvariant();

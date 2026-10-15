@@ -90,6 +90,16 @@ public sealed partial class TokenService(
         return new AuthResultDto(accessToken, newRefreshTokenValue, DateTime.UtcNow.AddMinutes(_options.AccessTokenMinutes));
     }
 
+    public async Task DeleteRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var tokens = await dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId)
+            .ToListAsync(cancellationToken);
+
+        // Sin SaveChangesAsync: el Handler lo confirma junto con el resto de la baja (spec 009 R14).
+        dbContext.RefreshTokens.RemoveRange(tokens);
+    }
+
     private string GenerateAccessToken(Guid userId, Guid tenantId, TenantRole role)
     {
         Claim[] claims =
