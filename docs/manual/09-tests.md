@@ -189,7 +189,7 @@ Los tests de arquitectura aplican una regla al código real. Pero ¿cómo sabes 
 
 ### 3. Centinelas: que no pase en vacío
 
-Un escaneo que no encuentra nada también "pasa". Para evitarlo, algunos tests fijan **lo que deberían encontrar**: "las entidades de empresa son exactamente `Customer`, `Job` y `TenantUser`", "se encuentran al menos las 16 operaciones". Si el escaneo se rompiera y no viera nada, el centinela salta.
+Un escaneo que no encuentra nada también "pasa". Para evitarlo, algunos tests fijan **lo que deberían encontrar**: "las entidades de empresa son exactamente `Customer`, `Invitation`, `Job` y `TenantUser`", "se encuentran al menos las 23 operaciones". Si el escaneo se rompiera y no viera nada, el centinela salta.
 
 ### 4. Pruebas de mutación: romper a propósito
 

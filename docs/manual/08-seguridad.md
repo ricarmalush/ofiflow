@@ -310,7 +310,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **I** · Entidad nueva sin filtro | Clasificación obligatoria | `TenantModelRules.cs` (tests) | `EveryMappedEntity_IsTenantOwnedOrDeclaredGlobal` |
 | **I** · Un 500 que cuenta detalles internos | Mensaje genérico y detalle solo al registro | `GlobalExceptionHandler.cs` | `UnhandledException_Returns500WithoutInternalDetails_AndLogsIt` |
 | **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEvent...`, `ADenial_IsLogged...` |
-| **I** · Contenido leído o incrustado por otra web | Cabeceras de seguridad | `SecurityHeadersMiddleware.cs:13-22` | `EveryResponse_IncludesSecurityHeaders` |
+| **I** · Contenido leído o incrustado por otra web | Cabeceras de seguridad | `SecurityHeadersMiddleware.cs:28-39` | `EveryResponse_IncludesSecurityHeaders` |
 | **I** · Secretos en el repositorio | gitleaks y *push protection* | `ci.yml`, `.gitleaksignore` | El propio job `gitleaks` en cada PR |
 | **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:29-33` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
 | **D** · Contraseñas o textos gigantes | Máximos de longitud | `PasswordRules.cs`, validadores | `Register_WithPasswordLongerThanMax_Returns400_Not500` |

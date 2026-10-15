@@ -134,7 +134,7 @@ ASP.NET hace dos cosas **antes** de ejecutar el cuerpo:
 Fíjate en lo que el comando **no tiene**:
 
 ```csharp
-// Application/Jobs/Commands/CreateJob/CreateJobCommand.cs:6
+// Application/Jobs/Commands/CreateJob/CreateJobCommand.cs:9
 public sealed record CreateJobCommand(Guid CustomerId, string Title, string? Description, JobPriority Priority)
 ```
 
