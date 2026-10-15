@@ -24,7 +24,10 @@ public class RolePermissionsTests
         "JobsWrite          X     X     X       X        -",
         "JobsAssign         X     X     X       -        -",
         "JobsCancel         X     X     X       -        -",
-        "JobsExecute        X     X     X       -        X"
+        "JobsExecute        X     X     X       -        X",
+        // Añadidas por la spec 009: el Manager ve quién hay (para asignar), pero no gestiona usuarios.
+        "UsersRead          X     X     X       -        -",
+        "UsersManage        X     X     -       -        -"
     ];
 
     public static TheoryData<TenantRole, Permission, bool> Cells()
