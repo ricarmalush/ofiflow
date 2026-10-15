@@ -53,7 +53,7 @@ Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para cons
 Si se guardara primero el usuario y fallara la creación de la empresa, quedaría una persona con contraseña **sin empresa**: no podría entrar y su email estaría ocupado. Para evitarlo, [`IdentityService.CreateUserAsync`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs) **no guarda nada**:
 
 ```csharp
-// IdentityService.cs:30-32
+// IdentityService.cs:40-41
 // Deliberadamente sin SaveChangesAsync: RegisterCommandHandler confirma esta fila
 // junto con Tenant/User/TenantUser en una única transacción (spec 002).
 dbContext.ApplicationUsers.Add(user);
@@ -86,17 +86,17 @@ No necesitamos volver a leer la contraseña de Marta: solo necesitamos saber si 
 
 ### Un hash lento y con sal
 
-No vale cualquier hash. OfiFlow usa el `PasswordHasher` de ASP.NET Core ([`IdentityService.cs:13`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs)), que aplica **PBKDF2**, diseñado para ser:
+No vale cualquier hash. OfiFlow usa el `PasswordHasher` de ASP.NET Core ([`IdentityService.cs:18`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs)), que aplica **PBKDF2**, diseñado para ser:
 
 - **Lento a propósito.** Para el servidor, comprobar una contraseña cuesta una fracción de segundo; para un atacante que prueba millones de combinaciones, esa lentitud multiplicada es un muro.
 - **Con sal** (*salt*): un valor aleatorio distinto por contraseña, guardado junto al hash. Dos personas con la misma contraseña tienen hashes distintos, y un atacante no puede usar tablas precalculadas.
 
 ```csharp
-// IdentityService.cs:28 (al crear)
+// IdentityService.cs:38 (al crear)
 user.PasswordHash = PasswordHasher.HashPassword(user, password);
 
-// IdentityService.cs:73 (al entrar)
-var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
+// PasswordHasherChecker.cs:34 (al entrar)
+return Hasher.VerifyHashedPassword(NoUser, storedHash, password) != PasswordVerificationResult.Failed;
 ```
 
 ### Longitud mínima y máxima
@@ -114,7 +114,7 @@ var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, passwo
  email + contraseña
         │
         ▼
- ① IdentityService.ValidateCredentialsAsync   ¿existe el email? ¿el hash coincide?
+ ① IdentityService.AuthenticateAsync          ¿existe? ¿bloqueada? ¿el hash coincide?
         │  no → null  ─────────────────────────────────────────▶ 401
         ▼
  ② LoginCommandHandler busca la empresa del usuario   (TenantUser)
@@ -128,11 +128,25 @@ var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, passwo
 
 Dos decisiones de seguridad en este flujo:
 
-**Una sola respuesta de fallo.** Tanto si el email no existe como si la contraseña es incorrecta, la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:30`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
+**Una sola respuesta de fallo.** Tanto si el email no existe, como si la contraseña es incorrecta, como si la cuenta está bloqueada (más abajo), la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:30`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
 
-**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:67-69`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
+**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:92` y `:111`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
 El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:29`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+
+### El bloqueo de cuenta (spec 010)
+
+El límite de 5 logins por minuto es **por IP**: no frena a quien reparte los intentos entre muchas IP contra una misma cuenta. Por eso la spec 010 añade un contador **por cuenta**: al quinto fallo (contraseña errónea), la cuenta se bloquea **15 minutos**. Lo importante no es el número, sino *cómo* se cuenta:
+
+**1. El intento se reserva antes de comprobar la contraseña.** La idea ingenua es "leer el contador, comprobar la contraseña y sumar uno si falla". Falla con peticiones **simultáneas**: 50 peticiones leen a la vez "0 fallos", las 50 comprueban la contraseña y el bloqueo llega tarde; el atacante ha tenido 50 intentos en vez de 5. OfiFlow lo hace al revés: una única sentencia SQL, atómica, comprueba que la cuenta no está bloqueada **y** suma el intento, todo a la vez ([`AccountLockout.cs`](../../src/OfiFlow.Infrastructure/Identity/AccountLockout.cs)). Solo los intentos que consiguen reservar llegan a comprobar la contraseña, así que el máximo es 5 **aunque lleguen a la vez**. El intento que alcanza el umbral fija en la misma sentencia la hora de fin del bloqueo: no hay un hueco entre «llegó a 5» y «quedó bloqueada». Es la única sentencia SQL del proyecto fuera de LINQ, va parametrizada y está en una lista blanca que un test vigila.
+
+**2. Bloqueada, ni la contraseña correcta entra.** Si entrara, bloquear no serviría de nada frente a quien sigue probando. Los intentos durante el bloqueo ni cuentan ni lo alargan.
+
+**3. Desde fuera no se nota.** Una cuenta bloqueada, un email que no existe y una contraseña errónea dan **la misma respuesta** (401, mismos encabezados, mismo cuerpo) y **tardan lo mismo**: en los tres casos se hace una verificación de contraseña completa, contra un hash ficticio cuando no hay una real que comprobar. Ese hash se genera al arrancar a partir de un secreto que nadie conoce, así que verificar contra él no puede salir bien nunca. Esto cierra además el límite anotado en ADR-009: antes, un email inexistente respondía enseguida y uno existente tardaba el tiempo del hash, y medirlo delataba qué emails tenían cuenta. Cómo se comprueba sin cronómetros (que serían intermitentes): un verificador que **cuenta las llamadas** (capítulo 9).
+
+**4. Una contraseña correcta pone el contador a cero** (por ahora, porque es un acceso completo). Cuando exista el segundo factor, una contraseña correcta en una cuenta con MFA **no** lo reiniciará: si lo hiciera, quien conoce la contraseña podría reiniciar el contador y seguir adivinando códigos.
+
+**Lo que el bloqueo no hace.** No cierra las sesiones ya abiertas (quien las abrió tenía la contraseña; bloquearle a él castigaría a la víctima), y tiene un coste: quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito cada 15 minutos. Es el precio de bloquear por cuenta, y se mitiga con el límite por IP y con los eventos `1005` y `1006`, que hacen visible una ráfaga (capítulo 8).
 
 ---
 
@@ -354,11 +368,11 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP | `RateLimiting.cs:29` | `RateLimitingTests` |
-| Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:13,28` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
+| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP, **y bloqueo por cuenta** (5 fallos / 15 min, con el intento reservado antes de comprobar) | `RateLimiting.cs:29`, `AccountLockout.cs` | `RateLimitingTests`, `FiftySimultaneousWrongAttempts_PerformExactlyFiveRealVerifications_AndLockTheAccount` |
+| Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:18,38` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
 | Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:30` | `Handle_WithInvalidCredentials_ReturnsNull` |
-| Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs:67-69` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEventWithoutEmailOrPassword` |
+| Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs` (`LogLoginFailed` y los dos eventos del bloqueo) | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` (SQL real) y `TheSecurityEvents_AreLoggedWithoutTheEmailNorThePassword` (HTTP) |
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
 | Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:73-74` | **Sin test propio** (ver "Controles sin test") |
@@ -377,9 +391,9 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 
 Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos están anotados como pendientes en el ADR-009:
 
-**1. No hay bloqueo de cuenta.** El límite de peticiones es **por IP**, no por cuenta. Un ataque de *credential stuffing* (T1110.004: probar pares email/contraseña filtrados en otros sitios) repartido entre **miles de IPs**, con un intento por IP, no lo vería. Falta un contador de fallos por cuenta (*account lockout*).
+**1. ✅ Cerrado (spec 010): hay bloqueo de cuenta.** Antes, el límite de peticiones era solo **por IP**: un ataque de *credential stuffing* (T1110.004: probar pares email/contraseña filtrados en otros sitios) repartido entre miles de IPs, con un intento por IP, no lo habría visto. Ahora hay un contador por cuenta (5 fallos → 15 minutos) que resiste las peticiones simultáneas (Parte 3). **Riesgo aceptado:** se puede mantener bloqueada una cuenta ajena fallando a propósito.
 
-**2. El tiempo de respuesta delata si un email existe.** La respuesta es idéntica, pero tarda distinto: si el email no existe, el servidor contesta enseguida; si existe, calcula el hash de la contraseña (lento a propósito). Un atacante que mida el tiempo puede distinguirlos. La solución es hacer el mismo trabajo en ambos casos; está en el ADR-009 como pendiente.
+**2. ✅ Cerrado (spec 010): el tiempo de respuesta del login ya no delata si un email existe.** Antes, un email inexistente respondía enseguida y uno existente tardaba lo que cuesta el hash. Ahora se hace la misma verificación completa en los tres casos (desconocido, bloqueada, contraseña errónea). Sigue abierto, aparte, que el **registro** diga «el email ya está registrado».
 
 **3. El registro revela si un email ya está en uso.** Responde "el email ya está registrado". Es cómodo para el usuario, pero permite comprobar si alguien tiene cuenta. Se revisará cuando exista confirmación de email.
 

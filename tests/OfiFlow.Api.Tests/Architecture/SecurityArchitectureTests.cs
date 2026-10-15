@@ -40,7 +40,15 @@ public class SecurityArchitectureTests
         ],
         ["Tenants"] = [],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
-        ["ApplicationUsers"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
+        ["ApplicationUsers"] = [
+            "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
+            // el contador de intentos y el bloqueo se actualizan por el Id de la cuenta (spec 010)
+            "src/OfiFlow.Infrastructure/Identity/AccountLockout.cs"
+        ],
+        // el segundo factor (spec 010): credenciales de una cuenta, siempre por su Id; hoy solo se borran al quitar a un miembro
+        ["MfaCredentials"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
+        ["RecoveryCodes"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
+        ["MfaChallenges"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
         // se buscan por el hash del token, que es secreto y único
         ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"]
     };
@@ -55,6 +63,51 @@ public class SecurityArchitectureTests
         Assert.True(offenders.Count == 0,
             $"'{forbiddenApi}' está prohibido (ADR-009 R1: riesgo de inyección SQL). " +
             $"Usa LINQ, o FromSql/SqlQuery con interpolación (parametrizado). Aparece en: {string.Join(", ", offenders)}");
+    }
+
+    /// <summary>
+    /// El único fichero que ejecuta SQL fuera de LINQ: la reserva atómica del intento de login (spec 010 R18). Va
+    /// parametrizado (interpolación), pero es una superficie de inyección SQL, así que se limita a una y se justifica.
+    /// </summary>
+    private const string RawSqlAllowedFile = "src/OfiFlow.Infrastructure/Identity/AccountLockout.cs";
+
+    [Theory]
+    [InlineData("SqlQuery<")]
+    [InlineData("FromSql(")]
+    [InlineData("FromSqlInterpolated")]
+    [InlineData("ExecuteSql(")]
+    [InlineData("ExecuteSqlAsync(")]
+    [InlineData("ExecuteSqlInterpolated")]
+    public void ParameterizedRawSql_IsOnlyUsedInTheLockout(string api)
+    {
+        var offenders = SourceCode.FilesContaining(api).Where(path => path != RawSqlAllowedFile).ToList();
+
+        Assert.True(offenders.Count == 0,
+            $"'{api}' ejecuta SQL fuera de LINQ y solo está permitido en {RawSqlAllowedFile} (ADR-014: la reserva atómica del " +
+            $"intento). Un uso nuevo hay que justificarlo y añadirlo aquí a propósito. Aparece en: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void TheRawSqlScan_FindsTheLegitimateUse()
+    {
+        // Control positivo: si AccountLockout dejara de usar SQL (o el fichero se moviera), el test de arriba
+        // pasaría en vacío. Este avisa de que la lista blanca ya no corresponde a nada.
+        Assert.Contains(RawSqlAllowedFile, SourceCode.FilesContaining("SqlQuery<"));
+    }
+
+    [Fact]
+    public void ThePasswordCheckWithoutLockout_IsNotUsedOutsideIdentityService()
+    {
+        // Comprobar una contraseña sin contar el intento es justo lo que el bloqueo prohíbe. Solo existe en el
+        // propio IdentityService; para entrar se usa IIdentityService.AuthenticateAsync, que sí cuenta (R18).
+        var offenders = SourceCode.FilesContaining("ValidateCredentialsWithoutLockoutAsync")
+            .Where(path => path != "src/OfiFlow.Infrastructure/Identity/IdentityService.cs")
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            "ValidateCredentialsWithoutLockoutAsync no cuenta intentos ni bloquea; usa IIdentityService.AuthenticateAsync. " +
+            $"Aparece en: {string.Join(", ", offenders)}");
+        Assert.Contains("src/OfiFlow.Infrastructure/Identity/IdentityService.cs", SourceCode.FilesContaining("ValidateCredentialsWithoutLockoutAsync"));
     }
 
     /// <summary>
@@ -110,7 +163,7 @@ public class SecurityArchitectureTests
         var offenders = TenantAccessRules.GlobalEntityAccessOffenders(SourceCode.Files(), GlobalDbSetReadAllowList);
 
         Assert.True(offenders.Count == 0,
-            "Users, Tenants, ApplicationUsers y RefreshTokens no tienen filtro de tenant (spec 007, ADR-009 R2): " +
+            "Users, Tenants, ApplicationUsers, RefreshTokens y las tablas del segundo factor no tienen filtro de tenant (spec 007, ADR-009 R2): " +
             "leerlos puede exponer datos de todas las empresas. Solo se leen en los ficheros de GlobalDbSetReadAllowList; " +
             $"para añadir uno, justifícalo ahí. Accesos no permitidos: {string.Join("; ", offenders)}");
     }

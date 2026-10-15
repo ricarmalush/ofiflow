@@ -67,7 +67,7 @@ public class AcceptInvitationIntegrationTests(SqlServerContainerFixture fixture)
         Assert.Equal(TenantRole.Manager, membership.Role);
         Assert.Equal(1, await check.Users.CountAsync(u => u.Id == membership.UserId));
         Assert.NotNull(await new IdentityService(check, NullLogger<IdentityService>.Instance)
-            .ValidateCredentialsAsync(email, Password, CancellationToken.None));
+            .ValidateCredentialsWithoutLockoutAsync(email, Password, CancellationToken.None));
         Assert.NotNull((await check.Invitations.SingleAsync()).AcceptedAt);
     }
 

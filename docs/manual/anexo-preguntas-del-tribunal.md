@@ -67,10 +67,10 @@ Es un JWT firmado (HMAC-SHA256) con el usuario, la empresa y el rol; dura **30 m
 Vale hasta que caduque (un JWT no se puede anular), **pero** el rol y la pertenencia a la empresa se revalidan en la base de datos en cada petición, así que un token de alguien al que se quitó ya no autoriza nada. *(Cap. 6 y 8)*
 
 **¿Cómo se frena la fuerza bruta?**
-Con un límite de peticiones por IP: 5 logins por minuto, 3 registros por hora, 10 aceptaciones de invitación por hora. Al pasarse, un 429 y un evento de seguridad. **Límite honesto:** no hay bloqueo por cuenta (un ataque repartido entre muchas IP no lo ve). *(Cap. 8)*
+Con un límite de peticiones por IP: 5 logins por minuto, 3 registros por hora, 10 aceptaciones de invitación por hora. Al pasarse, un 429 y un evento de seguridad. **Además, desde la spec 010, **cada cuenta se bloquea 15 minutos tras 5 fallos** aunque los intentos vengan de IP distintas, y el intento se reserva antes de comprobar la contraseña para que 50 peticiones simultáneas no den 50 intentos. **Límite honesto:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito. *(Cap. 6 y 8)*
 
 **¿Se puede saber si un email está registrado?**
-El login responde un único 401 para "email desconocido" y "contraseña incorrecta". **Pero** el registro dice "ya está registrado" y el tiempo de respuesta del login delata si el email existe: son dos límites conocidos y anotados. *(Cap. 6, 8)*
+El login responde un único 401 para "email desconocido", "contraseña incorrecta" y "cuenta bloqueada", y tarda lo mismo en los tres (se hace siempre una verificación completa, contra un hash ficticio si no hay cuenta). **Pero** el registro sí dice "ya está registrado": un límite conocido y anotado. *(Cap. 6, 8)*
 
 ## 4. Autorización y gestión de usuarios
 
@@ -161,7 +161,7 @@ Porque obliga a pensar antes (las decisiones difíciles se descubren al escribir
 
 **¿Qué NO está hecho? (la pregunta más importante)**
 Con honestidad y de lo más a lo menos preocupante:
-- **No hay doble factor de autenticación ni bloqueo de cuenta** tras intentos fallidos.
+- **No hay doble factor de autenticación** (spec 010 en construcción: ya hay bloqueo de cuenta, falta el MFA).
 - **El token de invitación no se envía por email**: lo recibe quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.

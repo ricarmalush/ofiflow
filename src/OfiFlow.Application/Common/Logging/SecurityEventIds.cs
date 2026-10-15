@@ -14,6 +14,12 @@ public static class SecurityEventIds
     public const int RefreshTokenReuseDetected = 1003;
     public const int RefreshTokenRejected = 1004;
 
+    /// <summary>La cuenta se ha bloqueado temporalmente tras demasiados intentos fallidos (ADR-014, spec 010 R16).</summary>
+    public const int AccountLockedOut = 1005;
+
+    /// <summary>Alguien intentó entrar en una cuenta que estaba bloqueada. Una ráfaga de estos sobre el mismo UserId es un ataque en curso.</summary>
+    public const int LoginRejectedWhileLocked = 1006;
+
     // 1100-1199: abuso
     public const int RateLimitExceeded = 1101;
 

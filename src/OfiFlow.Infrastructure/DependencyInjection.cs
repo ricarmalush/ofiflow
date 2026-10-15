@@ -30,6 +30,9 @@ public static class DependencyInjection
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<ICurrentUser, CurrentUser>();
 
+        // El verificador de contraseñas, explícito: los tests lo sustituyen por uno que cuenta cada comprobación (spec 010 R18).
+        services.AddSingleton<IPasswordChecker>(PasswordHasherChecker.Instance);
+
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<ITokenService, TokenService>();
 

@@ -117,6 +117,23 @@ Para frenar la **fuerza bruta** (probar contraseñas sin parar) y la saturación
 
 Al pasarse, responde **429** (*demasiadas peticiones*) con la cabecera `Retry-After` (cuántos segundos esperar), en el mismo formato de error del capítulo 7. Cada rechazo genera el evento de seguridad `1101`.
 
+### El bloqueo de cuenta (spec 010)
+
+Este límite es **por IP**. Su complemento **por cuenta** es el bloqueo de cuenta, explicado paso a paso en el capítulo 6 (Parte 3). Aquí, lo que importa desde el punto de vista de la seguridad:
+
+| Aspecto | Valor | Por qué |
+|---|---|---|
+| Umbral y duración | **5 fallos → 15 minutos** (en [`AuthenticationPolicy`](../../src/OfiFlow.Application/Identity/AuthenticationPolicy.cs)) | Frena el reparto de intentos entre muchas IP. Valores iniciales, a revisar con datos reales |
+| Qué cuenta como fallo | Contraseña errónea. No cuentan el email desconocido (no hay cuenta que bloquear) ni los intentos durante el bloqueo | Para que no se pueda alargar el bloqueo de otra persona sin acertar su email |
+| Cómo se cuenta | El intento se **reserva** con una sentencia atómica **antes** de comprobar la contraseña | Con "leer, comprobar y sumar", 50 peticiones simultáneas darían 50 intentos y no 5 |
+| Qué ve quien ataca | Bloqueada, desconocida y errónea: **misma respuesta, misma verificación completa** | Para no revelar qué cuentas existen ni cuáles están bloqueadas |
+| Qué ve el equipo | Eventos `1005` (cuenta bloqueada, una vez por bloqueo) y `1006` (intento con la cuenta bloqueada) | Una ráfaga de `1006` sobre un mismo `UserId` es un ataque en curso |
+| La columna `LockoutEnabled` | **Se ignora**: el bloqueo vale para todos | Las cuentas se crean con ese valor a `false` (el de `IdentityUser`); respetarlo dejaría a todas sin bloqueo: un valor por defecto inseguro |
+
+Tiene un coste que conviene decir en voz alta: **quien conozca un email puede mantener esa cuenta bloqueada** fallando a propósito cada 15 minutos. Es el precio de bloquear por cuenta, y por eso el bloqueo es temporal (uno permanente sería peor: cualquiera podría dejar sin acceso a otro). Se mitiga con el límite por IP y los eventos; el bloqueo progresivo y el desbloqueo manual quedan como siguientes pasos.
+
+También hay dos guardarraíles de arquitectura nuevos: el SQL fuera de LINQ solo puede estar en `AccountLockout.cs` (con un test que comprueba que sigue estando ahí, para no pasar en vacío), y el método que comprueba una contraseña **sin** contar intentos no puede usarse fuera de `IdentityService`.
+
 ---
 
 ## Parte 2 — Quién eres y qué puedes
@@ -220,7 +237,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **catorce eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **dieciséis eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -228,6 +245,8 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **catorce eventos de 
 | `1002` | Login sin empresa | Credenciales válidas, pero el usuario no pertenece a ninguna empresa (una anomalía) |
 | `1003` | **Refresh token reutilizado** | Posible robo: se revocan todos los tokens del usuario |
 | `1004` | Refresh token rechazado | Desconocido, caducado o sin pertenencia a la empresa |
+| `1005` | **Cuenta bloqueada** | La cuenta llegó a 5 intentos fallidos y queda bloqueada 15 minutos (con el recuento y la duración, sin el email). Se registra una vez por bloqueo |
+| `1006` | **Intento con la cuenta bloqueada** | Alguien intenta entrar en una cuenta bloqueada. Una ráfaga de estos sobre el mismo `UserId` es un ataque en curso |
 | `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register` o `refresh` |
 | `1201` | Excepción no controlada | Un 500; se registra con el detalle interno completo |
 | `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso, o intenta gestionar a un rol que no le corresponde (la jerarquía de roles) |
@@ -239,7 +258,7 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **catorce eventos de 
 | `1405` | **Rol cambiado** | Se cambia el rol de un miembro (con el rol anterior y el nuevo, sin su nombre ni su email) |
 | `1406` | **Miembro quitado** | Se da de baja a un miembro: se borran su cuenta y sus datos (con el recuento de trabajos que quedaron sin asignar) |
 
-Se agrupan por familia (10xx autenticación, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
+Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
 
 Además, un pequeño middleware ([`RequestLogScopeMiddleware`](../../src/OfiFlow.Api/Common/RequestLogScopeMiddleware.cs)) apunta la **IP de origen** en cada petición, de modo que todos los eventos la incluyan sin que cada pieza del código tenga que pasarla de mano en mano. Y el `traceId` de los errores une la respuesta con la entrada exacta del registro.
 
@@ -295,7 +314,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP | `RateLimiting.cs:29` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
+| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP, y bloqueo por cuenta (5 fallos / 15 min) | `RateLimiting.cs:29`, `AccountLockout.cs` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
 | **S** · Suplantar con un token falso | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **S** · Robar un refresh token | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | **S** · Adivinar o reutilizar un token de invitación | 256 bits aleatorios, un solo uso, misma respuesta para los cuatro fallos, evento `1403` | `InvitationToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
@@ -306,11 +325,11 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **S** · Usar la API sin sesión | `RequireAuthorization()` en cada grupo | `JobEndpoints.cs:21` | `WithoutAToken_EveryRoute_Returns401` |
 | **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **T** · Datos mal formados o enormes | Validadores y longitudes máximas | `*CommandValidator.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
-| **R** · Negar una acción | Eventos de seguridad con usuario y empresa | `SecurityEventIds.cs` | `ADenial_IsLoggedAsASecurityEvent_...`, `ValidateCredentialsAsync_WhenFails_LogsSecurityEvent...` |
+| **R** · Negar una acción | Eventos de seguridad con usuario y empresa | `SecurityEventIds.cs` | `ADenial_IsLoggedAsASecurityEvent_...`, `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` |
 | **I** · Ver datos de otra empresa | Filtro global por empresa | `ApplicationDbContext.cs:63` | `TenantIsolationEndToEndTests`, `CrossTenantWriteIsolationTests` |
 | **I** · Entidad nueva sin filtro | Clasificación obligatoria | `TenantModelRules.cs` (tests) | `EveryMappedEntity_IsTenantOwnedOrDeclaredGlobal` |
 | **I** · Un 500 que cuenta detalles internos | Mensaje genérico y detalle solo al registro | `GlobalExceptionHandler.cs` | `UnhandledException_Returns500WithoutInternalDetails_AndLogsIt` |
-| **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEvent...`, `ADenial_IsLogged...` |
+| **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword`, `ADenial_IsLogged...` |
 | **I** · Contenido leído o incrustado por otra web | Cabeceras de seguridad | `SecurityHeadersMiddleware.cs:28-39` | `EveryResponse_IncludesSecurityHeaders` |
 | **I** · Secretos en el repositorio | gitleaks y *push protection* | `ci.yml`, `.gitleaksignore` | El propio job `gitleaks` en cada PR |
 | **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:29-33` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
@@ -332,8 +351,8 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 
 **Autenticación**
-1. **No hay bloqueo de cuenta.** El límite es por IP: un ataque repartido entre miles de IPs, con un intento por IP, no lo ve.
-2. **El tiempo de respuesta del login delata si un email existe.** Y el registro dice "ese email ya está registrado".
+1. ✅ **Cerrado (spec 010): hay bloqueo de cuenta.** Además del límite por IP, cada cuenta se bloquea 15 minutos tras 5 fallos (capítulo 6), con el intento reservado antes de comprobar la contraseña para que las peticiones simultáneas no lo esquiven. **Riesgo aceptado:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito; se mitiga con el límite por IP y los eventos `1005`/`1006`. Los NEXT: bloqueo progresivo y desbloqueo manual.
+2. ✅ **Cerrado (spec 010) en el login: el tiempo de respuesta ya no delata si un email existe** (misma verificación completa para desconocido, bloqueada y errónea). **Sigue abierto** que el registro diga "ese email ya está registrado".
 3. **No hay cierre de sesión en el servidor**, y un token de acceso no se puede anular antes de caducar (hasta 30 minutos). Desde la spec 009 esto afecta menos a la autorización, porque la pertenencia se revalida en cada petición, pero un usuario **sigue autenticado** hasta que el token caduca.
 
 **Autorización**

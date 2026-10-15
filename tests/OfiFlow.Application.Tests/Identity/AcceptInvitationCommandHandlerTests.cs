@@ -65,8 +65,8 @@ public class AcceptInvitationCommandHandlerTests
         await AcceptAsync(token, password: "Mi-propia-clave-1");
 
         var user = await _db.Users.SingleAsync();
-        Assert.Equal(user.Id, await _identity.ValidateCredentialsAsync("Ana@Example.com", "Mi-propia-clave-1", CancellationToken.None));
-        Assert.Null(await _identity.ValidateCredentialsAsync("Ana@Example.com", "otra", CancellationToken.None));
+        Assert.Equal(user.Id, await _identity.AuthenticateAsync("Ana@Example.com", "Mi-propia-clave-1", CancellationToken.None));
+        Assert.Null(await _identity.AuthenticateAsync("Ana@Example.com", "otra", CancellationToken.None));
     }
 
     [Theory]

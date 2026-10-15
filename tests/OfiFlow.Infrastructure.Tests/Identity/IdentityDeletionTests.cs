@@ -57,7 +57,7 @@ public class IdentityDeletionTests
         await Identity(db).DeleteUserAsync(userId, CancellationToken.None);
         await db.SaveChangesAsync(CancellationToken.None);
 
-        Assert.Null(await Identity(db).ValidateCredentialsAsync("ana@example.com", Password, CancellationToken.None));
+        Assert.Null(await Identity(db).ValidateCredentialsWithoutLockoutAsync("ana@example.com", Password, CancellationToken.None));
 
         // El email vuelve a poder usarse: se puede volver a invitar a esa persona (R14d).
         var again = await Identity(db).CreateUserAsync(Guid.NewGuid(), "ana@example.com", Password, CancellationToken.None);
@@ -75,7 +75,7 @@ public class IdentityDeletionTests
 
         // Otro contexto, que solo ve lo confirmado, todavía la ve: el borrado no se ha aplicado.
         await using var other = Open(name);
-        Assert.Equal(userId, await Identity(other).ValidateCredentialsAsync("ana@example.com", Password, CancellationToken.None));
+        Assert.Equal(userId, await Identity(other).ValidateCredentialsWithoutLockoutAsync("ana@example.com", Password, CancellationToken.None));
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class IdentityDeletionTests
         await Identity(db).DeleteUserAsync(Guid.NewGuid(), CancellationToken.None);
         await db.SaveChangesAsync(CancellationToken.None);
 
-        Assert.Equal(userId, await Identity(db).ValidateCredentialsAsync("ana@example.com", Password, CancellationToken.None));
+        Assert.Equal(userId, await Identity(db).ValidateCredentialsWithoutLockoutAsync("ana@example.com", Password, CancellationToken.None));
     }
 
     [Fact]
@@ -102,8 +102,8 @@ public class IdentityDeletionTests
         await Identity(db).DeleteUserAsync(ana, CancellationToken.None);
         await db.SaveChangesAsync(CancellationToken.None);
 
-        Assert.Null(await Identity(db).ValidateCredentialsAsync("ana@example.com", Password, CancellationToken.None));
-        Assert.Equal(luis, await Identity(db).ValidateCredentialsAsync("luis@example.com", Password, CancellationToken.None));
+        Assert.Null(await Identity(db).ValidateCredentialsWithoutLockoutAsync("ana@example.com", Password, CancellationToken.None));
+        Assert.Equal(luis, await Identity(db).ValidateCredentialsWithoutLockoutAsync("luis@example.com", Password, CancellationToken.None));
     }
 
     // ===== Refresh tokens =====

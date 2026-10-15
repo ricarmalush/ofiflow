@@ -15,8 +15,16 @@ public interface IIdentityService
     /// </summary>
     Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken);
 
-    /// <returns>The user's Id if the credentials are valid, otherwise null — never reveals which of the two failed.</returns>
-    Task<Guid?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken);
+    /// <summary>
+    /// Autentica con email y contraseña, <b>con bloqueo de cuenta</b> (ADR-014, spec 010). Cuenta cada intento,
+    /// bloquea tras demasiados fallos y registra los eventos de seguridad. No hay otra forma de comprobar una
+    /// contraseña desde Application: así no se puede olvidar el bloqueo.
+    /// </summary>
+    /// <returns>
+    /// El Id de la cuenta si las credenciales son correctas; <c>null</c> en cualquier otro caso (email desconocido,
+    /// contraseña errónea o cuenta bloqueada) sin revelar cuál: la respuesta y el tiempo son los mismos.
+    /// </returns>
+    Task<Guid?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken);
 
     /// <summary>
     /// Borra las credenciales de un usuario, y con ellas su email deja de estar ocupado (spec 009 R14d).

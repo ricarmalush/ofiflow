@@ -16,7 +16,7 @@ public sealed partial class LoginCommandHandler(
 {
     public async Task<AuthResultDto?> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
-        var userId = await identityService.ValidateCredentialsAsync(request.Email, request.Password, cancellationToken);
+        var userId = await identityService.AuthenticateAsync(request.Email, request.Password, cancellationToken);
         if (userId is null)
         {
             return null;

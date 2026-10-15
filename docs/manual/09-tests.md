@@ -27,10 +27,10 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 333 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 138 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 241 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 159 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 255 | ~15 s | **Sí**, en parte |
 
-En total, **911 casos**. Un "caso" no es lo mismo que un método de test: hay unos 478 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **946 casos**. Un "caso" no es lo mismo que un método de test: hay unos 509 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -84,7 +84,7 @@ Un *handler* necesita una base de datos y otras piezas (quién es el usuario, c�
 | `FakeTenantContext` | "¿En qué empresa estoy?" | `Common/FakeTenantContext.cs` |
 | `FakeCurrentUser` | "¿Quién soy y qué rol tengo?" Distingue el rol **efectivo** (el de la base de datos) del que diría el token, para probar que decide el primero, y cuenta cuántas veces se verifica la pertenencia | `Common/FakeCurrentUser.cs` |
 | `FakeTimeProvider` | "¿Qué hora es?" (para probar que una invitación caduca a los 7 días **sin esperar 7 días**: el test avanza el reloj) | `Common/FakeTimeProvider.cs` |
-| `FakeIdentityService`, `FakeTokenService` | Las contraseñas y los tokens | `Common/` |
+| `FakeIdentityService`, `FakeTokenService` | Las contraseñas (`AuthenticateAsync`, sin bloqueo real) y los tokens | `Common/` |
 
 **Pruebas de oro: los vectores de las RFC (spec 010).** El código de 6 dígitos del segundo factor (`Totp`) no se prueba comparándolo con lo que calcula el propio código, que sería darle la razón a lo que se prueba, sino con los **valores que publican las propias RFC**: los diez de HOTP (RFC 4226, Apéndice D) y los seis de TOTP (RFC 6238, Apéndice B). Si alguien cambia una máscara, un desplazamiento o el orden de los bytes, falla un caso con el código esperado concreto. Igual con Base32 (RFC 4648) y con el hash de los códigos de recuperación, cuyo valor de referencia se calculó con OpenSSL y no con este proyecto. Son funciones puras (el reloj entra por parámetro), por eso no necesitan ningún doble.
 
@@ -149,6 +149,14 @@ Y `CurrentUserMembershipTests`, para la **revalidación en cada petición** (tam
 - **Solo cuenta la pertenencia a esa empresa y a esa persona:** ni la de otra empresa ni la de otro usuario de la misma.
 - **Fail-closed:** hasta verificar no hay rol, y un token sin usuario o sin empresa se deniega **sin tocar la base de datos**.
 - **El coste:** un interceptor cuenta las consultas y comprueba que verificar cuesta **exactamente una**, aunque se pregunte varias veces. Es la forma de que "una consulta por petición" no sea solo una promesa del manual.
+
+Y `AccountLockoutTests`, para el **bloqueo de cuenta** (spec 010, bloque 3), con la técnica que más conviene entender del capítulo: probar una **carrera**.
+
+- **El esquema ingenuo falla justo aquí.** «Leer el contador, comprobar la contraseña y sumar si falla» parece correcto, y todos los tests secuenciales pasan. Pero con 50 peticiones simultáneas las 50 leen «0 fallos». El test lanza **50 peticiones a la vez**, cada una con su propio contexto como en la API real, contra SQL Server de verdad, y exige que **solo 5 lleguen a comprobar la contraseña** y que la cuenta quede bloqueada. Existe otra versión por HTTP, con la API entera.
+- **Contar sin cronómetros.** El test no mide milisegundos (serían intermitentes): el verificador de contraseñas es una pieza sustituible (`IPasswordChecker`) y el test usa una versión que **cuenta las llamadas** y si fueron contra un hash real o contra el ficticio. Así se comprueba que «email desconocido», «cuenta bloqueada» y «contraseña errónea» hacen cada uno **exactamente una verificación completa**: igual coste, sin medir tiempo.
+- **El reloj lo controla el test** (`FakeTimeProvider`): el bloqueo de 15 minutos se prueba avanzando el reloj 14 y luego 1 minuto más, incluido el límite exacto, sin esperar nada.
+- **Invariante, no solo ejemplos.** Cinco rondas de 20 peticiones simultáneas comprueban que el contador **nunca pasa de 5** y que la hora de bloqueo existe exactamente cuando llega a 5, sea cual sea el reparto.
+- **Los controles positivos de siempre:** antes de los fallos la contraseña correcta entra; con 4 fallos y un quinto intento correcto, entra; tras 15 minutos, entra; y los fallos de una cuenta no tocan a otra.
 
 Y `MfaPersistenceTests`, para el **almacén del segundo factor** (spec 010, bloque 2), con la misma idea: lo que solo una base de datos de verdad puede garantizar.
 
@@ -226,7 +234,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **911 casos son unos 478 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **946 casos son unos 509 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 
