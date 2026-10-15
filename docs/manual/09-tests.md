@@ -185,7 +185,7 @@ Y los **tests HTTP del segundo factor** (spec 010, bloque 6), en la clase de API
 - **El reinicio por un gestor, con su jerarquía:** el `Owner` puede (y repetirlo no falla), `Manager`/`Employee`/`Technician` reciben 403, un `Admin` no puede con otro `Admin` pero sí con un `Technician` (control positivo), nadie se reinicia a sí mismo, y un miembro de **otra empresa** da el mismo 404 y el mismo mensaje que uno inexistente.
 - **Los límites de peticiones.** Con el limitador **antes** de la autenticación, se prueba sin sesión: diez peticiones a cada ruta de gestión dan 401 y la undécima, **429**; igual con canjear el desafío (10 por minuto). Cada ruta usa su propia IP de prueba, porque el límite es por IP y por política.
 
-Todavía **no** hay aquí un código TOTP real: confirmar, desactivar y regenerar con códigos válidos, y cada ataque, son el bloque 7.
+Estos tests no calculan códigos TOTP reales (por eso no pueden confirmar, desactivar ni regenerar con códigos válidos): eso lo hace el recorrido completo que se describe más abajo, con un reloj controlado.
 
 Y **el recorrido entero** (spec 010, bloque 7): `MfaEndToEndTests`, con la API real, SQL Server real y **códigos TOTP de verdad**. Aquí está la técnica nueva de este bloque: el **reloj controlado**. El TOTP cambia cada 30 segundos y cada paso solo se acepta una vez, así que probar «login con MFA, otra vez, otra vez» con el reloj real obligaría a esperar. La fábrica de pruebas sustituye el `TimeProvider` de la API por uno que el test avanza a voluntad: 30 s para tener un código nuevo, 5 minutos para caducar un desafío, 15 para terminar un bloqueo. El test hace de app del móvil: decodifica el secreto Base32 que recibe y calcula el código con la misma clase `Totp` que ya se validó contra las RFC.
 

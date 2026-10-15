@@ -67,7 +67,7 @@ Solo anota "este usuario es nuevo". Es `SaveChangesAsync`, que llama el handler 
 
 ### El email es único
 
-`ApplicationUser` tiene un **índice único** sobre el email normalizado en mayúsculas ([`ApplicationUserConfiguration.cs`](../../src/OfiFlow.Infrastructure/Persistence/Configurations/ApplicationUserConfiguration.cs)): `Marta@x.com` y `marta@X.com` son la misma persona. Se comprueba antes de crear (`IdentityService.cs:19-25`) y la base de datos lo garantiza además, por si dos registros llegaran a la vez.
+`ApplicationUser` tiene un **índice único** sobre el email normalizado en mayúsculas ([`ApplicationUserConfiguration.cs`](../../src/OfiFlow.Infrastructure/Persistence/Configurations/ApplicationUserConfiguration.cs)): `Marta@x.com` y `marta@X.com` son la misma persona. Se comprueba antes de crear (`IdentityService.cs:27-35`) y la base de datos lo garantiza además, por si dos registros llegaran a la vez.
 
 El registro **no devuelve tokens**: devuelve el `tenantId`. Para entrar hay que hacer login después.
 
@@ -144,7 +144,7 @@ El límite de 5 logins por minuto es **por IP**: no frena a quien reparte los in
 
 **3. Desde fuera no se nota.** Una cuenta bloqueada, un email que no existe y una contraseña errónea dan **la misma respuesta** (401, mismos encabezados, mismo cuerpo) y **tardan lo mismo**: en los tres casos se hace una verificación de contraseña completa, contra un hash ficticio cuando no hay una real que comprobar. Ese hash se genera al arrancar a partir de un secreto que nadie conoce, así que verificar contra él no puede salir bien nunca. Esto cierra además el límite anotado en ADR-009: antes, un email inexistente respondía enseguida y uno existente tardaba el tiempo del hash, y medirlo delataba qué emails tenían cuenta. Cómo se comprueba sin cronómetros (que serían intermitentes): un verificador que **cuenta las llamadas** (capítulo 9).
 
-**4. Una contraseña correcta pone el contador a cero** (por ahora, porque es un acceso completo). Cuando exista el segundo factor, una contraseña correcta en una cuenta con MFA **no** lo reiniciará: si lo hiciera, quien conoce la contraseña podría reiniciar el contador y seguir adivinando códigos.
+**4. Solo un acceso completo pone el contador a cero.** En una cuenta **sin** segundo factor, la contraseña correcta es todo el acceso y lo reinicia. En una cuenta **con** segundo factor, la contraseña correcta **no** lo reinicia (devuelve su intento): si lo hiciera, quien conoce la contraseña podría reiniciar el contador y seguir adivinando códigos. Solo la contraseña **y** el código juntos lo reinician (Parte 7).
 
 **Lo que el bloqueo no hace.** No cierra las sesiones ya abiertas (quien las abrió tenía la contraseña; bloquearle a él castigaría a la víctima), y tiene un coste: quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito cada 15 minutos. Es el precio de bloquear por cuenta, y se mitiga con el límite por IP y con los eventos `1005` y `1006`, que hacen visible una ráfaga (capítulo 8).
 
@@ -325,9 +325,9 @@ La corrección fue tratar ambos fallos de la confirmación como lo mismo (ambos 
 
 ---
 
-## Parte 7 — El segundo factor: lo que ya existe (spec 010, en construcción)
+## Parte 7 — El segundo factor (spec 010)
 
-La spec 010 añade un **segundo factor** (un código de 6 dígitos que cambia cada 30 segundos, en una app del móvil) y el bloqueo de cuenta. **Todavía no hay rutas**: se construye por bloques y, de momento, existen las piezas internas y el almacén donde vivirán los secretos. Lo que conviene entender ya es *cómo se guarda*, porque es la decisión que más se parece a una trampa.
+La spec 010 añade un **segundo factor** opcional (un código de 6 dígitos que cambia cada 30 segundos, en una app del móvil) y el bloqueo de cuenta, y es lo que protege una cuenta cuando la contraseña se roba o se adivina. Esta parte sigue el orden en que se construyó, que también es el orden en que conviene entenderlo: **cómo se guarda el secreto** (la decisión que más se parece a una trampa), **cómo se activa, se desactiva y se regenera**, y por último **cómo cambia el login**. Las rutas HTTP están en el capítulo 8 y los tests, en el 9.
 
 ### Por qué el secreto se cifra y no se hashea
 

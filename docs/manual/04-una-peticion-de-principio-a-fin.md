@@ -197,7 +197,7 @@ Aquí ocurre lo más importante del proyecto, aunque en el código no se vea. La
 
 #### Paso 11b — El filtro automático por tenant (capa Infrastructure)
 
-Porque `Customer` lleva la etiqueta `ITenantOwned`, y al arrancar, [`ApplicationDbContext.cs:63`](../../src/OfiFlow.Infrastructure/Persistence/ApplicationDbContext.cs) añadió a **toda** entidad con esa etiqueta una condición permanente:
+Porque `Customer` lleva la etiqueta `ITenantOwned`, y al arrancar, [`ApplicationDbContext.cs:72`](../../src/OfiFlow.Infrastructure/Persistence/ApplicationDbContext.cs) añadió a **toda** entidad con esa etiqueta una condición permanente:
 
 ```csharp
 modelBuilder.Entity<TEntity>().HasQueryFilter(entity => entity.TenantId == tenantContext.TenantId);

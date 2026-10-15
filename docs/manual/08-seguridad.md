@@ -156,7 +156,7 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Iniciar y completar trabajos | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Gestionar el segundo factor **de la propia cuenta** (`Mfa.Manage`; spec 010, aún sin rutas) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Gestionar el segundo factor **de la propia cuenta** (`Mfa.Manage`; spec 010) | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 **Las rutas (spec 009).** Cada una exige sesión (salvo aceptar), y quién puede lo decide el permiso más la jerarquía, no el endpoint:
 
@@ -349,7 +349,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Escalada de privilegios invitando a un `Admin` o a un `Owner` | Jerarquía de roles (`ManageableRoles`) comprobada al invitar y al revocar | `InviteUserCommandHandler.cs`, `ManageableRoles.cs` | `WhenTheHierarchyForbidsIt_ItIsRefused_AndNothingIsCreated` |
 | **E** · Un empleado despedido (o degradado) sigue usando su token | Se revalida la pertenencia y el rol en la base de datos en cada petición; evento `1302` | `AuthorizationBehavior.cs`, `CurrentUser.cs` | `AMemberWhoIsRemoved_IsDeniedImmediately_WithTheSameStillValidToken`, `ADemotedMember_LosesThePowersOfTheOldRoleImmediately` |
 | **E** · Un token que dice "Owner" pero es de un `Technician` | El rol sale de la base de datos; el claim del token no autoriza nada | `CurrentUser.cs` | `ATokenThatClaimsAHigherRole_DoesNotEscalate_TheDatabaseRoleDecides` |
-| **S** · Contraseña robada o adivinada | Segundo factor (TOTP, RFC 6238) más el bloqueo de cuenta. **El login en dos pasos llega en el bloque 5** | `Totp.cs`, `MfaService.cs` | `TotpTests` (vectores oficiales de las RFC) |
+| **S** · Contraseña robada o adivinada | Segundo factor (TOTP, RFC 6238) más el bloqueo de cuenta. | `Totp.cs`, `MfaService.cs` | `TotpTests` (vectores oficiales de las RFC) |
 | **I** · Base de datos robada: secretos del segundo factor | Cifrado AES-256-GCM atado al Id de la cuenta; la clave vive fuera de la base de datos | `AesGcmSecretProtector.cs` | `SecretProtectorTests`, `TheSecret_StoredInTheDatabase_IsTheEncryptedValue_NeverThePlainSecret` |
 | **S** · Un código TOTP visto por encima del hombro y reutilizado | El último paso aceptado se anota con un `UPDATE` condicional atómico | `MfaService.cs` | `FourSimultaneousUses_OfTheSameTotpCode_ProduceExactlyOneValid` |
 | **E** · Un token de acceso robado intenta activar o quitar el MFA | Pide la contraseña (y un código para desactivar); los fallos cuentan para el bloqueo | `StartMfaSetupCommandHandler.cs`, `DisableMfaCommandHandler.cs` | `DisableAndRegenerateMfaTests`, `StartAndEnableMfaTests` |
@@ -363,7 +363,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **T** · Datos mal formados o enormes | Validadores y longitudes máximas | `*CommandValidator.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | **R** · Negar una acción | Eventos de seguridad con usuario y empresa | `SecurityEventIds.cs` | `ADenial_IsLoggedAsASecurityEvent_...`, `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` |
-| **I** · Ver datos de otra empresa | Filtro global por empresa | `ApplicationDbContext.cs:63` | `TenantIsolationEndToEndTests`, `CrossTenantWriteIsolationTests` |
+| **I** · Ver datos de otra empresa | Filtro global por empresa | `ApplicationDbContext.cs:72` | `TenantIsolationEndToEndTests`, `CrossTenantWriteIsolationTests` |
 | **I** · Entidad nueva sin filtro | Clasificación obligatoria | `TenantModelRules.cs` (tests) | `EveryMappedEntity_IsTenantOwnedOrDeclaredGlobal` |
 | **I** · Un 500 que cuenta detalles internos | Mensaje genérico y detalle solo al registro | `GlobalExceptionHandler.cs` | `UnhandledException_Returns500WithoutInternalDetails_AndLogsIt` |
 | **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword`, `ADenial_IsLogged...` |

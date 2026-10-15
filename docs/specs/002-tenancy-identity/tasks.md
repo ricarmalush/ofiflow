@@ -1,7 +1,7 @@
 # Tasks — 002-tenancy-identity
 
 **Spec relacionada:** [./spec.md](./spec.md)
-**Estado general:** Pendiente
+**Estado general:** Implementada (todas las tareas completadas; Fase 1 del MVP)
 
 ---
 
