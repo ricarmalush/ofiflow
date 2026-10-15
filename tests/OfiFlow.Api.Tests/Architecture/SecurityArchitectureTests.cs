@@ -17,6 +17,8 @@ public class SecurityArchitectureTests
     [
         // todavía no hay tenant activo: es lo que el login determina
         "src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs",
+        // aceptar una invitación: la persona aún no tiene cuenta ni empresa activa, la invitación se busca por el hash de su token (ADR-013)
+        "src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs",
         // el refresh relee el rol del usuario en su tenant
         "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
     ];

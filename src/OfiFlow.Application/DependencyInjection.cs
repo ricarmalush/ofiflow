@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OfiFlow.Application.Common.Behaviors;
 
 namespace OfiFlow.Application;
@@ -17,6 +18,9 @@ public static class DependencyInjection
         });
 
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
+
+        // La hora entra por TimeProvider (no por DateTime.UtcNow) para poder probar la caducidad sin esperar.
+        services.TryAddSingleton(TimeProvider.System);
 
         return services;
     }

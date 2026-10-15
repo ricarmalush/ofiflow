@@ -34,6 +34,13 @@ public sealed partial class IdentityService(ApplicationDbContext dbContext, ILog
         return IdentityCreationResult.Success();
     }
 
+    public Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken)
+    {
+        var normalizedEmail = email.ToUpperInvariant();
+
+        return dbContext.ApplicationUsers.AnyAsync(u => u.NormalizedEmail == normalizedEmail, cancellationToken);
+    }
+
     public async Task DeleteUserAsync(Guid id, CancellationToken cancellationToken)
     {
         var user = await dbContext.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);

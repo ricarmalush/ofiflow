@@ -26,6 +26,12 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
 
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
+    /// <summary>Si tiene valor, el siguiente SaveChanges lanza esta excepción (para simular, por ejemplo, un conflicto de concurrencia).</summary>
+    public Exception? ExceptionOnSave { get; set; }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        ExceptionOnSave is { } exception ? Task.FromException<int>(exception) : base.SaveChangesAsync(cancellationToken);
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Customer>(builder =>

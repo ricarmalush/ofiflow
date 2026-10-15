@@ -80,6 +80,10 @@ internal static partial class AuthorizationLog
         public const string Misdeclared = "Misdeclared";
         public const string NoValidRole = "NoValidRole";
         public const string MissingPermission = "MissingPermission";
+
+        // La jerarquía de roles (spec 009): tiene el permiso, pero no puede gestionar a ese rol.
+        public const string RoleNotManageable = "RoleNotManageable";
+        public const string CannotManageSelf = "CannotManageSelf";
     }
 
     // La IP la añade el scope de RequestLogScopeMiddleware.

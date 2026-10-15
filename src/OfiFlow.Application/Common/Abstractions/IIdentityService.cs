@@ -9,6 +9,12 @@ public interface IIdentityService
 {
     Task<IdentityCreationResult> CreateUserAsync(Guid id, string email, string password, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// ¿Ya hay una cuenta con este email? Se usa antes de invitar (spec 009 R6): no se invita a quien ya tiene
+    /// cuenta, porque hoy una cuenta pertenece a una sola empresa. No revela nada que el registro no revele ya.
+    /// </summary>
+    Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken);
+
     /// <returns>The user's Id if the credentials are valid, otherwise null — never reveals which of the two failed.</returns>
     Task<Guid?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken);
 

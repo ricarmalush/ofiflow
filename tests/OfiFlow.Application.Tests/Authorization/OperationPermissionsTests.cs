@@ -5,6 +5,7 @@ using OfiFlow.Application.Customers.Commands.DeleteCustomer;
 using OfiFlow.Application.Customers.Commands.UpdateCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomers;
+using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
@@ -16,13 +17,16 @@ using OfiFlow.Application.Jobs.Commands.StartJob;
 using OfiFlow.Application.Jobs.Commands.UpdateJob;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
+using OfiFlow.Application.Tenancy.Commands.InviteUser;
+using OfiFlow.Application.Tenancy.Commands.RevokeInvitation;
+using OfiFlow.Application.Tenancy.Queries.GetInvitations;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 16 operaciones declara exactamente el permiso aprobado, o la marca de anónima.
+/// 20 operaciones (las 16 de la spec 008 y las de invitaciones de la spec 009) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -40,14 +44,19 @@ public class OperationPermissionsTests
         (typeof(AssignJobCommand), Permission.JobsAssign),
         (typeof(CancelJobCommand), Permission.JobsCancel),
         (typeof(StartJobCommand), Permission.JobsExecute),
-        (typeof(CompleteJobCommand), Permission.JobsExecute)
+        (typeof(CompleteJobCommand), Permission.JobsExecute),
+        // Spec 009: invitar y gestionar usuarios. Cada una exige Users.Manage además de la jerarquía de roles.
+        (typeof(InviteUserCommand), Permission.UsersManage),
+        (typeof(GetInvitationsQuery), Permission.UsersManage),
+        (typeof(RevokeInvitationCommand), Permission.UsersManage)
     ];
 
     private static readonly Type[] AnonymousTable =
     [
         typeof(RegisterCommand),
         typeof(LoginCommand),
-        typeof(RefreshTokenCommand)
+        typeof(RefreshTokenCommand),
+        typeof(AcceptInvitationCommand) // spec 009: anónima, el token de la invitación es la credencial
     ];
 
     public static TheoryData<Type, Permission> Authenticated
@@ -110,7 +119,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(16, inTheTable.Count);
+        Assert.Equal(20, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

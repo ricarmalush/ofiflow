@@ -84,6 +84,18 @@ public class InvitationTests
         Assert.Throws<ArgumentOutOfRangeException>(() => NewInvitation(hash: new string('a', Invitation.TokenHashMaxLength + 1)));
     }
 
+    [Theory]
+    [InlineData("Ana@Example.com", "ANA@EXAMPLE.COM")]
+    [InlineData("ANA@EXAMPLE.COM", "ANA@EXAMPLE.COM")]
+    [InlineData("ana@example.com", "ANA@EXAMPLE.COM")]
+    public void NormalizeEmail_IsTheSameRuleTheInvitationUsesToStoreIt(string input, string expected)
+    {
+        var email = Email.Create(input);
+
+        Assert.Equal(expected, Invitation.NormalizeEmail(email));
+        Assert.Equal(expected, Invitation.Create(Guid.NewGuid(), email, TenantRole.Technician, "hash", Guid.NewGuid(), Now).NormalizedEmail);
+    }
+
     // ===== Estado y caducidad =====
 
     [Fact]

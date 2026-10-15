@@ -35,6 +35,12 @@ public sealed class FakeIdentityService : IIdentityService
         return Task.CompletedTask;
     }
 
+    public Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken) =>
+        Task.FromResult(_users.Keys.Any(registered => string.Equals(registered, email, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>Registra un email como ya ocupado, sin pasar por CreateUserAsync.</summary>
+    public void AddExistingAccount(string email) => _users[email] = (Guid.NewGuid(), "irrelevante");
+
     public Task<Guid?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken)
     {
         if (_users.TryGetValue(email, out var user) && user.Password == password)

@@ -54,12 +54,18 @@ public sealed class Invitation : AggregateRoot, ITenantOwned, IAuditable
     {
         TenantId = tenantId;
         Email = email;
-        NormalizedEmail = email.Value.ToUpperInvariant();
+        NormalizedEmail = NormalizeEmail(email);
         Role = role;
         TokenHash = tokenHash;
         CreatedByUserId = createdByUserId;
         ExpiresAt = expiresAt;
     }
+
+    /// <summary>
+    /// El email en mayúsculas, la forma en que se guarda y se busca (como <c>ApplicationUser</c>). Es pública para que
+    /// quien comprueba "¿ya hay una invitación pendiente para este email?" use exactamente la misma regla.
+    /// </summary>
+    public static string NormalizeEmail(Email email) => email.Value.ToUpperInvariant();
 
     /// <param name="tokenHash">El hash del token, calculado fuera de Domain. Nunca el token en claro.</param>
     /// <param name="utcNow">La hora actual (UTC); la caducidad es esta hora más <see cref="Lifetime"/>.</param>
