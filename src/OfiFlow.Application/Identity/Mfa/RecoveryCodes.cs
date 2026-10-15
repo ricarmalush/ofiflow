@@ -17,6 +17,13 @@ public static class RecoveryCodes
 
     private const int GroupSize = 4;
 
+    /// <summary>Genera un lote de códigos de recuperación: cada uno en claro (para mostrarlo una vez) y su hash (para guardarlo).</summary>
+    public static IReadOnlyList<(string Code, string Hash)> GenerateBatch(int count) =>
+        Enumerable.Range(0, count)
+            .Select(_ => Generate())
+            .Select(code => (code, Hash(Normalize(code)!)))
+            .ToList();
+
     /// <summary>Genera un código nuevo ya con guiones. 16 × 5 bits = 80 bits de un generador criptográficamente seguro.</summary>
     public static string Generate()
     {

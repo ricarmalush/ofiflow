@@ -73,7 +73,7 @@ Cada contexto tiene una clase de constantes con sus códigos:
 | [`TenancyErrors`](../../src/OfiFlow.Domain/Tenancy/TenancyErrors.cs) | 5 | `tenant_user.not_found`, `tenant_user.role_not_manageable`, `auth.forbidden` |
 | [`InvitationErrors`](../../src/OfiFlow.Domain/Tenancy/InvitationErrors.cs) | 4 | `invitation.invalid`, `invitation.already_pending` |
 | [`IdentityErrors`](../../src/OfiFlow.Domain/Identity/IdentityErrors.cs) | 2 | `user.email_already_registered` |
-| [`MfaErrors`](../../src/OfiFlow.Domain/Identity/MfaErrors.cs) | 5 | `mfa.already_enabled`, `mfa.invalid_code` (spec 010; todavía ninguna operación los lanza) |
+| [`MfaErrors`](../../src/OfiFlow.Domain/Identity/MfaErrors.cs) | 5 | `mfa.already_enabled`, `mfa.invalid_code` (spec 010: los lanzan las operaciones de activar, desactivar y regenerar el segundo factor) |
 | [`ApiErrors`](../../src/OfiFlow.Api/Common/ApiErrors.cs) (en la API) | 4 | `validation.failed`, `request.invalid_body`, `rate_limit.exceeded`, `server.unexpected` |
 
 En total **32 códigos**. Los de la API están aparte porque no pertenecen a ningún contexto de negocio: son de la propia petición HTTP.

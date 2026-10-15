@@ -54,4 +54,27 @@ public static class SecurityEventIds
 
     /// <summary>Se quitó a un miembro de la empresa (su cuenta y sus datos personales se borran).</summary>
     public const int UserRemoved = 1406;
+
+    // 1500-1599: segundo factor (spec 010). Ninguno registra códigos, secretos ni emails: solo Ids, el motivo y recuentos.
+
+    /// <summary>Alguien pidió el secreto para activar el segundo factor de su cuenta.</summary>
+    public const int MfaSetupStarted = 1501;
+
+    /// <summary>Se activó el segundo factor (se cierran las sesiones de la cuenta).</summary>
+    public const int MfaEnabled = 1502;
+
+    /// <summary>Se desactivó el segundo factor (se cierran las sesiones de la cuenta).</summary>
+    public const int MfaDisabled = 1503;
+
+    /// <summary>Un código del segundo factor fue rechazado (con el motivo: erróneo, ya usado, de recuperación erróneo...).</summary>
+    public const int MfaVerificationFailed = 1504;
+
+    /// <summary>Se entró o se confirmó con un código de recuperación (con los que quedan): suele significar que se perdió el móvil.</summary>
+    public const int RecoveryCodeUsed = 1505;
+
+    /// <summary>Se generaron códigos de recuperación nuevos; los anteriores dejaron de valer.</summary>
+    public const int RecoveryCodesRegenerated = 1506;
+
+    /// <summary>Un gestor reinició el segundo factor de otro miembro (con quién lo hizo y a quién).</summary>
+    public const int MfaResetByManager = 1507;
 }

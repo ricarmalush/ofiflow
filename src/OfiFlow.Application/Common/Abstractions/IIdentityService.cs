@@ -27,6 +27,14 @@ public interface IIdentityService
     Task<Guid?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Vuelve a pedir la contraseña a alguien que ya tiene sesión, antes de una operación sensible (activar o desactivar
+    /// el segundo factor): un token de acceso robado no basta (spec 010 R5-R7). <b>Cuenta para el bloqueo de cuenta</b>:
+    /// un fallo suma un intento, un acierto lo devuelve (no es un inicio de sesión, así que no pone el contador a cero).
+    /// Falso si la contraseña es errónea o la cuenta está bloqueada, sin distinguirlo.
+    /// </summary>
+    Task<bool> ConfirmPasswordAsync(Guid userId, string password, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Borra las credenciales de un usuario, y con ellas su email deja de estar ocupado (spec 009 R14d).
     /// Como <see cref="CreateUserAsync"/>, no confirma el cambio: lo hace el Handler en su único SaveChanges,
     /// junto con el resto del borrado, para que sea todo o nada. Si el usuario no existe, no hace nada.

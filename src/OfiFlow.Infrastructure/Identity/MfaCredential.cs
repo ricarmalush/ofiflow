@@ -23,6 +23,32 @@ public sealed class MfaCredential
 
     public bool IsConfirmed => ConfirmedAt is not null;
 
+    /// <summary>Sustituye el secreto de un MFA aún <b>pendiente</b> (se volvió a pedir antes de confirmarlo). Uno ya confirmado no se toca.</summary>
+    public void ReplaceSecret(string secretCipher)
+    {
+        if (IsConfirmed)
+        {
+            throw new InvalidOperationException("No se puede sustituir el secreto de un segundo factor ya confirmado.");
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(secretCipher);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(secretCipher.Length, SecretCipherMaxLength);
+
+        SecretCipher = secretCipher;
+        LastUsedTimeStep = 0;
+    }
+
+    /// <summary>Marca el secreto como confirmado (el primer código fue válido): desde ahora cuenta como MFA activo.</summary>
+    public void Confirm(DateTime utcNow)
+    {
+        if (IsConfirmed)
+        {
+            throw new InvalidOperationException("El segundo factor ya está confirmado.");
+        }
+
+        ConfirmedAt = utcNow;
+    }
+
     private MfaCredential()
     {
         // Requerido por EF Core.

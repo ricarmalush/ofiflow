@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Identity;
 using OfiFlow.Infrastructure.Persistence;
 
@@ -90,4 +92,19 @@ internal sealed class AccountLockout(ApplicationDbContext dbContext, TimeProvide
                     .SetProperty(user => user.AccessFailedCount, 0)
                     .SetProperty(user => user.LockoutEnd, (DateTimeOffset?)null),
                 cancellationToken);
+}
+
+/// <summary>
+/// Los dos eventos del bloqueo (ADR-014), compartidos por todo lo que cuenta intentos: el login, la reconfirmación de la
+/// contraseña y la comprobación del segundo factor. Un solo texto y un solo identificador, sin el email.
+/// </summary>
+internal static partial class LockoutLog
+{
+    [LoggerMessage(EventId = SecurityEventIds.AccountLockedOut, Level = LogLevel.Warning,
+        Message = "Cuenta bloqueada tras {FailedAttempts} intentos fallidos durante {LockoutMinutes} minutos. UserId {UserId}")]
+    public static partial void AccountLockedOut(ILogger logger, Guid userId, int failedAttempts, int lockoutMinutes);
+
+    [LoggerMessage(EventId = SecurityEventIds.LoginRejectedWhileLocked, Level = LogLevel.Warning,
+        Message = "Intento de login con la cuenta bloqueada. UserId {UserId}")]
+    public static partial void LoginRejectedWhileLocked(ILogger logger, Guid userId);
 }

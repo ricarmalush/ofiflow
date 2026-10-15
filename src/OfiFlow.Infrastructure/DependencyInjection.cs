@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordChecker>(PasswordHasherChecker.Instance);
 
         services.AddScoped<IIdentityService, IdentityService>();
+        services.AddScoped<IMfaService, MfaService>();
         services.AddScoped<ITokenService, TokenService>();
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));

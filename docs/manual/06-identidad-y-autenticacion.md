@@ -360,6 +360,27 @@ Como `ApplicationUser` y `RefreshToken`, son credenciales de una **cuenta**: no 
 
 Las tres llevan la columna de versión de fila (`rowversion`) de las invitaciones: cuando llegue la verificación, **dos peticiones simultáneas con el mismo código** leerán el mismo último paso, y solo una podrá guardar.
 
+### Activar, desactivar y regenerar (bloque 4)
+
+Todas estas operaciones son sobre **la propia cuenta** (permiso `Mfa.Manage`, que tienen los cinco roles): la cuenta sale del token, así que no hay ningún Id en la petición que manipular. Los pasos, y el porqué de cada uno:
+
+| Paso | Qué exige | Por qué |
+|---|---|---|
+| **1. Pedir el secreto** | La **contraseña actual** | Un token de acceso robado (vale 30 minutos) no debe bastar para enrolar el móvil del atacante. La contraseña se comprueba **antes** que el estado de la cuenta: quien solo tiene el token no averigua, por un error distinto, si ya hay MFA |
+| **2. Confirmar** | Un código válido de la app, del secreto pendiente | Hasta que no se demuestra que el móvil lo ha escaneado bien, el MFA **no cuenta como activo** (si no, un error al escanear dejaría a la persona fuera). Se devuelven **diez códigos de recuperación**, una sola vez |
+| **3. Desactivar** | Contraseña **y** un código (de la app o de recuperación) | Quien solo tenga la contraseña, o solo un token, no puede quitar el segundo factor |
+| **4. Regenerar códigos** | Contraseña y un código | Los anteriores, usados o no, dejan de valer |
+
+**Activar y desactivar cierran todas las sesiones de la cuenta.** Lo que cambia es *cómo se demuestra quién eres*, y las sesiones abiertas se abrieron con las reglas antiguas. Se hace en el **mismo `SaveChanges`** que el cambio, para que sea todo o nada. El token de acceso ya emitido sigue valiendo hasta 30 minutos (el límite de siempre).
+
+**Un código no se acepta dos veces, ni siquiera a la vez.** El estándar (RFC 6238) lo exige: quien viera el código por encima del hombro podría reutilizarlo durante los 30 segundos de su vida. Se guarda el último paso aceptado, y se anota con un `UPDATE` condicional (`... WHERE LastUsedTimeStep < `): de cuatro peticiones simultáneas con el mismo código, **solo una cambia una fila**. Un `if` en el código no lo garantizaría, porque comprobar y escribir serían dos pasos. Con los códigos de recuperación pasa igual (`... WHERE UsedAt IS NULL`). Y cuando se acepta un código de un paso *posterior*, los anteriores dejan de valer aunque aún estén en la ventana de ±30 segundos.
+
+**Los fallos cuentan para el bloqueo de cuenta** (Parte 3): la contraseña errónea y el código erróneo, al pedir el secreto, desactivar o regenerar, reservan y suman un intento como en el login. Con un matiz que se pensó a propósito: un **acierto** devuelve el intento pero **no pone el contador a cero**, porque no es un inicio de sesión; si lo hiciera, quien tuviera un token robado y la contraseña podría reiniciar el contador de otro ataque en curso. Los fallos al **confirmar** el primer código, en cambio, *no* cuentan: quien se equivoca al escanear el QR no debe quedarse 15 minutos sin poder entrar (se limitan por IP).
+
+**Si se pierde el móvil.** Primero, los **códigos de recuperación**: diez de 80 bits, de un solo uso, de los que solo se guarda el hash. Y si faltan, **un gestor puede reiniciar el segundo factor** del miembro, con la misma jerarquía de roles de la spec 009 (capítulo 8): borra su secreto y sus códigos y cierra sus sesiones. Es idempotente (si no había MFA, no falla) y no se puede usar sobre uno mismo ni sobre el `Owner`.
+
+**Por qué SHA-256 basta para los códigos de recuperación y no para una contraseña.** Una contraseña la elige una persona, así que existe un diccionario de candidatos y hace falta un hash lento (PBKDF2). Un código de recuperación es **aleatorio de 80 bits**: no hay diccionario, y probar 2^80 candidatos es inviable aunque alguien robe la base de datos.
+
 ---
 
 ## Cómo se protege todo el flujo

@@ -29,6 +29,9 @@ public class SecurityArchitectureTests
     /// cualquier sitio. Un handler nuevo que lea Users o Tenants vería a todas las empresas, así que
     /// leerlos exige añadir aquí el fichero con su motivo.
     /// </summary>
+    private const string MfaServiceFile = "src/OfiFlow.Infrastructure/Identity/MfaService.cs";
+    private const string MfaStoreFile = "src/OfiFlow.Infrastructure/Identity/MfaStore.cs";
+
     private static readonly Dictionary<string, string[]> GlobalDbSetReadAllowList = new()
     {
         // la ficha de una persona solo se lee desde las pertenencias de la empresa activa: listar los miembros (join con
@@ -43,12 +46,14 @@ public class SecurityArchitectureTests
         ["ApplicationUsers"] = [
             "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
             // el contador de intentos y el bloqueo se actualizan por el Id de la cuenta (spec 010)
-            "src/OfiFlow.Infrastructure/Identity/AccountLockout.cs"
+            "src/OfiFlow.Infrastructure/Identity/AccountLockout.cs",
+            // el email de la cuenta (nombre en la app del móvil) y la contraseña a reconfirmar, siempre por el Id de la cuenta (spec 010)
+            MfaServiceFile
         ],
-        // el segundo factor (spec 010): credenciales de una cuenta, siempre por su Id; hoy solo se borran al quitar a un miembro
-        ["MfaCredentials"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
-        ["RecoveryCodes"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
-        ["MfaChallenges"] = ["src/OfiFlow.Infrastructure/Identity/IdentityService.cs"],
+        // el segundo factor (spec 010): credenciales de una cuenta, siempre por su Id (comprobar, borrar al desactivar o al quitar a un miembro)
+        ["MfaCredentials"] = [MfaServiceFile, MfaStoreFile],
+        ["RecoveryCodes"] = [MfaServiceFile, MfaStoreFile],
+        ["MfaChallenges"] = [MfaServiceFile, MfaStoreFile],
         // se buscan por el hash del token, que es secreto y único
         ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"]
     };

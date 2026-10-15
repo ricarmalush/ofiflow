@@ -180,6 +180,8 @@ Las denegaciones por jerarquía o por intentar gestionarse a uno mismo son **403
 
 Tres consecuencias: **nadie puede gestionar al `Owner`** (es único por empresa y no se concede), **un `Admin` no toca a otros `Admin`** (solo el `Owner` nombra o quita administradores) y, para **cambiar** un rol, hacen falta las dos cosas: poder gestionar el rol actual **y** el nuevo (así un `Admin` no asciende a un `Manager` a `Admin`). Como la tabla de permisos, va compilada e inmutable y tiene un test por cada celda, escrito aparte de la tabla de producción. Verificado rompiéndola a propósito: dar al `Admin` poder sobre otro `Admin`, hacer gestionable al `Owner` o cambiar el "y" por "o" en el cambio de rol pone tests en rojo.
 
+La misma tabla gobierna **reiniciar el segundo factor de otro miembro** (spec 010): quien perdió el móvil y los códigos de recuperación puede pedir a un gestor que se lo reinicie, y el gestor solo puede hacerlo sobre los roles que puede gestionar. El `Owner` reinicia a cualquiera, el `Admin` a `Manager`, `Technician` y `Employee`, y **nadie reinicia al `Owner`** ni a sí mismo: para uno mismo está *desactivar*, que exige contraseña y un código. Así, un `Admin` comprometido no puede quitarle el segundo factor al dueño. Un `Owner` que lo pierde todo no tiene a nadie por encima en su empresa: ese caso lo resolverá el operador de la plataforma (riesgo aceptado, ADR-014).
+
 **El rol sale de la base de datos, no del token.** Un token JWT se firma una vez y vale 30 minutos. Si el rol viajara dentro y se leyera de ahí, quitar a alguien o degradarlo no surtiría efecto hasta que caducara el token: un empleado despedido seguiría con acceso a los datos de los clientes. Por eso el [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) hace esto en **cada** petición autenticada, antes de comprobar el permiso:
 
 1. **Declaración.** Si la operación está mal declarada (sin permiso, o anónima y con permiso a la vez) se deniega **sin consultar nada**.
@@ -215,6 +217,8 @@ Y no depende de que nadie se acuerde: escribir SQL a mano con `FromSqlRaw` o `Ex
 - **Al compilar:** el aviso `EF1002` (SQL con interpolación) es un **error**, no un aviso ([`Directory.Build.props:17`](../../Directory.Build.props)).
 - **En los tests:** `SourceCode_DoesNotUseRawSqlApis` falla si esas funciones aparecen en cualquier fichero de `src`.
 
+**Una excepción, escrita y vigilada (spec 010).** Hay **una** sentencia SQL fuera de LINQ: la que reserva el intento del bloqueo de cuenta ([`AccountLockout.cs`](../../src/OfiFlow.Infrastructure/Identity/AccountLockout.cs)), porque EF no puede expresar «comprobar y sumar a la vez devolviendo el nuevo contador». Es la variante **segura**: `SqlQuery` con interpolación, donde cada valor viaja como parámetro SQL y nunca como texto pegado, solo toca una fila por su Id y no recibe nada del cliente. Un test de arquitectura limita esas APIs (`SqlQuery`, `FromSql`, `ExecuteSql` y sus variantes) a ese único fichero, y otro comprueba que el fichero sigue usándolas, para que la lista blanca no pase en vacío.
+
 ### *Mass assignment*
 
 Es cuando el cliente envía campos que no debería poder decidir, como `"tenantId": "<otra empresa>"` o `"role": "Owner"`. Se evita por diseño: **ningún Command ni Query tiene propiedad `TenantId`**, y el JSON sobrante se descarta. Un test, `NoCommandOrQuery_AcceptsTenantIdFromTheClient`, lo impone.
@@ -237,7 +241,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **dieciséis eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **veintitrés eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -257,8 +261,15 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **dieciséis eventos 
 | `1404` | Invitación revocada | Se cancela una invitación pendiente |
 | `1405` | **Rol cambiado** | Se cambia el rol de un miembro (con el rol anterior y el nuevo, sin su nombre ni su email) |
 | `1406` | **Miembro quitado** | Se da de baja a un miembro: se borran su cuenta y sus datos (con el recuento de trabajos que quedaron sin asignar) |
+| `1501` | Secreto del segundo factor pedido | Alguien empieza a activar el MFA de su cuenta (sin el secreto) |
+| `1502` | **MFA activado** | Se confirmó el secreto con un código; se cierran las sesiones de la cuenta |
+| `1503` | **MFA desactivado** | Se desactivó con contraseña y código; se cierran las sesiones |
+| `1504` | **Código del segundo factor rechazado** | Con el **motivo** en el log (código erróneo, ya usado, de recuperación erróneo, cuenta bloqueada...); quien lo intenta no lo ve. Una ráfaga sobre un mismo `UserId` es un ataque a su segundo factor |
+| `1505` | **Código de recuperación usado** | Con cuántos quedan. Suele significar que se perdió el móvil; conviene mirarlo |
+| `1506` | Códigos de recuperación regenerados | Los anteriores dejan de valer |
+| `1507` | **MFA reiniciado por un gestor** | Quién lo hizo y a quién (solo Ids). Un `1507` inesperado seguido de un login desde una IP nueva es lo que querría ver un analista |
 
-Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
+Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones, 15xx segundo factor), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
 
 Además, un pequeño middleware ([`RequestLogScopeMiddleware`](../../src/OfiFlow.Api/Common/RequestLogScopeMiddleware.cs)) apunta la **IP de origen** en cada petición, de modo que todos los eventos la incluyan sin que cada pieza del código tenga que pasarla de mano en mano. Y el `traceId` de los errores une la respuesta con la entrada exacta del registro.
 
@@ -321,6 +332,11 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Escalada de privilegios invitando a un `Admin` o a un `Owner` | Jerarquía de roles (`ManageableRoles`) comprobada al invitar y al revocar | `InviteUserCommandHandler.cs`, `ManageableRoles.cs` | `WhenTheHierarchyForbidsIt_ItIsRefused_AndNothingIsCreated` |
 | **E** · Un empleado despedido (o degradado) sigue usando su token | Se revalida la pertenencia y el rol en la base de datos en cada petición; evento `1302` | `AuthorizationBehavior.cs`, `CurrentUser.cs` | `AMemberWhoIsRemoved_IsDeniedImmediately_WithTheSameStillValidToken`, `ADemotedMember_LosesThePowersOfTheOldRoleImmediately` |
 | **E** · Un token que dice "Owner" pero es de un `Technician` | El rol sale de la base de datos; el claim del token no autoriza nada | `CurrentUser.cs` | `ATokenThatClaimsAHigherRole_DoesNotEscalate_TheDatabaseRoleDecides` |
+| **S** · Contraseña robada o adivinada | Segundo factor (TOTP, RFC 6238) más el bloqueo de cuenta. **El login en dos pasos llega en el bloque 5** | `Totp.cs`, `MfaService.cs` | `TotpTests` (vectores oficiales de las RFC) |
+| **I** · Base de datos robada: secretos del segundo factor | Cifrado AES-256-GCM atado al Id de la cuenta; la clave vive fuera de la base de datos | `AesGcmSecretProtector.cs` | `SecretProtectorTests`, `TheSecret_StoredInTheDatabase_IsTheEncryptedValue_NeverThePlainSecret` |
+| **S** · Un código TOTP visto por encima del hombro y reutilizado | El último paso aceptado se anota con un `UPDATE` condicional atómico | `MfaService.cs` | `FourSimultaneousUses_OfTheSameTotpCode_ProduceExactlyOneValid` |
+| **E** · Un token de acceso robado intenta activar o quitar el MFA | Pide la contraseña (y un código para desactivar); los fallos cuentan para el bloqueo | `StartMfaSetupCommandHandler.cs`, `DisableMfaCommandHandler.cs` | `DisableAndRegenerateMfaTests`, `StartAndEnableMfaTests` |
+| **E** · Un `Admin` comprometido quita el MFA del dueño | La jerarquía de roles también manda al reiniciar | `ResetUserMfaCommandHandler.cs` | `EveryCellOfTheHierarchy_IsEnforced` |
 | **I** · Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token | `InvitationToken.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | **S** · Usar la API sin sesión | `RequireAuthorization()` en cada grupo | `JobEndpoints.cs:21` | `WithoutAToken_EveryRoute_Returns401` |
 | **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
@@ -337,7 +353,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Un rol hace lo que no le toca | Permisos por rol, antes de la validación | `AuthorizationBehavior.cs` | `EachRole_CanOrCannotPerformEachOperation` (65 casos) |
 | **E** · Una operación sin permiso declarado | *Fail-closed* y test de arquitectura | `AuthorizationBehavior.cs` | `EveryOperationOfTheApplication_DeclaresItsAuthorization` |
 | **E** · El cliente fija su empresa o su rol | Ningún comando acepta `TenantId` | Los `*Command.cs` | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` |
-| **E** · Inyección SQL | EF Core parametrizado y SQL a mano prohibido | `Directory.Build.props:17` | `SourceCode_DoesNotUseRawSqlApis` |
+| **E** · Inyección SQL | EF Core parametrizado y SQL a mano prohibido, salvo una sentencia parametrizada en `AccountLockout.cs` | `Directory.Build.props:17`, `AccountLockout.cs` | `SourceCode_DoesNotUseRawSqlApis`, `ParameterizedRawSql_IsOnlyUsedInTheLockout` |
 | Bajar la conexión a HTTP | HTTPS y HSTS (365 días) | `Program.cs:37-42` | **Sin test propio** |
 | Dependencia con vulnerabilidad conocida | NuGetAudit como error y Dependabot | `Directory.Build.props`, `dependabot.yml` | El propio build y el pipeline |
 | Vulnerabilidad en el código | Analizadores de seguridad como error y CodeQL | `.editorconfig`, `codeql.yml` | El propio build y el pipeline |

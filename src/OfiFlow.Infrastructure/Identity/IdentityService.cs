@@ -66,9 +66,7 @@ public sealed partial class IdentityService(
 
         // El segundo factor (spec 010 R20): ninguna de estas tablas tiene clave foránea hacia la cuenta (como
         // RefreshToken), así que no se borrarían solas y quedarían filas huérfanas con secretos de alguien que ya no existe.
-        dbContext.MfaCredentials.RemoveRange(await dbContext.MfaCredentials.Where(c => c.UserId == id).ToListAsync(cancellationToken));
-        dbContext.RecoveryCodes.RemoveRange(await dbContext.RecoveryCodes.Where(c => c.UserId == id).ToListAsync(cancellationToken));
-        dbContext.MfaChallenges.RemoveRange(await dbContext.MfaChallenges.Where(c => c.UserId == id).ToListAsync(cancellationToken));
+        await MfaStore.RemoveAllAsync(dbContext, id, cancellationToken);
     }
 
 
@@ -102,7 +100,7 @@ public sealed partial class IdentityService(
             // Bloqueada: ni la contraseña correcta entra (R16). Pero se hace la misma verificación completa,
             // contra el hash ficticio, para que ni siquiera el tiempo delate que está bloqueada (R19).
             passwordChecker.Verify(null, password);
-            LogLoginRejectedWhileLocked(logger, user.Id);
+            LockoutLog.LoginRejectedWhileLocked(logger, user.Id);
             return null;
         }
 
@@ -112,7 +110,7 @@ public sealed partial class IdentityService(
 
             if (reservation.LockApplied)
             {
-                LogAccountLockedOut(logger, user.Id, reservation.FailedCount, (int)AuthenticationPolicy.LockoutDuration.TotalMinutes);
+                LockoutLog.AccountLockedOut(logger, user.Id, reservation.FailedCount, (int)AuthenticationPolicy.LockoutDuration.TotalMinutes);
             }
 
             return null;
@@ -124,6 +122,49 @@ public sealed partial class IdentityService(
         await lockout.ClearAsync(user.Id, cancellationToken);
 
         return user.Id;
+    }
+
+    public async Task<bool> ConfirmPasswordAsync(Guid userId, string password, CancellationToken cancellationToken)
+    {
+        var hash = await dbContext.ApplicationUsers
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.PasswordHash)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (hash is null)
+        {
+            passwordChecker.Verify(null, password);
+            return false;
+        }
+
+        // Igual que el login: el intento se reserva antes de comprobar (R18), y bloqueada o errónea no se distinguen.
+        var reservation = await lockout.TryReserveAsync(userId, cancellationToken);
+
+        if (!reservation.Reserved)
+        {
+            passwordChecker.Verify(null, password);
+            LockoutLog.LoginRejectedWhileLocked(logger, userId);
+            return false;
+        }
+
+        if (!passwordChecker.Verify(hash, password))
+        {
+            LogLoginFailed(logger, "ReauthenticationFailed", userId);
+
+            if (reservation.LockApplied)
+            {
+                LockoutLog.AccountLockedOut(logger, userId, reservation.FailedCount, (int)AuthenticationPolicy.LockoutDuration.TotalMinutes);
+            }
+
+            return false;
+        }
+
+        // No es un inicio de sesión: la persona ya tenía sesión. Devuelve la reserva sin poner el contador a cero
+        // (si no, un token robado más la contraseña reiniciaría el contador de otro ataque en curso).
+        await lockout.ReleaseAsync(userId, cancellationToken);
+
+        return true;
     }
 
     /// <summary>
@@ -148,12 +189,4 @@ public sealed partial class IdentityService(
     [LoggerMessage(EventId = SecurityEventIds.LoginFailed, Level = LogLevel.Warning,
         Message = "Login fallido. Motivo {Reason}, UserId {UserId}")]
     private static partial void LogLoginFailed(ILogger logger, string reason, Guid? userId);
-
-    [LoggerMessage(EventId = SecurityEventIds.AccountLockedOut, Level = LogLevel.Warning,
-        Message = "Cuenta bloqueada tras {FailedAttempts} intentos fallidos durante {LockoutMinutes} minutos. UserId {UserId}")]
-    private static partial void LogAccountLockedOut(ILogger logger, Guid userId, int failedAttempts, int lockoutMinutes);
-
-    [LoggerMessage(EventId = SecurityEventIds.LoginRejectedWhileLocked, Level = LogLevel.Warning,
-        Message = "Intento de login con la cuenta bloqueada. UserId {UserId}")]
-    private static partial void LogLoginRejectedWhileLocked(ILogger logger, Guid userId);
 }
