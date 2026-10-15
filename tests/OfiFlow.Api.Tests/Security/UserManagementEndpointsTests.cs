@@ -33,7 +33,7 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
     }
 
     private Task<HttpResponseMessage> AcceptAsync(string token, string name = "Ana Pérez", string? password = null) =>
-        fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/accept-invitation", new { token, name, password = password ?? MembersFixture.NewPassword() });
+        fixture.AcceptInvitationAsync(token, name, password ?? MembersFixture.NewPassword());
 
     // ===== Exigen sesión, salvo aceptar =====
 

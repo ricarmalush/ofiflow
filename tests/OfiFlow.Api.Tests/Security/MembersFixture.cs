@@ -61,8 +61,9 @@ public sealed class MembersFixture : IAsyncLifetime
     }
 
     /// <summary>Un miembro nuevo con el rol indicado, sembrado en la base de datos, y un cliente HTTP con su token.</summary>
-    public async Task<Member> SeedMemberAsync(TenantRole role)
+    public async Task<Member> SeedMemberAsync(TenantRole role, Guid? tenantId = null)
     {
+        var company = tenantId ?? TenantId;
         var email = $"miembro-{role.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}@example.com";
         var userId = Guid.NewGuid();
 
@@ -76,12 +77,12 @@ public sealed class MembersFixture : IAsyncLifetime
             throw new InvalidOperationException($"No se pudo sembrar el miembro {role}: {string.Join(", ", created.Errors)}");
         }
 
-        var membership = TenantUser.Create(TenantId, userId, role);
+        var membership = TenantUser.Create(company, userId, role);
         db.Users.Add(User.Create(userId, $"Miembro {role}", Email.Create(email)));
         db.TenantUsers.Add(membership);
         await db.SaveChangesAsync();
 
-        return new Member(role, userId, membership.Id, email, ClientWithToken(MintToken(userId, TenantId, role.ToString())));
+        return new Member(role, userId, membership.Id, email, ClientWithToken(MintToken(userId, company, role.ToString())));
     }
 
     /// <summary>Cuántas pertenencias de la empresa existen con ese Id (0 o 1), mirando la base de datos directamente.</summary>
@@ -100,6 +101,79 @@ public sealed class MembersFixture : IAsyncLifetime
 
         return (await db.TenantUsers.IgnoreQueryFilters().SingleAsync(tu => tu.Id == tenantUserId)).Role;
     }
+
+    /// <summary>
+    /// Acepta una invitación como lo haría la persona: sin sesión y desde SU propia IP. La API limita las aceptaciones a 10 por
+    /// hora y por IP, y todos los clientes de prueba comparten una; cada aceptación declara una IP distinta (ver
+    /// <see cref="TestClientIpStartupFilter"/>), de modo que el límite no corta los tests. El límite real se prueba aparte.
+    /// </summary>
+    public Task<HttpResponseMessage> AcceptInvitationAsync(string token, string name, string password)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/accept-invitation") { Content = JsonContent.Create(new { token, name, password }) };
+        request.Headers.Add(TestClientIpStartupFilter.HeaderName, TestClientIpStartupFilter.NewIp());
+
+        return Anonymous.SendAsync(request);
+    }
+
+    /// <summary>Registra OTRA empresa por la API (con su Owner ya autenticado), para probar el aislamiento entre empresas.</summary>
+    public async Task<Company> RegisterCompanyAsync(string companyName)
+    {
+        var email = $"otra-{Guid.NewGuid():N}@example.com";
+        var password = NewPassword();
+
+        var register = await Anonymous.PostAsJsonAsync("/api/v1/auth/register", new { companyName, userName = $"Dueña de {companyName}", email, password });
+        var tenantId = (await ReadAsync<RegisterResponse>(register)).TenantId;
+
+        var login = await Anonymous.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
+        var tokens = await ReadAsync<AuthResultDto>(login);
+
+        return new Company(tenantId, email, ClientWithToken(tokens.AccessToken));
+    }
+
+    /// <summary>Hace caducar una invitación directamente en la base de datos (no se puede esperar 7 días).</summary>
+    public async Task ExpireInvitationAsync(Guid invitationId)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var invitation = await db.Invitations.IgnoreQueryFilters().SingleAsync(i => i.Id == invitationId);
+        db.Entry(invitation).Property(nameof(Invitation.ExpiresAt)).CurrentValue = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Crea una cuenta con ese email sin pasar por la API, como si alguien se hubiera registrado entre tanto.</summary>
+    public async Task CreateAccountAsync(string email)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var identity = scope.ServiceProvider.GetRequiredService<IIdentityService>();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var created = await identity.CreateUserAsync(Guid.NewGuid(), email, NewPassword(), CancellationToken.None);
+        Assert.True(created.Succeeded);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<bool> EmailHasAnAccountAsync(string email)
+    {
+        using var scope = Factory.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<IIdentityService>().IsEmailRegisteredAsync(email, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Todas las columnas de una invitación juntas, como texto, tal como están en la base de datos. Sirve para comprobar que
+    /// el token en claro no está en NINGUNA.
+    /// </summary>
+    public async Task<string> InvitationRowAsTextAsync(Guid invitationId)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        return await db.Database
+            .SqlQuery<string>($"SELECT CONCAT(Email, '|', NormalizedEmail, '|', [Role], '|', TokenHash, '|', CONVERT(varchar(40), CreatedByUserId)) AS [Value] FROM Invitations WHERE Id = {invitationId}")
+            .SingleAsync();
+    }
+
+    public sealed record Company(Guid TenantId, string OwnerEmail, HttpClient OwnerClient);
 
     public HttpClient ClientWithToken(string token)
     {
