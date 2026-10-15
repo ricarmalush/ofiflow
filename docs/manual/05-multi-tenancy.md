@@ -275,7 +275,7 @@ Una tabla para ver de un vistazo qué amenaza cubre qué control (el germen del 
 | Un handler olvida filtrar por empresa | Filtro global automático | `ApplicationDbContext.cs:63` | `TenantIsolationIntegrationTests` |
 | El cliente dice que es de otra empresa | El tenant sale del token firmado | `TenantContext.cs:17-20` | Validación de firma (capítulo 6) |
 | El cliente envía `tenantId` en el JSON | Ningún Command/Query tiene `TenantId` | Los `*Command.cs` | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` |
-| Alguien se salta el filtro con `IgnoreQueryFilters` | Lista blanca vigilada | `SecurityArchitectureTests.cs:16-20` | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` |
+| Alguien se salta el filtro con `IgnoreQueryFilters` | Lista blanca vigilada | `SecurityArchitectureTests.cs:16-24` | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` |
 | Adivinar el `Id` de un recurso ajeno para leerlo | El filtro no lo encuentra; mismo 404 que si no existiera | `GlobalExceptionHandler.cs:71-72` | `Jobs_AreNotVisibleAcrossTenants`, `TenantB_WithTenantAsIds_GetsTheSameNotFoundAsForAnIdThatDoesNotExist` (HTTP) |
 | Adivinar el `Id` de un recurso ajeno para **modificarlo o borrarlo** | El handler lo busca con el filtro: no lo encuentra | Los `*CommandHandler.cs` | `CrossTenantWriteIsolationTests` |
 | Token manipulado para cambiar de empresa | Firma HMAC-SHA256 | `DependencyInjection.cs:57-68` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |

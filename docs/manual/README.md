@@ -25,8 +25,7 @@ Este manual está escrito para que **cualquier programador junior** entienda de 
 | 8 | [Seguridad](./08-seguridad.md) | Escrito |
 | 9 | [Tests](./09-tests.md) | Escrito |
 | 10 | [CI/CD y pipeline de seguridad](./10-ci-cd-y-pipeline.md) | Escrito |
-| 11 | Cómo añadir una funcionalidad | Pendiente |
-| 12 | Glosario y decisiones | Pendiente |
-| Anexo | Preguntas probables del tribunal | Pendiente |
+| 11 | [Cómo añadir una funcionalidad](./11-como-anadir-una-funcionalidad.md) | Escrito |
+| 12 | [Glosario y decisiones](./12-glosario-y-decisiones.md) | Escrito |
+| Anexo | [Preguntas probables del tribunal](./anexo-preguntas-del-tribunal.md) | Escrito |
 
-Los capítulos pendientes se enlazan aquí cuando se escriban.

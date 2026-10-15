@@ -125,7 +125,7 @@ curl http://localhost:5279/openapi/v1.json
 
 Ni esa ruta ni `/swagger` **existen fuera de `Development`**: el código las registra solo en ese entorno ([`Program.cs`](../../src/OfiFlow.Api/Program.cs)), y hay tests que lo comprueban (capítulo 9). Una API en producción no debe ofrecer su propio mapa ni una pantalla para probarla a cualquiera. Swagger necesitó una excepción en las cabeceras de seguridad, explicada en el capítulo 8.
 
-Para probar de verdad, hay una colección ordenada de 33 peticiones en [`OfiFlow.Api.http`](../../src/OfiFlow.Api/OfiFlow.Api.http), que se ejecuta desde Visual Studio (cuenta, clientes, trabajos, errores a propósito, aislamiento entre dos empresas). Si prefieres la terminal, la secuencia mínima:
+Para probar de verdad, hay una colección ordenada de 51 peticiones en [`OfiFlow.Api.http`](../../src/OfiFlow.Api/OfiFlow.Api.http), que se ejecuta desde Visual Studio (cuenta, clientes, trabajos, errores a propósito, aislamiento entre dos empresas y el equipo: invitar, aceptar, cambiar roles y quitar miembros). Si prefieres la terminal, la secuencia mínima:
 
 1. **Registrar una empresa** (crea la empresa, su primer usuario y lo hace `Owner`). `POST /api/v1/auth/register` con `companyName`, `userName`, `email` y `password`.
 2. **Iniciar sesión.** `POST /api/v1/auth/login` con `email` y `password`: devuelve `accessToken` y `refreshToken`.
