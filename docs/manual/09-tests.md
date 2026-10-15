@@ -25,12 +25,12 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
-| `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 180 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 185 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 79 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 194 | ~0,1 s | No |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 238 | ~1 s | No |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 84 | ~12 s | **Sí**, en parte |
 | `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 156 | ~15 s | **Sí**, en parte |
 
-En total, **603 casos**. Un "caso" no es lo mismo que un método de test: hay unos 320 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **672 casos**. Un "caso" no es lo mismo que un método de test: hay unos 355 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -72,7 +72,7 @@ public void Create_WithoutTitle_Throws(string title)
 
 ## Parte 1 — Domain: tests puros
 
-Las reglas del negocio (que un trabajo no se pueda completar sin empezarlo, que un email tenga formato válido) se prueban sin nada alrededor: ni base de datos, ni servidor. Por eso son los más rápidos (una décima de segundo para 180 casos) y los más fáciles de escribir. Aquí también viven las dos **tablas de seguridad**: la matriz de permisos, con una celda "rol × permiso" por caso (50 celdas, `RolePermissionsTests`), y la de jerarquía de roles, con una celda "quién actúa × a quién gestiona" por caso (25 celdas, `ManageableRolesTests`). Y las reglas de las invitaciones (`InvitationTests`): que caduquen, que se usen una sola vez y que el rol `Owner` no se pueda conceder.
+Las reglas del negocio (que un trabajo no se pueda completar sin empezarlo, que un email tenga formato válido) se prueban sin nada alrededor: ni base de datos, ni servidor. Por eso son los más rápidos (una décima de segundo para casi 200 casos) y los más fáciles de escribir. Aquí también viven las dos **tablas de seguridad**: la matriz de permisos, con una celda "rol × permiso" por caso (50 celdas, `RolePermissionsTests`), y la de jerarquía de roles, con una celda "quién actúa × a quién gestiona" por caso (25 celdas, `ManageableRolesTests`). Y las reglas de las invitaciones (`InvitationTests`): que caduquen, que se usen una sola vez y que el rol `Owner` no se pueda conceder.
 
 ## Parte 2 — Application: casos de uso con dobles de prueba
 
@@ -195,7 +195,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **603 casos son unos 320 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **672 casos son unos 355 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

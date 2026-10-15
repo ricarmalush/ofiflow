@@ -128,7 +128,7 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 | `Customers/` | Crear, ver, listar, modificar y eliminar clientes |
 | `Jobs/` | Crear, ver, listar, modificar, empezar, completar, cancelar y asignar trabajos |
 | `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token) |
-| `Tenancy/` | Las **invitaciones** (spec 009): `InviteUser`, `RevokeInvitation` y la consulta `GetInvitations`, más `InvitationToken` (cómo se genera el token y su hash). El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
+| `Tenancy/` | Las **invitaciones y los miembros** (spec 009): `InviteUser`, `RevokeInvitation`, `GetInvitations`, `GetUsers`, `ChangeUserRole` y `RemoveUser`, más `InvitationToken` (cómo se genera el token y su hash). El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
 
 **La carpeta `Common/`**, lo transversal:
 

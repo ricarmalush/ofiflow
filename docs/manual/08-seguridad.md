@@ -136,7 +136,7 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
 
-> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados. Ya hay operaciones que exigen `Users.Manage` (invitar, ver y revocar invitaciones, en `Application`), pero **todavía no tienen endpoint en la API**: llegan en un bloque posterior de esa spec. Hasta entonces, esas filas no se pueden ejercer a mano, solo con tests.
+> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados. Ya hay seis operaciones que los exigen en `Application`: invitar, ver y revocar invitaciones (`Users.Manage`), **listar miembros** (`Users.Read`), **cambiar el rol** y **quitar a un miembro** (`Users.Manage`). La jerarquía de abajo se aplica en ellas, con tests. Pero **todavía no tienen endpoint en la API**: llegan en un bloque posterior de esa spec. Hasta entonces, esas filas no se pueden ejercer a mano, solo con tests. Y queda un límite abierto hasta el bloque 5: el rol y la pertenencia siguen viajando en el token, así que un miembro al que se quita o se degrada conserva el acceso (o el rol anterior) hasta 30 minutos.
 
 **Quién puede gestionar a quién.** Tener `Users.Manage` no basta: sería una vía de escalada de privilegios (un `Admin` comprometido podría ascender a cómplices). Por eso hay una **segunda tabla** en Domain, [`ManageableRoles`](../../src/OfiFlow.Domain/Tenancy/ManageableRoles.cs), que dice a qué roles puede conceder, cambiar y quitar cada rol:
 
@@ -191,7 +191,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **once eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **trece eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -206,8 +206,10 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **once eventos de seg
 | `1402` | Invitación aceptada | Nace una cuenta nueva a partir de una invitación |
 | `1403` | **Invitación rechazada** | Alguien intenta aceptar un token que no sirve (desconocido, caducado, revocado, ya usado o perdido en una carrera). El log guarda el **motivo real**; quien lo intenta recibe siempre la misma respuesta |
 | `1404` | Invitación revocada | Se cancela una invitación pendiente |
+| `1405` | **Rol cambiado** | Se cambia el rol de un miembro (con el rol anterior y el nuevo, sin su nombre ni su email) |
+| `1406` | **Miembro quitado** | Se da de baja a un miembro: se borran su cuenta y sus datos (con el recuento de trabajos que quedaron sin asignar) |
 
-Se agrupan por familia (10xx autenticación, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens.
+Se agrupan por familia (10xx autenticación, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
 
 Además, un pequeño middleware ([`RequestLogScopeMiddleware`](../../src/OfiFlow.Api/Common/RequestLogScopeMiddleware.cs)) apunta la **IP de origen** en cada petición, de modo que todos los eventos la incluyan sin que cada pieza del código tenga que pasarla de mano en mano. Y el `traceId` de los errores une la respuesta con la entrada exacta del registro.
 
