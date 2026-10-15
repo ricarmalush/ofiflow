@@ -29,6 +29,7 @@
 | [011](./adr/ADR-011-errores-codigos-diccionario.md) | Errores de dominio, códigos de error y diccionario de mensajes | Aceptado |
 | [012](./adr/ADR-012-autorizacion-rbac.md) | Autorización por permisos (RBAC) | Aceptado |
 | [013](./adr/ADR-013-gestion-de-usuarios.md) | Gestión de usuarios de una empresa (invitaciones, jerarquía de roles, revalidación por petición) | Aceptado |
+| [014](./adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) | Segundo factor (MFA) y bloqueo de cuenta | Propuesto |
 
 ## Specs
 
@@ -43,6 +44,7 @@
 | [007-tenant-isolation-hardening](./specs/007-tenant-isolation-hardening/spec.md) | Guardarraíles y tests que endurecen el aislamiento entre empresas (amplía ADR-009 R2) | Implementada |
 | [008-rbac-authorization](./specs/008-rbac-authorization/spec.md) | Autorización por rol: comprobar los permisos de cada operación (implementa ADR-012) | Implementada |
 | [009-user-management](./specs/009-user-management/spec.md) | Invitar y gestionar usuarios de una empresa: invitaciones, cambio de rol y baja con efecto inmediato (implementa ADR-013) | Implementada |
+| [010-mfa-and-account-lockout](./specs/010-mfa-and-account-lockout/spec.md) | Segundo factor (TOTP), login en dos pasos y bloqueo de cuenta por intentos (implementa ADR-014) | Aprobada (en curso) |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 
