@@ -311,6 +311,43 @@ La corrección fue tratar ambos fallos de la confirmación como lo mismo (ambos 
 
 ---
 
+## Parte 7 — El segundo factor: lo que ya existe (spec 010, en construcción)
+
+La spec 010 añade un **segundo factor** (un código de 6 dígitos que cambia cada 30 segundos, en una app del móvil) y el bloqueo de cuenta. **Todavía no hay rutas**: se construye por bloques y, de momento, existen las piezas internas y el almacén donde vivirán los secretos. Lo que conviene entender ya es *cómo se guarda*, porque es la decisión que más se parece a una trampa.
+
+### Por qué el secreto se cifra y no se hashea
+
+Una contraseña se guarda como hash (Parte 2) porque el servidor **solo necesita comprobar** si lo que escribes coincide. El secreto TOTP es distinto: para calcular el código correcto de este instante, el servidor necesita **el secreto en claro**. Un hash no sirve, porque no se puede deshacer. Hay que guardarlo de forma que se pueda recuperar, y por eso se **cifra**: quien robe la base de datos se lleva texto ilegible, no los secretos de todos.
+
+### AES-256-GCM, y lo que añade cada pieza
+
+El cifrado es **AES-256 en modo GCM**, que además de ocultar el contenido lo **autentica**: si alguien cambia un solo byte del texto guardado, al descifrar no sale basura, sale un error. Lo guardado en la columna es `versión | nonce | etiqueta | texto cifrado`, en Base64 ([`AesGcmSecretProtector`](../../src/OfiFlow.Infrastructure/Identity/AesGcmSecretProtector.cs)):
+
+| Pieza | Para qué |
+|---|---|
+| **Nonce** (12 bytes aleatorios, distinto en cada cifrado) | Repetirlo con la misma clave rompe GCM por completo. Por eso se genera uno nuevo cada vez, y un test cifra el mismo secreto mil veces y comprueba que no se repite ninguno |
+| **Etiqueta** (16 bytes) | La que detecta cualquier manipulación |
+| **Id de la cuenta como *dato asociado*** | No se cifra, pero queda atado al resultado. Si alguien con acceso a la base de datos copia el secreto de una cuenta a la fila de otra, **no se descifra**: el Id ya no coincide |
+| **Byte de versión** | El día que haya que cambiar la clave, lo ya guardado dice con cuál se cifró |
+
+### La clave es otro secreto más
+
+Quien tenga la base de datos **y** la clave puede descifrar. Por eso la clave (`Mfa:EncryptionKey`) vive **fuera** de la base de datos, en user-secrets o en una variable de entorno (capítulo 1), y la API **no arranca sin ella** o si no mide 32 bytes: el mensaje de error dice qué pasa pero nunca reproduce el valor. Es el mismo trato que `Jwt:Secret`, y la razón por la que no se usó la herramienta de protección de datos de ASP.NET (guarda su llavero normalmente en la misma base de datos, así que no protegería frente a su robo).
+
+### Tres tablas, ninguna de una empresa
+
+| Tabla | Qué guarda |
+|---|---|
+| `MfaCredentials` | El secreto cifrado de la cuenta (como mucho uno, porque su clave es el propio Id de la cuenta), si ya está confirmado y el último paso de 30 s aceptado |
+| `RecoveryCodes` | El **hash** de cada código de recuperación (10 por cuenta) y si se usó |
+| `MfaChallenges` | El hash del desafío del login en dos pasos, cuándo caduca y cuántos códigos erróneos lleva |
+
+Como `ApplicationUser` y `RefreshToken`, son credenciales de una **cuenta**: no llevan filtro de empresa (capítulo 5). Y como `RefreshToken`, **no tienen clave foránea** hacia la cuenta, así que la base de datos no las borra sola. Por eso `DeleteUserAsync` las borra explícitamente al quitar a un miembro, y un test contra SQL Server comprueba que no queda ninguna fila suya (y que las de otra persona siguen ahí).
+
+Las tres llevan la columna de versión de fila (`rowversion`) de las invitaciones: cuando llegue la verificación, **dos peticiones simultáneas con el mismo código** leerán el mismo último paso, y solo una podrá guardar.
+
+---
+
 ## Cómo se protege todo el flujo
 
 Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenazas final del manual). Las técnicas **T1110** son de MITRE ATT&CK, que verás en CyberOps:

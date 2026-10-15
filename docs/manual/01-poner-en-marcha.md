@@ -40,7 +40,7 @@ docker version          # solo si vas a ejecutar los tests
 
 Desde la carpeta raíz del repositorio:
 
-### Paso 1 — El secreto JWT
+### Paso 1 — Los secretos (JWT y clave del segundo factor)
 
 ```bash
 dotnet user-secrets set "Jwt:Secret" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
@@ -60,6 +60,14 @@ Sin `openssl` (por ejemplo, en PowerShell):
 $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
 dotnet user-secrets set "Jwt:Secret" ([Convert]::ToBase64String($b)) --project src/OfiFlow.Api
 ```
+
+**El segundo secreto (spec 010): `Mfa:EncryptionKey`.** El segundo factor guarda un secreto por cuenta y lo guarda **cifrado**; esta es la clave con la que se cifra (32 bytes en Base64, como la del JWT). La API **no arranca sin ella**, igual que sin `Jwt:Secret`:
+
+```bash
+dotnet user-secrets set "Mfa:EncryptionKey" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
+```
+
+En PowerShell, el mismo fragmento de arriba cambiando el nombre de la clave. Esta clave **no se puede perder**: sin ella, los secretos ya guardados no se pueden descifrar y esas cuentas tendrían que reiniciar su segundo factor. Hoy no hay ninguno (la spec 010 va por el bloque 2 y todavía no hay rutas), pero la de producción habrá que guardarla con copia de seguridad.
 
 En producción no existirá ese fichero: el secreto llegará por la variable de entorno `Jwt__Secret` (el doble guion bajo equivale a los dos puntos) o desde un gestor de secretos. Esa decisión es la R8 del ADR-009.
 
@@ -168,6 +176,7 @@ dotnet test tests/OfiFlow.Application.Tests
 
 | Lo que ves | Qué significa | Qué hacer |
 |---|---|---|
+| La API se detiene al arrancar con **"Falta 'Mfa:EncryptionKey'..."** (o dice que no es Base64 o que mide otra cosa que 32 bytes) | Falta la segunda clave del paso 1, o tiene otro formato | Pon la clave con el comando del paso 1. El mensaje cuenta qué le pasa (falta, no es Base64, mide N bytes) pero nunca reproduce su valor |
 | La API se detiene al arrancar con **"Falta 'Jwt:Secret'..."** | El paso 1 no está hecho (o lo hiciste para otro `UserSecretsId`) | Repite el paso 1. El mensaje es largo a propósito: lista **cada fuente de configuración que consultó** y qué longitud tiene el valor en cada una (nunca el valor), y la ruta exacta donde buscó `secrets.json` |
 | `dotnet ef` no se reconoce | No está instalada la herramienta | `dotnet tool install --global dotnet-ef` |
 | El paso 2 no encuentra el servidor | LocalDB no existe o no está iniciada | `sqllocaldb info` y `sqllocaldb start MSSQLLocalDB`; o usa el contenedor Docker de arriba |

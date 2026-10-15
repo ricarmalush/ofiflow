@@ -27,7 +27,10 @@ internal static class TenantModelRules
         [typeof(Tenant)] = "es la propia empresa",
         [typeof(User)] = "una persona puede pertenecer a varias empresas (ADR-004)",
         [typeof(ApplicationUser)] = "credenciales de una persona, no de una empresa (ADR-007)",
-        [typeof(RefreshToken)] = "guarda el TenantId de la sesión, pero solo se busca por el hash del token (ADR-007)"
+        [typeof(RefreshToken)] = "guarda el TenantId de la sesión, pero solo se busca por el hash del token (ADR-007)",
+        [typeof(MfaCredential)] = "el secreto TOTP de una cuenta, no de una empresa (ADR-014)",
+        [typeof(RecoveryCode)] = "código de recuperación de una cuenta, no de una empresa (ADR-014)",
+        [typeof(MfaChallenge)] = "desafío del login en dos pasos: se canjea sin empresa activa, buscándolo por el hash de su valor (ADR-014)"
     };
 
     /// <summary>R1: toda entidad mapeada es de una empresa o está declarada como global.</summary>

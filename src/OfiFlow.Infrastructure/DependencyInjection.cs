@@ -35,6 +35,7 @@ public static class DependencyInjection
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         AddJwtAuthentication(services, configuration);
+        AddMfaEncryption(services, configuration);
 
         return services;
     }
@@ -76,6 +77,19 @@ public static class DependencyInjection
             });
 
         services.AddAuthorization();
+    }
+
+    private static void AddMfaEncryption(IServiceCollection services, IConfiguration configuration)
+    {
+        // Igual que Jwt:Secret: sin valor por defecto. Si la clave falta o es inválida, la API no arranca:
+        // arrancar sin ella dejaría guardar secretos sin poder cifrarlos, o sin poder leer los ya guardados.
+        var options = configuration.GetSection(MfaOptions.SectionName).Get<MfaOptions>() ?? new MfaOptions();
+        var key = MfaOptions.ParseKey(options.EncryptionKey);
+
+        services.Configure<MfaOptions>(configuration.GetSection(MfaOptions.SectionName));
+
+        // Un único protector para toda la aplicación: no tiene estado y la clave no cambia mientras corre.
+        services.AddSingleton<ISecretProtector>(new AesGcmSecretProtector(key));
     }
 
     /// <summary>

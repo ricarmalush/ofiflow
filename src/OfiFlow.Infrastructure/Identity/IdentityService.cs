@@ -53,6 +53,12 @@ public sealed partial class IdentityService(ApplicationDbContext dbContext, ILog
         // Deliberadamente sin SaveChangesAsync, igual que CreateUserAsync: el Handler confirma esta
         // baja junto con la pertenencia, el User y los tokens en una única transacción (spec 009 R14).
         dbContext.ApplicationUsers.Remove(user);
+
+        // El segundo factor (spec 010 R20): ninguna de estas tablas tiene clave foránea hacia la cuenta (como
+        // RefreshToken), así que no se borrarían solas y quedarían filas huérfanas con secretos de alguien que ya no existe.
+        dbContext.MfaCredentials.RemoveRange(await dbContext.MfaCredentials.Where(c => c.UserId == id).ToListAsync(cancellationToken));
+        dbContext.RecoveryCodes.RemoveRange(await dbContext.RecoveryCodes.Where(c => c.UserId == id).ToListAsync(cancellationToken));
+        dbContext.MfaChallenges.RemoveRange(await dbContext.MfaChallenges.Where(c => c.UserId == id).ToListAsync(cancellationToken));
     }
 
     public async Task<Guid?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken)

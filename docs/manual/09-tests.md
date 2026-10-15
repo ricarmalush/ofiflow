@@ -27,10 +27,10 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 333 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 96 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 238 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 138 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 241 | ~15 s | **Sí**, en parte |
 
-En total, **866 casos**. Un "caso" no es lo mismo que un método de test: hay unos 443 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **911 casos**. Un "caso" no es lo mismo que un método de test: hay unos 478 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -150,6 +150,15 @@ Y `CurrentUserMembershipTests`, para la **revalidación en cada petición** (tam
 - **Fail-closed:** hasta verificar no hay rol, y un token sin usuario o sin empresa se deniega **sin tocar la base de datos**.
 - **El coste:** un interceptor cuenta las consultas y comprueba que verificar cuesta **exactamente una**, aunque se pregunte varias veces. Es la forma de que "una consulta por petición" no sea solo una promesa del manual.
 
+Y `MfaPersistenceTests`, para el **almacén del segundo factor** (spec 010, bloque 2), con la misma idea: lo que solo una base de datos de verdad puede garantizar.
+
+- **Los índices únicos:** una cuenta no puede tener dos secretos TOTP (su clave primaria es la propia cuenta), y dos códigos de recuperación o dos desafíos no pueden compartir hash, ni siquiera de cuentas distintas.
+- **La concurrencia, tres veces:** dos usos simultáneos del mismo código de recuperación, dos canjes del mismo desafío y dos actualizaciones del último paso aceptado de un secreto. En las tres solo una gana (`DbUpdateConcurrencyException`).
+- **Que el secreto no queda en claro:** se lee la columna tal cual la guarda SQL Server, sin pasar por el modelo, y se comprueba que no contiene el secreto ni en Base64 ni en hexadecimal, y que con la clave se recupera.
+- **Que borrar una cuenta no deja huérfanos:** desaparecen su secreto, sus códigos y sus desafíos, y los de otra persona siguen intactos; y si no se confirma la baja entera, no se borra nada.
+
+Aparte, sin base de datos, `SecretProtectorTests` prueba el cifrado como lo que es: una función que debe **negarse**. Cualquier byte cambiado (nonce, etiqueta o texto), otra clave, otra cuenta o una versión desconocida acaban en `CryptographicException`, nunca en datos corruptos; y `MfaOptionsTests` junto con `MfaStartupTests` comprueban que la API entera **no arranca** sin la clave o con una de tamaño incorrecto (en entorno de producción, para que los user-secrets de la máquina no tapen el fallo).
+
 ## Parte 4 — Api: tres clases de test en un mismo proyecto
 
 `OfiFlow.Api.Tests` arranca la **API entera en memoria** (con `WebApplicationFactory`) y le hace peticiones HTTP reales. Dentro hay tres familias:
@@ -217,7 +226,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **866 casos son unos 443 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **911 casos son unos 478 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

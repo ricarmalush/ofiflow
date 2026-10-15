@@ -69,6 +69,7 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", _container.GetConnectionString());
 
         builder.UseSetting("Jwt:Secret", JwtSecret);
+        builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
         builder.UseSetting("Jwt:Issuer", JwtIssuer);
         builder.UseSetting("Jwt:Audience", JwtAudience);
 
