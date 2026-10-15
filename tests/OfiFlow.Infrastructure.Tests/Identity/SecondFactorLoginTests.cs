@@ -136,6 +136,22 @@ public class SecondFactorLoginTests(SqlServerContainerFixture fixture) : IClassF
     }
 
     [Fact]
+    public async Task WithFourPreviousFailures_TheCorrectPassword_OnAnMfaAccount_DoesNotLockTheAccount()
+    {
+        // El caso que cazó la prueba de extremo a extremo: con 4 fallos, el quinto intento reserva, llega a 5 y bloquea antes
+        // de saber si la contraseña es buena. Siendo buena, esa reserva se devuelve y el bloqueo que provocó se levanta: quien
+        // por fin acierta con su contraseña no puede quedarse fuera por un intento que no fue un fallo.
+        var (id, email) = await SeedAccountAsync(withMfa: true);
+        var clock = new FakeTimeProvider(Start);
+
+        await FailAsync(email, 4, clock);
+        var result = await LoginAsync(email, Password, clock);
+
+        Assert.True(result!.SecondFactorRequired);
+        Assert.Equal((4, (DateTimeOffset?)null), await StateAsync(id)); // sigue en 4 y SIN bloqueo
+    }
+
+    [Fact]
     public async Task AnAttackerWhoKnowsThePassword_CannotKeepResettingTheCounterToGuessCodesForever()
     {
         // El ataque que R17 impide: probar 4 códigos, poner la contraseña (que ya conoce) para reiniciar el contador y

@@ -416,7 +416,8 @@ Con el segundo factor activo, la contraseña **ya no da sesión**. El recorrido:
 
 **Quién puede emitir sesiones.** Es la promesa de todo el segundo factor, y se vigila con un test de arquitectura: solo el login (rama sin MFA) y el canje del desafío llaman a `IssueTokensAsync`. Si alguien añade mañana otro camino (un «login con Google», un «recordar dispositivo»), el test falla y obliga a decidir, a propósito, qué pasa allí con el segundo factor. Otro test comprueba que, dentro del login, la rama «falta el segundo factor» termina con un `return` **antes** de la línea que emite la sesión.
 
-**Una rareza aceptada.** Cinco inicios de sesión con la contraseña **correcta** lanzados exactamente a la vez en una cuenta con MFA pueden dejarla bloqueada 15 minutos: cada uno reserva un intento y el quinto fija el bloqueo antes de que los demás devuelvan el suyo. Solo lo puede provocar quien conoce la contraseña, y el bloqueo es temporal.
+**Un fallo que solo cazó la prueba de extremo a extremo.** El diseño inicial tenía un agujero sutil. Con **4 fallos previos**, el quinto intento *reserva*, el contador llega a 5 y la cuenta se bloquea **antes de saber si la contraseña era buena**. Si era buena (cuenta con MFA), devolver la reserva bajaba el contador a 4 pero **dejaba el bloqueo puesto**: una persona legítima que por fin acertaba con su contraseña quedaba fuera 15 minutos por un intento que no fue un fallo. Los tests de cada pieza por separado pasaban, porque cada uno probaba una parte; lo cazó el test que hace el recorrido entero (4 fallos, login con MFA completo, 4 fallos más). La corrección está en `ReleaseAsync`: si al devolver el intento el contador baja del umbral, **levanta también el bloqueo que esa misma reserva provocó**; un bloqueo de verdad (5 fallos reales) no se toca, porque el contador sigue en el umbral o por encima. Hay un test en cada nivel (el servicio, el login y el recorrido HTTP).
+
 
 ---
 

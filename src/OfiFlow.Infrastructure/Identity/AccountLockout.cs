@@ -72,12 +72,27 @@ internal sealed class AccountLockout(ApplicationDbContext dbContext, TimeProvide
 
     /// <summary>
     /// Devuelve la reserva de un intento que salió bien pero al que le falta otro paso (contraseña correcta en una
-    /// cuenta con segundo factor, R18), sin bajar de cero. No toca la hora de bloqueo.
+    /// cuenta con segundo factor, R18), sin bajar de cero.
+    /// <para>
+    /// Si al devolverla el contador baja del umbral, <b>levanta también el bloqueo</b>: esa reserva era justo la que lo
+    /// había fijado (con 4 fallos previos, el quinto intento reserva, llega a 5 y bloquea antes de saber si la contraseña
+    /// era buena). Sin esto, una persona con 4 fallos que por fin acierta con su contraseña quedaría bloqueada por un
+    /// intento que NO fue un fallo (lo cazó la prueba de extremo a extremo). Un bloqueo de verdad, con 5 fallos reales,
+    /// no se toca: el contador sigue en el umbral o por encima.
+    /// </para>
     /// </summary>
-    public Task ReleaseAsync(Guid userId, CancellationToken cancellationToken) =>
-        dbContext.ApplicationUsers
+    public Task ReleaseAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var threshold = AuthenticationPolicy.LockoutThreshold;
+
+        return dbContext.ApplicationUsers
             .Where(user => user.Id == userId && user.AccessFailedCount > 0)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.AccessFailedCount, user => user.AccessFailedCount - 1), cancellationToken);
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(user => user.AccessFailedCount, user => user.AccessFailedCount - 1)
+                    .SetProperty(user => user.LockoutEnd, user => user.AccessFailedCount - 1 < threshold ? null : user.LockoutEnd),
+                cancellationToken);
+    }
 
     /// <summary>
     /// Pone el contador a cero y quita el bloqueo: solo con un acceso <b>completo</b> (R17). Una contraseña correcta

@@ -392,6 +392,15 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 2. ✅ **Cerrado (spec 010) en el login: el tiempo de respuesta ya no delata si un email existe** (misma verificación completa para desconocido, bloqueada y errónea). **Sigue abierto** que el registro diga "ese email ya está registrado".
 3. **No hay cierre de sesión en el servidor**, y un token de acceso no se puede anular antes de caducar (hasta 30 minutos). Desde la spec 009 esto afecta menos a la autorización, porque la pertenencia se revalida en cada petición, pero un usuario **sigue autenticado** hasta que el token caduca.
 
+   Y, con el segundo factor (spec 010), estos límites se añaden a los de la autenticación:
+
+   - **3b. El segundo factor es opcional**, también para `Owner` y `Admin`. Obligarlo exige un estado de «sesión solo para activar el MFA» y una pantalla que guíe; será obligatorio para el operador de la plataforma (spec 011) y, cuando haya frontend, para `Owner`/`Admin`.
+   - **3c. El TOTP no resiste al *phishing*.** Una web falsa que pida la contraseña y el código en directo se los reenvía a la real. Lo resuelven las *passkeys* (WebAuthn), previstas como siguiente paso.
+   - **3d. Un `Owner` que pierde el móvil y los códigos de recuperación queda fuera**, porque nadie de su empresa puede reiniciarle el MFA (la jerarquía lo impide a propósito). Lo resolverá el operador de la plataforma, tras comprobar su identidad.
+   - **3e. El token de acceso ya emitido sigue valiendo hasta 30 minutos** después de activar, desactivar o reiniciar el MFA: se cierran los *refresh tokens*, no los de acceso.
+   - **3f. La clave `Mfa:EncryptionKey` es un secreto que no se puede perder** (los secretos ya guardados quedarían ilegibles) y todavía no hay procedimiento de rotación; el formato guardado lleva un byte de versión para hacerlo posible.
+   - **3g. El `catch` de `DbUpdateException` de *activar* no tiene un test que garantice que se ejecuta.** Tres confirmaciones simultáneas dan exactamente una activación y ningún 500, pero lo normal es que las perdedoras ya hayan perdido antes, en la anotación atómica del paso del código; el `catch` es la red de seguridad de la última carrera posible.
+
 **Autorización**
 4. ✅ **Cerrado (spec 009): el rol y la pertenencia se revalidan en cada petición.** Antes viajaban en el token y un cambio no se notaba hasta renovar la sesión (hasta 30 minutos). El coste es una consulta indexada más por petición autenticada.
 5. **Un `Technician` puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.

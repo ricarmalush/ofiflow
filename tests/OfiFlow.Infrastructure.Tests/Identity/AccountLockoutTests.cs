@@ -458,7 +458,7 @@ public class AccountLockoutTests(SqlServerContainerFixture fixture) : IClassFixt
     }
 
     [Fact]
-    public async Task Release_GivesBackOneAttempt_NeverGoesBelowZero_AndKeepsTheLockoutTime()
+    public async Task Release_GivesBackOneAttempt_AndNeverGoesBelowZero()
     {
         var (id, _) = await SeedAccountAsync();
         var clock = new FakeTimeProvider(Start);
@@ -470,21 +470,64 @@ public class AccountLockoutTests(SqlServerContainerFixture fixture) : IClassFixt
 
         Assert.Equal(0, (await StateAsync(id)).Failed);
 
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            await using var db = Open();
+            await Lockout(db, clock).TryReserveAsync(id, CancellationToken.None);
+        }
+
+        await using (var db = Open())
+        {
+            await Lockout(db, clock).ReleaseAsync(id, CancellationToken.None);
+        }
+
+        Assert.Equal((2, (DateTimeOffset?)null), await StateAsync(id));
+    }
+
+    [Fact]
+    public async Task Release_BelowTheThreshold_LiftsTheLockoutThatTheReservationItselfCaused()
+    {
+        // Con 4 fallos, el quinto intento reserva, llega a 5 y bloquea ANTES de saber si la contraseña era buena. Si era
+        // buena (cuenta con segundo factor), devolver la reserva debe levantar ese bloqueo: no fue un fallo.
+        var (id, _) = await SeedAccountAsync();
+        var clock = new FakeTimeProvider(Start);
+
         for (var attempt = 0; attempt < 5; attempt++)
         {
             await using var db = Open();
             await Lockout(db, clock).TryReserveAsync(id, CancellationToken.None);
         }
 
-        var locked = await StateAsync(id);
+        Assert.NotNull((await StateAsync(id)).LockedUntil); // la quinta reserva bloqueó
+
         await using (var db = Open())
         {
             await Lockout(db, clock).ReleaseAsync(id, CancellationToken.None);
         }
 
-        var released = await StateAsync(id);
-        Assert.Equal(locked.Failed - 1, released.Failed);
-        Assert.Equal(locked.LockedUntil, released.LockedUntil); // devolver un intento no desbloquea
+        Assert.Equal((4, (DateTimeOffset?)null), await StateAsync(id));
+    }
+
+    [Fact]
+    public async Task Release_WhileTheCounterIsStillAtTheThresholdOrAbove_KeepsARealLockout()
+    {
+        // Un bloqueo con 5 fallos REALES no se toca: tras devolver un intento, el contador sigue en el umbral o por encima.
+        var (id, _) = await SeedAccountAsync();
+        var clock = new FakeTimeProvider(Start);
+        var lockedUntil = new DateTimeOffset(Start).AddMinutes(15);
+
+        await using (var db = Open())
+        {
+            await db.ApplicationUsers.Where(u => u.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.AccessFailedCount, 6).SetProperty(u => u.LockoutEnd, (DateTimeOffset?)lockedUntil));
+        }
+
+        await using (var db = Open())
+        {
+            await Lockout(db, clock).ReleaseAsync(id, CancellationToken.None);
+        }
+
+        Assert.Equal((5, (DateTimeOffset?)lockedUntil), await StateAsync(id));
     }
 
     [Fact]

@@ -27,10 +27,10 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 445 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 220 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 300 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 223 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 325 | ~15 s | **Sí**, en parte |
 
-En total, **1164 casos**. Un "caso" no es lo mismo que un método de test: hay unos 652 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **1192 casos**. Un "caso" no es lo mismo que un método de test: hay unos 680 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -187,6 +187,15 @@ Y los **tests HTTP del segundo factor** (spec 010, bloque 6), en la clase de API
 
 Todavía **no** hay aquí un código TOTP real: confirmar, desactivar y regenerar con códigos válidos, y cada ataque, son el bloque 7.
 
+Y **el recorrido entero** (spec 010, bloque 7): `MfaEndToEndTests`, con la API real, SQL Server real y **códigos TOTP de verdad**. Aquí está la técnica nueva de este bloque: el **reloj controlado**. El TOTP cambia cada 30 segundos y cada paso solo se acepta una vez, así que probar «login con MFA, otra vez, otra vez» con el reloj real obligaría a esperar. La fábrica de pruebas sustituye el `TimeProvider` de la API por uno que el test avanza a voluntad: 30 s para tener un código nuevo, 5 minutos para caducar un desafío, 15 para terminar un bloqueo. El test hace de app del móvil: decodifica el secreto Base32 que recibe y calcula el código con la misma clase `Totp` que ya se validó contra las RFC.
+
+- **El ciclo completo, en un solo test:** registrar → pedir el secreto → confirmar → comprobar que la sesión anterior ya no renueva → login (que da un desafío y **ni un token**) → canjearlo con un código → usar un código de recuperación → desactivar → comprobar que el login vuelve a ser de un paso.
+- **Cada ataque, con su control positivo:** fuerza bruta del código (acaba en bloqueo, y ni el código bueno entra después), código ya usado en un desafío nuevo, desafío ya canjeado, desafío caducado, desafío de una cuenta con el código de otra, y el desafío presentado como token de acceso en **cinco rutas** (con el token de verdad, las cinco dan 200).
+- **Los seis fallos del segundo paso son indistinguibles.** Desconocido, ya usado, caducado, código erróneo, forma equivocada del desafío y código mal escrito: se comparan la respuesta completa (estado, cabeceras y cuerpo) y las seis cadenas tienen que ser **la misma**.
+- **Carreras por HTTP:** cuatro canjes simultáneos del mismo desafío con el mismo código dan **una** sesión, y tres confirmaciones simultáneas activan el MFA **una** vez (las otras reciben un 400, nunca un 500).
+- **Que no quede nada en ningún sitio.** Tras un ciclo, se leen las tres tablas **tal cual** (con SQL directo) y no contienen el secreto, ni los códigos de recuperación, ni el desafío en claro; y los eventos de seguridad (`1501`–`1507`, `1005`, `1006`) se registran **sin** ningún secreto, código, desafío, contraseña ni email (se busca cada valor conocido y, además, cualquier cosa con forma de email).
+- **El error que solo cazó este nivel.** Un test que hacía 4 fallos y luego un login legítimo con MFA falló: la cuenta quedaba bloqueada por un intento que no fue un fallo (capítulo 6). Los tests de cada pieza por separado pasaban. Es la razón de ser de los tests de extremo a extremo: lo que se rompe en la **unión** de las piezas.
+
 Y `MfaPersistenceTests`, para el **almacén del segundo factor** (spec 010, bloque 2), con la misma idea: lo que solo una base de datos de verdad puede garantizar.
 
 - **Los índices únicos:** una cuenta no puede tener dos secretos TOTP (su clave primaria es la propia cuenta), y dos códigos de recuperación o dos desafíos no pueden compartir hash, ni siquiera de cuentas distintas.
@@ -263,7 +272,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **946 casos son unos 652 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **1192 casos son unos 680 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 
