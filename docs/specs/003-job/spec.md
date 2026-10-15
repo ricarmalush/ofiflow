@@ -1,6 +1,6 @@
 # Spec — 003-job
 
-**Estado:** Aprobada
+**Estado:** Implementada
 **Fecha:** 2026-09-22
 **Bounded Context:** Jobs
 **Depende de:** `specs/001-customer/` (Customer debe existir), `specs/002-tenancy-identity/` (TenantUser para asignación), ADR-002, ADR-003, ADR-006

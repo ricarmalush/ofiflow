@@ -104,7 +104,7 @@ Si no hay ningún tenant en el token, `TenantContext` lanza una excepción en ve
 
 ## Pieza ③ — El filtro global de consultas
 
-Esta es la pieza central. En [`ApplicationDbContext.cs:44-64`](../../src/OfiFlow.Infrastructure/Persistence/ApplicationDbContext.cs):
+Esta es la pieza central. En [`ApplicationDbContext.cs:58-73`](../../src/OfiFlow.Infrastructure/Persistence/ApplicationDbContext.cs):
 
 ```csharp
 private void ApplyTenantQueryFilters(ModelBuilder modelBuilder)
@@ -273,7 +273,7 @@ Una tabla para ver de un vistazo qué amenaza cubre qué control (el germen del 
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| Un handler olvida filtrar por empresa | Filtro global automático | `ApplicationDbContext.cs:63` | `TenantIsolationIntegrationTests` |
+| Un handler olvida filtrar por empresa | Filtro global automático | `ApplicationDbContext.cs:72` | `TenantIsolationIntegrationTests` |
 | El cliente dice que es de otra empresa | El tenant sale del token firmado | `TenantContext.cs:17-20` | Validación de firma (capítulo 6) |
 | El cliente envía `tenantId` en el JSON | Ningún Command/Query tiene `TenantId` | Los `*Command.cs` | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` |
 | Alguien se salta el filtro con `IgnoreQueryFilters` | Lista blanca vigilada | `SecurityArchitectureTests.cs:16-24` | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` |
