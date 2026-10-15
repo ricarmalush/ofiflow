@@ -57,7 +57,7 @@ La carpeta de primer nivel es siempre un **contexto de negocio** (capítulo 2, s
 | `Customers/` | `Customer`, `CustomerType`, `PhoneNumber`, `CustomerErrors` | Todo lo que es un cliente |
 | `Jobs/` | `Job`, `JobStatus`, `JobPriority`, `JobErrors` | Todo lo que es un trabajo y sus transiciones de estado |
 | `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `Permission`, `RolePermissions`, `ManageableRoles`, `Invitation`, `InvitationStatus`, `TenancyErrors`, `InvitationErrors` | La empresa, la pertenencia de una persona a ella con un rol, y **qué puede hacer cada rol**: `Permission` son los permisos (`Customers.Write`, `Jobs.Assign`, `Users.Manage`...), `RolePermissions` es la tabla única rol → permisos y `ManageableRoles` la tabla única "a qué roles puede gestionar cada rol". `Invitation` es la invitación para que una persona entre en la empresa (spec 009) |
-| `Identity/` | `User`, `IdentityErrors` | Los **datos de negocio** de la persona. Las credenciales (contraseña) no están aquí: viven en Infrastructure |
+| `Identity/` | `User`, `IdentityErrors`, `MfaErrors` | Los **datos de negocio** de la persona (y los códigos de error del segundo factor, spec 010). Las credenciales (contraseña) no están aquí: viven en Infrastructure |
 
 Dos interfaces de `Common/` merecen atención, porque son "etiquetas" que activan comportamientos automáticos en otras capas:
 
@@ -127,7 +127,7 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 |---|---|
 | `Customers/` | Crear, ver, listar, modificar y eliminar clientes |
 | `Jobs/` | Crear, ver, listar, modificar, empezar, completar, cancelar y asignar trabajos |
-| `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token) |
+| `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token). Además, `AuthenticationPolicy` (los números de la política de bloqueo y de segundo factor, en un único sitio) y la subcarpeta **`Mfa/`** (spec 010): `Totp` (el código de 6 dígitos, RFC 6238), `TotpSecret` (generar el secreto y la URI para el QR), `Base32` y `RecoveryCodes`. Son funciones puras, sin base de datos ni reloj propio |
 | `Tenancy/` | Las **invitaciones y los miembros** (spec 009): `InviteUser`, `RevokeInvitation`, `GetInvitations`, `GetUsers`, `ChangeUserRole` y `RemoveUser`, más `InvitationToken` (cómo se genera el token y su hash). El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
 
 **La carpeta `Common/`**, lo transversal:

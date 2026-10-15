@@ -27,7 +27,9 @@ public class RolePermissionsTests
         "JobsExecute        X     X     X       -        X",
         // Añadidas por la spec 009: el Manager ve quién hay (para asignar), pero no gestiona usuarios.
         "UsersRead          X     X     X       -        -",
-        "UsersManage        X     X     -       -        -"
+        "UsersManage        X     X     -       -        -",
+        // Añadida por la spec 010: todos los roles gestionan el segundo factor de su PROPIA cuenta.
+        "MfaManage          X     X     X       X        X"
     ];
 
     public static TheoryData<TenantRole, Permission, bool> Cells()

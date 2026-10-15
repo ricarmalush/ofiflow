@@ -136,6 +136,7 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Iniciar y completar trabajos | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Gestionar el segundo factor **de la propia cuenta** (`Mfa.Manage`; spec 010, aún sin rutas) | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 **Las rutas (spec 009).** Cada una exige sesión (salvo aceptar), y quién puede lo decide el permiso más la jerarquía, no el endpoint:
 

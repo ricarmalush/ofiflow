@@ -25,12 +25,12 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
-| `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 194 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 245 | ~1 s | No |
+| `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 333 | ~1 s | No |
 | `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 96 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 235 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 238 | ~15 s | **Sí**, en parte |
 
-En total, **770 casos**. Un "caso" no es lo mismo que un método de test: hay unos 406 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **866 casos**. Un "caso" no es lo mismo que un método de test: hay unos 443 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -72,7 +72,7 @@ public void Create_WithoutTitle_Throws(string title)
 
 ## Parte 1 — Domain: tests puros
 
-Las reglas del negocio (que un trabajo no se pueda completar sin empezarlo, que un email tenga formato válido) se prueban sin nada alrededor: ni base de datos, ni servidor. Por eso son los más rápidos (una décima de segundo para casi 200 casos) y los más fáciles de escribir. Aquí también viven las dos **tablas de seguridad**: la matriz de permisos, con una celda "rol × permiso" por caso (50 celdas, `RolePermissionsTests`), y la de jerarquía de roles, con una celda "quién actúa × a quién gestiona" por caso (25 celdas, `ManageableRolesTests`). Y las reglas de las invitaciones (`InvitationTests`): que caduquen, que se usen una sola vez y que el rol `Owner` no se pueda conceder.
+Las reglas del negocio (que un trabajo no se pueda completar sin empezarlo, que un email tenga formato válido) se prueban sin nada alrededor: ni base de datos, ni servidor. Por eso son los más rápidos (una décima de segundo para casi 200 casos) y los más fáciles de escribir. Aquí también viven las dos **tablas de seguridad**: la matriz de permisos, con una celda "rol × permiso" por caso (55 celdas, `RolePermissionsTests`), y la de jerarquía de roles, con una celda "quién actúa × a quién gestiona" por caso (25 celdas, `ManageableRolesTests`). Y las reglas de las invitaciones (`InvitationTests`): que caduquen, que se usen una sola vez y que el rol `Owner` no se pueda conceder.
 
 ## Parte 2 — Application: casos de uso con dobles de prueba
 
@@ -85,6 +85,8 @@ Un *handler* necesita una base de datos y otras piezas (quién es el usuario, c�
 | `FakeCurrentUser` | "¿Quién soy y qué rol tengo?" Distingue el rol **efectivo** (el de la base de datos) del que diría el token, para probar que decide el primero, y cuenta cuántas veces se verifica la pertenencia | `Common/FakeCurrentUser.cs` |
 | `FakeTimeProvider` | "¿Qué hora es?" (para probar que una invitación caduca a los 7 días **sin esperar 7 días**: el test avanza el reloj) | `Common/FakeTimeProvider.cs` |
 | `FakeIdentityService`, `FakeTokenService` | Las contraseñas y los tokens | `Common/` |
+
+**Pruebas de oro: los vectores de las RFC (spec 010).** El código de 6 dígitos del segundo factor (`Totp`) no se prueba comparándolo con lo que calcula el propio código, que sería darle la razón a lo que se prueba, sino con los **valores que publican las propias RFC**: los diez de HOTP (RFC 4226, Apéndice D) y los seis de TOTP (RFC 6238, Apéndice B). Si alguien cambia una máscara, un desplazamiento o el orden de los bytes, falla un caso con el código esperado concreto. Igual con Base32 (RFC 4648) y con el hash de los códigos de recuperación, cuyo valor de referencia se calculó con OpenSSL y no con este proyecto. Son funciones puras (el reloj entra por parámetro), por eso no necesitan ningún doble.
 
 Un test típico de un handler:
 
@@ -215,7 +217,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **770 casos son unos 406 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **866 casos son unos 443 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

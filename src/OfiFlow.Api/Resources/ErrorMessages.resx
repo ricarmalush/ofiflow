@@ -136,6 +136,21 @@
   <data name="invitation.not_found" xml:space="preserve">
     <value>No se ha encontrado la invitación.</value>
   </data>
+  <data name="mfa.already_enabled" xml:space="preserve">
+    <value>El segundo factor ya está activado. Para cambiarlo, desactívalo primero.</value>
+  </data>
+  <data name="mfa.not_enabled" xml:space="preserve">
+    <value>El segundo factor no está activado.</value>
+  </data>
+  <data name="mfa.setup_required" xml:space="preserve">
+    <value>Primero hay que pedir el secreto para configurar el segundo factor.</value>
+  </data>
+  <data name="mfa.invalid_code" xml:space="preserve">
+    <value>El código no es válido.</value>
+  </data>
+  <data name="mfa.invalid_password" xml:space="preserve">
+    <value>La contraseña no es correcta.</value>
+  </data>
 
   <!-- ===== Identity ===== -->
   <data name="user.name_required" xml:space="preserve">

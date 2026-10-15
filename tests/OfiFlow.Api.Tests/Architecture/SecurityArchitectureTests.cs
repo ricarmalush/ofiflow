@@ -57,6 +57,43 @@ public class SecurityArchitectureTests
             $"Usa LINQ, o FromSql/SqlQuery con interpolación (parametrizado). Aparece en: {string.Join(", ", offenders)}");
     }
 
+    /// <summary>
+    /// El único sitio donde se usa HMAC-SHA1 y se suprime el aviso CA5350: el TOTP, porque la RFC 6238 lo exige
+    /// (ADR-014). Un uso nuevo de SHA-1 en cualquier otro sitio tiene que justificarse y añadirse aquí a propósito.
+    /// </summary>
+    private const string WeakAlgorithmAllowedFile = "src/OfiFlow.Application/Identity/Mfa/Totp.cs";
+
+    [Theory]
+    [InlineData("HMACSHA1")]
+    [InlineData("CA5350")]
+    public void Sha1_IsOnlyUsedByTheTotpImplementation(string marker)
+    {
+        var offenders = SourceCode.FilesContaining(marker).Where(path => path != WeakAlgorithmAllowedFile).ToList();
+
+        Assert.True(offenders.Count == 0,
+            $"'{marker}' solo puede aparecer en {WeakAlgorithmAllowedFile} (ADR-014: HMAC-SHA1 es lo que exige el TOTP; " +
+            $"para cualquier otra cosa se usa SHA-256 o más). Aparece en: {string.Join(", ", offenders)}");
+
+        // Control positivo: el escaneo encuentra el uso legítimo. Si el fichero se moviera, este test avisaría
+        // de que ya no vigila nada en vez de pasar en silencio.
+        Assert.Contains(WeakAlgorithmAllowedFile, SourceCode.FilesContaining(marker));
+    }
+
+    [Fact]
+    public void TheTotpCodeComparison_IsConstantTime()
+    {
+        // Comparar el código con == o SequenceEqual sale al primer carácter distinto, y el tiempo que tarda
+        // enseñaría cuántos dígitos se han acertado. FixedTimeEquals tarda lo mismo acierte lo que acierte
+        // (spec 010 R4). Por comportamiento no se puede probar (es una cuestión de tiempo), así que se vigila la fuente.
+        var totp = SourceCode.Files("OfiFlow.Application/Identity/Mfa").Single(file => file.Path.EndsWith("/Totp.cs", StringComparison.Ordinal));
+
+        Assert.Contains("CryptographicOperations.FixedTimeEquals(", totp.Content);
+        Assert.DoesNotContain("SequenceEqual", totp.Content);
+        Assert.DoesNotContain("string.Equals", totp.Content);
+        Assert.DoesNotContain("== code", totp.Content);
+        Assert.DoesNotContain("== expected", totp.Content);
+    }
+
     [Fact]
     public void IgnoreQueryFilters_IsOnlyUsedInTheAllowList()
     {
