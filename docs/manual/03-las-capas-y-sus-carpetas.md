@@ -128,7 +128,7 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 | `Customers/` | Crear, ver, listar, modificar y eliminar clientes |
 | `Jobs/` | Crear, ver, listar, modificar, empezar, completar, cancelar y asignar trabajos |
 | `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token) |
-| `Tenancy/` | Reservada: todavía no tiene casos de uso propios (el registro, que crea la empresa, está en `Identity`) |
+| `Tenancy/` | Las **invitaciones** (spec 009): `InviteUser`, `RevokeInvitation` y la consulta `GetInvitations`, más `InvitationToken` (cómo se genera el token y su hash). El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
 
 **La carpeta `Common/`**, lo transversal:
 
@@ -372,7 +372,7 @@ Se detallan en el capítulo 9.
 ## Cosas que verás en el repositorio y que conviene saber
 
 - **Ficheros `.gitkeep`** dentro de carpetas que ya tienen contenido (por ejemplo, `Domain/Jobs/.gitkeep`). Son restos de cuando las carpetas se crearon vacías; no hacen nada y son inofensivos.
-- **`Application/Tenancy/`** solo contiene un `.gitkeep`: es un contexto reservado todavía sin casos de uso.
+- **`Application/Tenancy/`** ya tiene casos de uso (las invitaciones, spec 009), pero ninguno tiene todavía endpoint en la API: llegan en un bloque posterior de esa spec.
 - **`Domain/Common/IAuditable`** declara sus fechas con `set` público, porque quien las rellena (el interceptor) está en otra capa y necesita poder escribirlas. Es una concesión pragmática: a diferencia del resto de propiedades de `Job`, estas dos no están protegidas con `private set`.
 
 ## Para comprobar que lo has entendido

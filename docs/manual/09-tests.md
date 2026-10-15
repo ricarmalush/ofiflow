@@ -7,6 +7,7 @@
 - Por qué los tests más importantes usan un **SQL Server de verdad** (en Docker) y no una base de datos "de mentira".
 - Las técnicas que hacen fiable un test de seguridad: controles positivos, meta-tests, centinelas y **pruebas de mutación**.
 - Cómo ejecutarlos y qué hacen en el pipeline.
+- **Cuántos tests escribir**: por qué la batería es grande y el criterio para que sea proporcional al riesgo.
 - Qué errores reales cometimos (y cazamos) por el camino, y qué límites tiene hoy la batería.
 
 ## Para qué sirven
@@ -25,11 +26,11 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 180 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 88 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 73 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 185 | ~1 s | No |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 79 | ~12 s | **Sí**, en parte |
 | `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 156 | ~15 s | **Sí**, en parte |
 
-En total, **497 casos**. Un "caso" no es lo mismo que un método de test: hay unos 257 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **603 casos**. Un "caso" no es lo mismo que un método de test: hay unos 320 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -82,6 +83,7 @@ Un *handler* necesita una base de datos y otras piezas (quién es el usuario, c�
 | `TestDbContext` | La base de datos, por una **en memoria** (`TestDbContextFactory.Create()` da una nueva y vacía en cada test) | `Common/TestDbContext.cs` |
 | `FakeTenantContext` | "¿En qué empresa estoy?" | `Common/FakeTenantContext.cs` |
 | `FakeCurrentUser` | "¿Quién soy y qué rol tengo?" | `Common/FakeCurrentUser.cs` |
+| `FakeTimeProvider` | "¿Qué hora es?" (para probar que una invitación caduca a los 7 días **sin esperar 7 días**: el test avanza el reloj) | `Common/FakeTimeProvider.cs` |
 | `FakeIdentityService`, `FakeTokenService` | Las contraseñas y los tokens | `Common/` |
 
 Un test típico de un handler:
@@ -187,6 +189,42 @@ Con el filtro por empresa desactivado, 20 de los 22 tests de extremo a extremo f
 
 ---
 
+## Cuántos tests escribir: proporcionales al riesgo
+
+La batería de este proyecto es grande (más de 600 casos) y un lector atento se preguntará si **toda** funcionalidad necesita tantos. La respuesta es **no**: la cantidad de tests de este proyecto responde al **riesgo** de lo que protegen, no a una regla fija. Esta sección deja por escrito el criterio para no sobreprobar sin querer (ni quedarse corto donde importa).
+
+### Un caso no es un método
+
+Antes de asustarse con la cifra: **603 casos son unos 320 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+
+### Tres niveles de riesgo
+
+| Nivel | Qué es | Qué tests lleva |
+|---|---|---|
+| **Alto** | Seguridad, dinero y datos personales: autorización, aislamiento entre empresas, tokens, invitaciones, y más adelante facturas y cobros | La batería completa de este capítulo: reglas de Domain, casos de uso con dobles, **SQL real** para lo que una base en memoria no ve, controles positivos, **mutaciones sobre el código real** y que nada sensible aparezca en los logs |
+| **Medio** | Reglas de negocio sin consecuencias de seguridad: las transiciones de estado de un trabajo, validaciones de campos | Domain y Application: camino feliz, cada regla que puede fallar y sus errores. Integración solo si la regla depende de la base de datos |
+| **Bajo** | Código corriente: otra pantalla de listado, un campo nuevo de texto, un CRUD más | **Lo mínimo**: el camino feliz, los errores de validación y **el aislamiento entre empresas** (que sigue siendo obligatorio aunque el resto sea poco). Sin mutaciones ni familias de tests propias |
+
+Una pregunta rápida para decidir el nivel: *si esto falla en silencio, ¿alguien ve datos que no debe, pierde dinero o puede hacer algo que no le toca?* Si la respuesta es sí, es nivel alto.
+
+### Qué NO hacer
+
+- **No probar el framework.** Que EF Core guarda una fila o que ASP.NET devuelve un 404 ya lo prueban sus autores. Se prueba **nuestra** regla.
+- **No añadir una tercera copia de una tabla** salvo que cubra un hueco que las otras no cubren. La matriz de permisos ya está escrita aparte en tres sitios (Domain, Application y extremo a extremo) y es el punto de mayor duplicación del proyecto: se acepta porque es una tabla de seguridad, no como patrón general.
+- **No comprobar el texto exacto de un log.** Lo que importa es lo que **no** puede aparecer (un email, un token, una contraseña): se comprueba la ausencia de ese dato, no la frase completa. Así cambiar la redacción del mensaje no rompe el test sin que nada esté roto.
+- **No dejar un test que nunca ha fallado sin comprobarlo** si es de nivel alto: se rompe el código a propósito y se ve el rojo (apartado anterior).
+
+### El coste, sin maquillar
+
+Más tests no son más calidad por sí solos. Tienen un precio: la suite tarda alrededor de un minuto y **necesita Docker** (ya nos falló por no estar arrancado); un cambio de diseño obliga a tocar varios tests; y un test mal pensado da **falsa confianza**, que es peor que no tenerlo. Por eso el criterio es proporcional: mucho donde el fallo sería grave, poco donde no lo sería, y nunca tests por rellenar.
+
+### Para una funcionalidad nueva
+
+1. **Decide el nivel** con la pregunta de arriba, y anótalo en el `tasks.md` de la spec.
+2. Si es **alto**, escribe la batería completa y verifica cada guardarraíl con una mutación.
+3. Si es **bajo**, escribe lo mínimo y comprueba que no rompe el aislamiento entre empresas.
+4. Al terminar, revisa si algún test **duplica** lo que ya cubre otro sin aportar nada, y quítalo.
+
 ## Cómo ejecutarlos
 
 ```bash
@@ -212,6 +250,9 @@ Esta lista es la mejor lección del capítulo, porque son fallos que **nos pasar
 | Una mutación mal formada rompía también los tokens válidos | Un test "en rojo" por la razón equivocada tampoco demuestra nada |
 | Una contraseña escrita a mano en un test saltó en el escáner de secretos | Nada de credenciales fijas, ni siquiera de prueba |
 | Una restauración con `git checkout` borró cambios aún sin commitear | Restaurar tras una mutación con copias de seguridad, o commitear antes |
+| Dos aceptaciones simultáneas de la misma invitación: la perdedora acababa en un **500** y no en el error esperado | Los tests con **SQL Server real** ven lo que una base en memoria no puede (índices únicos, versiones de fila). Los de en memoria pasaban en verde |
+| Una mutación **sobrevivió**: el test de "email duplicado sin distinguir mayúsculas" usaba un segundo email ya en mayúsculas, y coincidía por casualidad | Un test puede pasar por una coincidencia. Una mutación que no se detecta es una pista de que el test es débil: se reforzó con varias variantes de mayúsculas |
+| Un test **intermitente** (pasaba y fallaba con el mismo código) destapó que `Base64Url.IsValid` de .NET ignora los espacios en blanco, y mi comprobación del formato del token los aceptaba según el azar del token | Un test intermitente casi nunca es mala suerte: es el azar mostrando un defecto. No se repite hasta que pase: se investiga, y el arreglo se prueba con **muchas muestras**, no con una |
 
 ## Dónde están hoy los límites
 
@@ -241,8 +282,9 @@ Esta lista es la mejor lección del capítulo, porque son fallos que **nos pasar
 6. Explica con tus palabras qué es una prueba de mutación y qué demuestra.
 7. ¿Qué es un meta-test y qué problema resuelve?
 8. Nombra dos límites de la batería de tests y di cuál cerrarías primero.
+9. Vas a añadir una pantalla de listado de proveedores. ¿Qué nivel de riesgo tiene y qué tests escribirías? ¿Y si fuera la emisión de facturas?
 
-*(Respuestas: 1 = *Arrange, Act, Assert*: preparar, actuar y comprobar; en `Start_FromNew_...` se crea el trabajo, se llama a `Start()` y se comprueba que el estado es `InProgress`. 2 = porque cada capa se prueba con lo que le corresponde: reglas puras sin nada, casos de uso con dobles, persistencia con base real y HTTP con la API entera; cuanto más hacia fuera, más lento y realista. 3 = porque usan una base en memoria sin el filtro por empresa; si un handler olvidara filtrar, no lo notarían; eso lo prueba la capa de Infrastructure con la base real. 4 = porque la base en memoria no ejecuta SQL real y un filtro podría traducirse mal sin que el test lo notara; el aislamiento es lo más importante del proyecto. 5 = junto a "este rol no puede" va "este rol sí puede y la operación tuvo efecto"; sin él, el test de "no puede" podría pasar porque la preparación estaba mal y no por el control. 6 = romper a propósito el código real y comprobar que el test se pone en rojo; demuestra que el test vigila lo que dice y señala el sitio concreto. 7 = una prueba de la regla que vigila el código, con entradas inventadas mal hechas, para demostrar que la regla detecta de verdad una infracción. 8 = por ejemplo, no se mide la cobertura y las mutaciones se hacen a mano; yo cerraría primero los cuatro controles sin test propio, porque son baratos y son seguridad.)*
+*(Respuestas: 1 = *Arrange, Act, Assert*: preparar, actuar y comprobar; en `Start_FromNew_...` se crea el trabajo, se llama a `Start()` y se comprueba que el estado es `InProgress`. 2 = porque cada capa se prueba con lo que le corresponde: reglas puras sin nada, casos de uso con dobles, persistencia con base real y HTTP con la API entera; cuanto más hacia fuera, más lento y realista. 3 = porque usan una base en memoria sin el filtro por empresa; si un handler olvidara filtrar, no lo notarían; eso lo prueba la capa de Infrastructure con la base real. 4 = porque la base en memoria no ejecuta SQL real y un filtro podría traducirse mal sin que el test lo notara; el aislamiento es lo más importante del proyecto. 5 = junto a "este rol no puede" va "este rol sí puede y la operación tuvo efecto"; sin él, el test de "no puede" podría pasar porque la preparación estaba mal y no por el control. 6 = romper a propósito el código real y comprobar que el test se pone en rojo; demuestra que el test vigila lo que dice y señala el sitio concreto. 7 = una prueba de la regla que vigila el código, con entradas inventadas mal hechas, para demostrar que la regla detecta de verdad una infracción. 8 = por ejemplo, no se mide la cobertura y las mutaciones se hacen a mano; yo cerraría primero los cuatro controles sin test propio, porque son baratos y son seguridad. 9 = el listado es de riesgo bajo: el camino feliz, los errores de validación y el aislamiento entre empresas, sin mutaciones ni familias propias; la emisión de facturas es de riesgo alto (dinero y datos personales): batería completa, SQL real, controles positivos y mutaciones sobre el código real.)*
 
 ## Siguiente capítulo
 

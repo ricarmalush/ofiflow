@@ -136,7 +136,7 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
 
-> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados, pero **todavía ninguna operación los exige**: las operaciones de invitar y gestionar usuarios llegan en los siguientes bloques de esa spec. Hasta entonces, esas dos filas no se pueden ejercer desde la API.
+> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados. Ya hay operaciones que exigen `Users.Manage` (invitar, ver y revocar invitaciones, en `Application`), pero **todavía no tienen endpoint en la API**: llegan en un bloque posterior de esa spec. Hasta entonces, esas filas no se pueden ejercer a mano, solo con tests.
 
 **Quién puede gestionar a quién.** Tener `Users.Manage` no basta: sería una vía de escalada de privilegios (un `Admin` comprometido podría ascender a cómplices). Por eso hay una **segunda tabla** en Domain, [`ManageableRoles`](../../src/OfiFlow.Domain/Tenancy/ManageableRoles.cs), que dice a qué roles puede conceder, cambiar y quitar cada rol:
 
@@ -191,7 +191,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **siete eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **once eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -201,9 +201,13 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **siete eventos de se
 | `1004` | Refresh token rechazado | Desconocido, caducado o sin pertenencia a la empresa |
 | `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register` o `refresh` |
 | `1201` | Excepción no controlada | Un 500; se registra con el detalle interno completo |
-| `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso |
+| `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso, o intenta gestionar a un rol que no le corresponde (la jerarquía de roles) |
+| `1401` | Invitación creada | Alguien de la empresa invita a una persona (con el rol, sin el email ni el token) |
+| `1402` | Invitación aceptada | Nace una cuenta nueva a partir de una invitación |
+| `1403` | **Invitación rechazada** | Alguien intenta aceptar un token que no sirve (desconocido, caducado, revocado, ya usado o perdido en una carrera). El log guarda el **motivo real**; quien lo intenta recibe siempre la misma respuesta |
+| `1404` | Invitación revocada | Se cancela una invitación pendiente |
 
-Se agrupan por familia (10xx autenticación, 11xx abuso, 12xx errores, 13xx autorización), de modo que un analista puede mirar una familia entera.
+Se agrupan por familia (10xx autenticación, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens.
 
 Además, un pequeño middleware ([`RequestLogScopeMiddleware`](../../src/OfiFlow.Api/Common/RequestLogScopeMiddleware.cs)) apunta la **IP de origen** en cada petición, de modo que todos los eventos la incluyan sin que cada pieza del código tenga que pasarla de mano en mano. Y el `traceId` de los errores une la respuesta con la entrada exacta del registro.
 
@@ -262,6 +266,9 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP | `RateLimiting.cs:28` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
 | **S** · Suplantar con un token falso | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **S** · Robar un refresh token | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
+| **S** · Adivinar o reutilizar un token de invitación | 256 bits aleatorios, un solo uso, misma respuesta para los cuatro fallos, evento `1403` | `InvitationToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
+| **E** · Escalada de privilegios invitando a un `Admin` o a un `Owner` | Jerarquía de roles (`ManageableRoles`) comprobada al invitar y al revocar | `InviteUserCommandHandler.cs`, `ManageableRoles.cs` | `WhenTheHierarchyForbidsIt_ItIsRefused_AndNothingIsCreated` |
+| **I** · Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token | `InvitationToken.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | **S** · Usar la API sin sesión | `RequireAuthorization()` en cada grupo | `JobEndpoints.cs:21` | `WithoutAToken_EveryRoute_Returns401` |
 | **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **T** · Datos mal formados o enormes | Validadores y longitudes máximas | `*CommandValidator.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
@@ -297,7 +304,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Autorización**
 4. **El rol y la pertenencia a la empresa viajan en el token:** un cambio no se nota hasta renovar la sesión. No se revalidan en cada petición.
 5. **Un `Technician` puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
-6. **No existen las invitaciones:** todo usuario es `Owner`. Los permisos se prueban con tests, pero no se pueden ejercer a mano.
+6. **Las invitaciones no tienen todavía endpoint:** todo usuario real es `Owner`. La lógica de invitar y aceptar ya existe y está probada (spec 009), pero los permisos y la jerarquía solo se ejercen con tests hasta que se publiquen las rutas.
 
 **Abuso y red**
 7. **El límite de peticiones solo cubre `auth`.** Clientes y trabajos no tienen límite: alguien con un token válido puede crear datos sin freno.
