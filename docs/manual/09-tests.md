@@ -28,9 +28,9 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 194 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 245 | ~1 s | No |
 | `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 96 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 162 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 214 | ~15 s | **Sí**, en parte |
 
-En total, **697 casos**. Un "caso" no es lo mismo que un método de test: hay unos 377 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **749 casos**. Un "caso" no es lo mismo que un método de test: hay unos 394 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -159,6 +159,8 @@ Y `CurrentUserMembershipTests`, para la **revalidación en cada petición** (tam
 - El **registro** admite 3 por hora y el **login** 5 por minuto (los límites de seguridad). Los fixtures lo respetan a propósito: `RolesFixture` hace **exactamente 5 logins** y fabrica el resto de tokens con el secreto de la factoría. Si alguien añadiera un sexto login, los tests fallarían por el límite.
 - La factoría comprueba que la API usa el **servidor del contenedor** y no tu base de datos local: sin esa salvaguarda, un error de configuración haría que los tests fueran contra tus datos de desarrollo sin avisar.
 
+**Y las rutas de invitaciones y miembros** (`UserManagementEndpointsTests`, con su propia `MembersFixture`): comprueban por HTTP que cada ruta exige sesión (salvo aceptar), qué estado devuelve, que quien no puede recibe un 403 **sin que nada cambie**, que la jerarquía se aplica, que un miembro quitado deja de poder usar su token, que la respuesta con el token lleva `Cache-Control: no-store` y que un token ya usado y uno inventado reciben exactamente la misma respuesta. Necesitan una fixture propia porque la de roles gasta los 5 logins por minuto que permite la API: los miembros de esta se siembran en la base de datos y llevan un token firmado (el rol del token no autoriza nada).
+
 **3. Arquitectura: tests que leen el código.** No prueban una funcionalidad, sino que **la estructura del código respeta una regla**: nada de SQL a mano, toda operación declara su permiso, toda entidad está clasificada... (capítulo 8). Funcionan escaneando los ficheros fuente o inspeccionando los tipos por reflexión.
 
 ---
@@ -203,7 +205,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **697 casos son unos 377 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **749 casos son unos 394 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 
@@ -260,6 +262,7 @@ Esta lista es la mejor lección del capítulo, porque son fallos que **nos pasar
 | Una restauración con `git checkout` borró cambios aún sin commitear | Restaurar tras una mutación con copias de seguridad, o commitear antes |
 | Dos aceptaciones simultáneas de la misma invitación: la perdedora acababa en un **500** y no en el error esperado | Los tests con **SQL Server real** ven lo que una base en memoria no puede (índices únicos, versiones de fila). Los de en memoria pasaban en verde |
 | Una mutación **sobrevivió**: el test de "email duplicado sin distinguir mayúsculas" usaba un segundo email ya en mayúsculas, y coincidía por casualidad | Un test puede pasar por una coincidencia. Una mutación que no se detecta es una pista de que el test es débil: se reforzó con varias variantes de mayúsculas |
+| Seis tests HTTP fallaban juntos y pasaban por separado: la matriz creaba una invitación por caso y **agotaba el máximo de 25 pendientes por empresa** | Que un test pase solo y falle en grupo apunta a **estado compartido**. Aquí el límite funcionaba y el que gastaba de más era el test: la matriz solo crea la invitación que necesita |
 | Mis cuatro tests de extremo a extremo de la revalidación fallaron a la primera: la ayuda de test consultaba con el filtro de empresa sin que hubiera empresa activa, no la revalidación | Antes de culpar al código, confirmar la causa con el mensaje de error: era un fallo de la **preparación** del test, y se corrigió ahí |
 | Un test **intermitente** (pasaba y fallaba con el mismo código) destapó que `Base64Url.IsValid` de .NET ignora los espacios en blanco, y mi comprobación del formato del token los aceptaba según el azar del token | Un test intermitente casi nunca es mala suerte: es el azar mostrando un defecto. No se repite hasta que pase: se investiga, y el arreglo se prueba con **muchas muestras**, no con una |
 

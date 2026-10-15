@@ -281,7 +281,7 @@ Existe para que **ninguna otra capa sepa nada de HTTP**. Mañana podría añadir
 | Elemento | Qué contiene | Por qué está ahí |
 |---|---|---|
 | `Program.cs` | El arranque y el **orden** de los middlewares | El orden es una decisión de seguridad (ver capítulo 8) |
-| `Endpoints/` | `AuthEndpoints`, `CustomerEndpoints`, `JobEndpoints` | Un fichero por contexto. Cada endpoint hace tres cosas: recibir, enviar a MediatR, devolver |
+| `Endpoints/` | `AuthEndpoints`, `CustomerEndpoints`, `JobEndpoints`, `InvitationEndpoints`, `UserEndpoints` | Un fichero por contexto. Cada endpoint hace tres cosas: recibir, enviar a MediatR, devolver |
 | `Common/` | `GlobalExceptionHandler`, `RateLimiting`, `SecurityHeadersMiddleware`, `RequestLogScopeMiddleware`, `Localization`, `ApiErrors` | Todo lo transversal de HTTP: errores, límites, cabeceras, idioma |
 | `Resources/` | `ErrorMessages.resx` | El **diccionario** de mensajes de error en español. El código devuelve un código y el texto sale de aquí |
 | `Properties/` | `launchSettings.json` | Cómo arranca en local |

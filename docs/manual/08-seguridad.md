@@ -113,6 +113,7 @@ Para frenar la **fuerza bruta** (probar contraseñas sin parar) y la saturación
 | `register` | 3 por hora |
 | `login` | 5 por minuto |
 | `refresh` | 20 por minuto |
+| `accept-invitation` | 10 por hora (es anónima y cara: hashea una contraseña) |
 
 Al pasarse, responde **429** (*demasiadas peticiones*) con la cabecera `Retry-After` (cuántos segundos esperar), en el mismo formato de error del capítulo 7. Cada rechazo genera el evento de seguridad `1101`.
 
@@ -136,7 +137,20 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
 
-> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados. Ya hay seis operaciones que los exigen en `Application`: invitar, ver y revocar invitaciones (`Users.Manage`), **listar miembros** (`Users.Read`), **cambiar el rol** y **quitar a un miembro** (`Users.Manage`). La jerarquía de abajo se aplica en ellas, con tests. Pero **todavía no tienen endpoint en la API**: llegan en un bloque posterior de esa spec. Hasta entonces, esas filas no se pueden ejercer a mano, solo con tests. Quitar o degradar a un miembro ya surte efecto **en su siguiente petición** (ver abajo: el rol sale de la base de datos).
+**Las rutas (spec 009).** Cada una exige sesión (salvo aceptar), y quién puede lo decide el permiso más la jerarquía, no el endpoint:
+
+| Ruta | Permiso | Éxito | Notas |
+|---|---|---|---|
+| `POST /api/v1/invitations` | `Users.Manage` | 201 con el token | La respuesta lleva `Cache-Control: no-store`: contiene un secreto que no se vuelve a mostrar |
+| `GET /api/v1/invitations` | `Users.Manage` | 200 | Sin el token ni su hash |
+| `DELETE /api/v1/invitations/{id}` | `Users.Manage` | 204 | |
+| `GET /api/v1/users` | `Users.Read` | 200 | El Id es el de la pertenencia, nunca el de la cuenta |
+| `PUT /api/v1/users/{id}/role` | `Users.Manage` | 204 | Cuerpo: `{ "role": <número> }` |
+| `DELETE /api/v1/users/{id}` | `Users.Manage` | 204 | Baja completa: cuenta, ficha, sesiones y trabajos |
+| `POST /api/v1/auth/accept-invitation` | anónima | 204 sin cuerpo | **10 por hora y por IP**; no devuelve tokens |
+
+Las denegaciones por jerarquía o por intentar gestionarse a uno mismo son **403** con su propio código (`tenant_user.role_not_manageable`, `tenant_user.cannot_manage_self`); un miembro o una invitación que no existe en tu empresa, **404**. Quitar o degradar a un miembro ya surte efecto **en su siguiente petición** (ver abajo: el rol sale de la base de datos). Puedes probarlas en Swagger o en la sección 6 de la colección `OfiFlow.Api.http`.
+
 
 **Quién puede gestionar a quién.** Tener `Users.Manage` no basta: sería una vía de escalada de privilegios (un `Admin` comprometido podría ascender a cómplices). Por eso hay una **segunda tabla** en Domain, [`ManageableRoles`](../../src/OfiFlow.Domain/Tenancy/ManageableRoles.cs), que dice a qué roles puede conceder, cambiar y quitar cada rol:
 
@@ -280,7 +294,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP | `RateLimiting.cs:28` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
+| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP | `RateLimiting.cs:29` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
 | **S** · Suplantar con un token falso | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **S** · Robar un refresh token | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | **S** · Adivinar o reutilizar un token de invitación | 256 bits aleatorios, un solo uso, misma respuesta para los cuatro fallos, evento `1403` | `InvitationToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
@@ -298,7 +312,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEvent...`, `ADenial_IsLogged...` |
 | **I** · Contenido leído o incrustado por otra web | Cabeceras de seguridad | `SecurityHeadersMiddleware.cs:13-22` | `EveryResponse_IncludesSecurityHeaders` |
 | **I** · Secretos en el repositorio | gitleaks y *push protection* | `ci.yml`, `.gitleaksignore` | El propio job `gitleaks` en cada PR |
-| **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:28-30` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
+| **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:29-33` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
 | **D** · Contraseñas o textos gigantes | Máximos de longitud | `PasswordRules.cs`, validadores | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | **E** · Un rol hace lo que no le toca | Permisos por rol, antes de la validación | `AuthorizationBehavior.cs` | `EachRole_CanOrCannotPerformEachOperation` (65 casos) |
 | **E** · Una operación sin permiso declarado | *Fail-closed* y test de arquitectura | `AuthorizationBehavior.cs` | `EveryOperationOfTheApplication_DeclaresItsAuthorization` |
@@ -310,6 +324,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | Vulnerabilidad en la API en ejecución | Escaneo ZAP en cada cambio | `dast.yml` | El propio job `zap-scan` |
 
 ---
+
 
 ## Dónde están hoy los límites
 
@@ -323,7 +338,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Autorización**
 4. ✅ **Cerrado (spec 009): el rol y la pertenencia se revalidan en cada petición.** Antes viajaban en el token y un cambio no se notaba hasta renovar la sesión (hasta 30 minutos). El coste es una consulta indexada más por petición autenticada.
 5. **Un `Technician` puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
-6. **Las invitaciones no tienen todavía endpoint:** todo usuario real es `Owner`. La lógica de invitar y aceptar ya existe y está probada (spec 009), pero los permisos y la jerarquía solo se ejercen con tests hasta que se publiquen las rutas.
+6. **Las invitaciones envían el token a quien invita, no por email.** Hasta que exista un servicio de correo, el invitante recibe el token (una sola vez, con `Cache-Control: no-store`) y se lo pasa a la persona por su canal. Es una decisión consciente (D1 de la spec 009): el invitante nunca conoce ni elige la contraseña, pero **ve el token** y podría aceptarlo él mismo.
 
 **Abuso y red**
 7. **El límite de peticiones solo cubre `auth`.** Clientes y trabajos no tienen límite: alguien con un token válido puede crear datos sin freno.

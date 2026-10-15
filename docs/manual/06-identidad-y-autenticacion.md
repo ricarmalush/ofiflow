@@ -22,17 +22,18 @@ Son dos preguntas distintas, y se confunden a menudo:
 
 En el modelo **AAA** de CyberOps (*Authentication, Authorization, Accounting*), esto es la primera A. La segunda es la tabla de permisos por rol. La tercera, *accounting*, es el registro de lo que pasa: los eventos de seguridad que verás aquí también.
 
-## Las tres operaciones
+## Las operaciones anónimas
 
-Hay tres rutas, todas **anónimas** (no exigen sesión, porque sirven justo para conseguirla):
+Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para conseguirla; la cuarta es para quien aún no tiene cuenta):
 
 | Ruta | Qué hace | Límite de peticiones |
 |---|---|---|
 | `POST /api/v1/auth/register` | Crea una empresa y su primer usuario | 3 por hora y por IP |
 | `POST /api/v1/auth/login` | Comprueba la contraseña y entrega los tokens | 5 por minuto y por IP |
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
+| `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
 
-(Los límites están en [`RateLimiting.cs:28-30`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
+(Los límites están en [`RateLimiting.cs:29-33`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
 
 ---
 
@@ -127,7 +128,7 @@ var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, passwo
 
 Dos decisiones de seguridad en este flujo:
 
-**Una sola respuesta de fallo.** Tanto si el email no existe como si la contraseña es incorrecta, la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:29`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
+**Una sola respuesta de fallo.** Tanto si el email no existe como si la contraseña es incorrecta, la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:30`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
 
 **El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:60-62`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
@@ -244,11 +245,11 @@ Dos tests lo demuestran: `RotateRefreshTokenAsync_WithAlreadyRevokedToken_Revoke
 
 ---
 
-## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009, en construcción)
+## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)
 
 Hasta aquí, la única forma de tener cuenta es **registrarse**, y eso crea una empresa nueva donde eres el `Owner`. Para que un técnico o una persona de oficina entre en **la empresa de otro** hace falta otra puerta: la **invitación**.
 
-> **Estado.** La lógica ya existe y está probada en `Application`, pero **todavía no hay endpoints**: no se puede usar desde la API ni desde Swagger. Llegan en el bloque 6 de la spec. Lo que sigue es cómo funciona por dentro.
+> **Estado.** Ya tiene endpoints: `POST /api/v1/invitations` (invitar), `GET` y `DELETE` sobre esa misma ruta (ver y revocar) y `POST /api/v1/auth/accept-invitation` (aceptar), además de los de miembros del capítulo 8. Puedes probarlos en Swagger o en la sección 6 de la colección `.http`.
 
 ### El recorrido
 
@@ -316,10 +317,10 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP | `RateLimiting.cs:28` | `RateLimitingTests` |
+| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP | `RateLimiting.cs:29` | `RateLimitingTests` |
 | Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:13,28` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
 | Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
-| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:29` | `Handle_WithInvalidCredentials_ReturnsNull` |
+| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:30` | `Handle_WithInvalidCredentials_ReturnsNull` |
 | Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs:60-62` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEventWithoutEmailOrPassword` |
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
 | Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
