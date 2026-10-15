@@ -27,6 +27,15 @@ public sealed class SqlServerContainerFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
+    /// <summary>Igual que <see cref="CreateDbContext(Guid)"/>, pero permitiendo configurar el contexto (por ejemplo, añadir un interceptor que cuente las consultas).</summary>
+    public ApplicationDbContext CreateDbContext(Guid tenantId, Action<DbContextOptionsBuilder<ApplicationDbContext>> configure)
+    {
+        var builder = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlServer(_container.GetConnectionString());
+        configure(builder);
+
+        return new ApplicationDbContext(builder.Options, new FixedTenantContext(tenantId));
+    }
+
     public ApplicationDbContext CreateDbContext(Guid tenantId)
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

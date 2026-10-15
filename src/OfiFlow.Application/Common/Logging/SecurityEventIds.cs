@@ -23,6 +23,12 @@ public static class SecurityEventIds
     /// <summary>Un usuario autenticado intentó una operación para la que su rol no tiene permiso (ADR-012).</summary>
     public const int AccessDenied = 1301;
 
+    /// <summary>
+    /// Un token todavía válido de alguien que ya no pertenece a la empresa (se le quitó mientras el token seguía vivo).
+    /// Lo detecta la revalidación de la pertenencia en cada petición (ADR-013).
+    /// </summary>
+    public const int MembershipRevoked = 1302;
+
     // 1400-1499: usuarios e invitaciones (spec 009). Ninguno registra emails ni tokens: solo Ids, rol y motivo.
 
     /// <summary>Alguien de la empresa creó una invitación.</summary>

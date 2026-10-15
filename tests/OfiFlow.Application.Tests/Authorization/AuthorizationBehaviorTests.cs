@@ -124,14 +124,102 @@ public class AuthorizationBehaviorTests
         Assert.Empty(outcome.Log.Entries);
     }
 
+    // ===== Revalidación de la pertenencia en cada petición (spec 009 R16) =====
+
     [Fact]
-    public async Task AnAuthenticatedOperationWithoutARole_IsDenied()
+    public async Task APersonWhoNoLongerBelongsToTheTenant_IsDenied_WithTheMembershipRevokedEvent()
     {
-        var outcome = await Run(new NeedsAssign(), new FakeCurrentUser(role: null));
+        // Su token sigue vivo, pero la base de datos dice que ya no es de la empresa (role: null = sin pertenencia).
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var user = new FakeCurrentUser(role: null, userId, tenantId, tokenRole: TenantRole.Owner);
+
+        var outcome = await Run(new NeedsAssign(), user);
 
         Assert.Equal(TenancyErrors.Forbidden, outcome.Denied?.Code);
         Assert.False(outcome.NextCalled);
-        Assert.Contains("NoValidRole", outcome.Log.Entries.Single().Message);
+        var entry = outcome.Log.Entries.Single();
+        Assert.Equal(SecurityEventIds.MembershipRevoked, entry.EventId.Id); // 1302, no el 1301 de "sin permiso"
+        Assert.Contains(userId.ToString(), entry.Message);
+        Assert.Contains(tenantId.ToString(), entry.Message);
+        Assert.Contains(nameof(NeedsAssign), entry.Message);
+    }
+
+    [Fact]
+    public async Task TheRoleThatDecides_IsTheOneInTheDatabase_NotTheOneInTheToken()
+    {
+        // El token dice Owner (y lo tuvo), pero hoy en la base de datos es Technician: no puede asignar trabajos.
+        var user = new FakeCurrentUser(TenantRole.Technician, Guid.NewGuid(), Guid.NewGuid(), tokenRole: TenantRole.Owner);
+
+        var outcome = await Run(new NeedsAssign(), user);
+
+        Assert.NotNull(outcome.Denied);
+        Assert.False(outcome.NextCalled);
+        Assert.Contains("MissingPermission", outcome.Log.Entries.Single().Message);
+    }
+
+    [Fact]
+    public async Task AToken_ThatUnderstatesTheRole_DoesNotLimitWhatTheDatabaseAllows()
+    {
+        // Al revés: el token dice Technician, pero hoy es Manager (lo ascendieron): ya puede, sin renovar la sesión.
+        var user = new FakeCurrentUser(TenantRole.Manager, Guid.NewGuid(), Guid.NewGuid(), tokenRole: TenantRole.Technician);
+
+        var outcome = await Run(new NeedsAssign(), user);
+
+        Assert.Equal("ejecutada", outcome.Result);
+        Assert.Null(outcome.Denied);
+    }
+
+    [Fact]
+    public async Task TheMembership_IsVerifiedExactlyOnce_BeforeTheOperationRuns()
+    {
+        var user = new FakeCurrentUser(TenantRole.Manager, Guid.NewGuid(), Guid.NewGuid());
+
+        await Run(new NeedsAssign(), user);
+
+        Assert.Equal(1, user.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task AnAnonymousOperation_NeverVerifiesAnything()
+    {
+        var user = new FakeCurrentUser(role: null);
+
+        await Run(new Anonymous(), user);
+
+        Assert.Equal(0, user.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task AnUndeclaredOperation_IsDeniedWithoutSpendingAQuery()
+    {
+        // Un error de quien escribió la operación se deniega antes de consultar nada.
+        var user = new FakeCurrentUser(TenantRole.Owner, Guid.NewGuid(), Guid.NewGuid());
+
+        var outcome = await Run(new Undeclared(), user);
+
+        Assert.NotNull(outcome.Denied);
+        Assert.Equal(0, user.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task AContradictoryOperation_IsDeniedWithoutSpendingAQuery()
+    {
+        var user = new FakeCurrentUser(TenantRole.Owner, Guid.NewGuid(), Guid.NewGuid());
+
+        var outcome = await Run(new Contradictory(), user);
+
+        Assert.NotNull(outcome.Denied);
+        Assert.Equal(0, user.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task ADeniedPermission_DoesNotMentionTheRemovedMembershipEvent()
+    {
+        // Control: quien sigue en la empresa pero no tiene el permiso recibe el 1301 de siempre, no el 1302.
+        var outcome = await Run(new NeedsAssign(), new FakeCurrentUser(TenantRole.Technician, Guid.NewGuid(), Guid.NewGuid()));
+
+        Assert.Equal(SecurityEventIds.AccessDenied, outcome.Log.Entries.Single().EventId.Id);
     }
 
     [Fact]

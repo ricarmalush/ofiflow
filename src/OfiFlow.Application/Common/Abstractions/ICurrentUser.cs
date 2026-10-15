@@ -3,10 +3,10 @@ using OfiFlow.Domain.Tenancy;
 namespace OfiFlow.Application.Common.Abstractions;
 
 /// <summary>
-/// Quién hace la petición, según el token ya validado (ADR-012 R4). Implementado en Infrastructure.
-/// Cada dato es nulo si falta o no es válido: el rol, en particular, solo es un valor si es
-/// exactamente el nombre de un <see cref="TenantRole"/>. El rol viaja en el token, así que puede
-/// estar desfasado hasta que este se renueve (ADR-012, riesgos aceptados).
+/// Quién hace la petición. La identidad (<see cref="UserId"/>, <see cref="TenantId"/>) sale del token ya validado;
+/// el <b>rol</b>, en cambio, sale de la base de datos y se comprueba en cada petición (ADR-013, spec 009 R16): el del
+/// token puede estar desfasado (se cambió el rol, o se quitó a la persona, después de emitirlo) y por eso no autoriza nada.
+/// Cada dato es nulo si falta o no es válido.
 /// </summary>
 public interface ICurrentUser
 {
@@ -14,5 +14,21 @@ public interface ICurrentUser
 
     Guid? TenantId { get; }
 
+    /// <summary>
+    /// El rol <b>efectivo</b>: el de la pertenencia en la base de datos. Es nulo hasta que se llama a
+    /// <see cref="VerifyMembershipAsync"/> (lo hace el AuthorizationBehavior antes que nada) y también si la persona ya no
+    /// pertenece a la empresa. Fail-closed: quien lo lea sin verificar no ve ningún rol.
+    /// </summary>
     TenantRole? Role { get; }
+
+    /// <summary>El rol que dice el token. Es solo informativo: <b>no autoriza nada</b> y puede estar desfasado.</summary>
+    TenantRole? TokenRole { get; }
+
+    /// <summary>
+    /// Comprueba en la base de datos que la persona sigue perteneciendo a la empresa del token y fija su rol efectivo
+    /// (<see cref="Role"/>). Es una única consulta por el índice único (empresa, usuario), que no depende de nada que mande
+    /// el cliente, y se hace una sola vez por petición. Devuelve falso si ya no pertenece, o si el token no trae
+    /// la identidad completa.
+    /// </summary>
+    Task<bool> VerifyMembershipAsync(CancellationToken cancellationToken);
 }

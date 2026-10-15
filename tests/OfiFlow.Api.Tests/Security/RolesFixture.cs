@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -124,6 +125,42 @@ public sealed class RolesFixture : IAsyncLifetime
         var client = Factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;
+    }
+
+    /// <summary>
+    /// Un miembro NUEVO de la empresa con el rol indicado, y un token firmado a su nombre (sin pasar por el login, que
+    /// tiene límite). Para los tests que modifican al miembro en la base de datos sin tocar a los cinco usuarios
+    /// compartidos de la fixture.
+    /// </summary>
+    public async Task<(Guid UserId, Guid TenantUserId, string Token)> NewMemberAsync(TenantRole role)
+    {
+        var (_, _, tenantUserId) = await SeedUserAsync(role);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var userId = db.TenantUsers.IgnoreQueryFilters().Where(tu => tu.Id == tenantUserId).Select(tu => tu.UserId).Single();
+
+        return (userId, tenantUserId, MintToken(userId, TenantId, role.ToString()));
+    }
+
+    /// <summary>Cambia el rol de un miembro directamente en la base de datos, como lo haría la operación de gestión.</summary>
+    public async Task ChangeRoleInDatabaseAsync(Guid tenantUserId, TenantRole role)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        db.TenantUsers.IgnoreQueryFilters().Single(tu => tu.Id == tenantUserId).ChangeRole(role);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Quita la pertenencia de un miembro directamente en la base de datos (su token sigue sin caducar).</summary>
+    public async Task RemoveMembershipInDatabaseAsync(Guid tenantUserId)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        db.TenantUsers.Remove(db.TenantUsers.IgnoreQueryFilters().Single(tu => tu.Id == tenantUserId));
+        await db.SaveChangesAsync();
     }
 
     private async Task<(string Email, string Password, Guid TenantUserId)> SeedUserAsync(TenantRole role)
