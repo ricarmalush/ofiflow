@@ -59,13 +59,14 @@ public interface ITenantOwned
 }
 ```
 
-Es una **marca**: "esta entidad pertenece a una empresa". Las tres entidades que la llevan hoy:
+Es una **marca**: "esta entidad pertenece a una empresa". Las cuatro entidades que la llevan hoy:
 
 | Entidad | ¿`ITenantOwned`? | Por qué |
 |---|---|---|
 | `Customer` | ✅ | Los clientes son de una empresa |
 | `Job` | ✅ | Los trabajos son de una empresa |
 | `TenantUser` | ✅ | La pertenencia de una persona a **esa** empresa (con su rol) |
+| `Invitation` | ✅ | La invitación para que una persona entre en **esa** empresa (spec 009): una empresa nunca ve las invitaciones de otra |
 | `Tenant` | ❌ | Es la propia empresa; no pertenece a ninguna |
 | `User` | ❌ | Una persona puede estar en varias empresas, así que no es de ninguna en concreto |
 
@@ -73,7 +74,7 @@ La marca es lo que **activa** el filtro automático de la pieza ③.
 
 ## Pieza ② — El tenant viaja dentro del token
 
-Cuando alguien inicia sesión, el servidor emite un token JWT **firmado** que contiene, entre otras cosas, la empresa en la que trabaja. Está en [`TokenService.cs:93-100`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs):
+Cuando alguien inicia sesión, el servidor emite un token JWT **firmado** que contiene, entre otras cosas, la empresa en la que trabaja. Está en [`TokenService.cs:103-110`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs):
 
 ```csharp
 Claim[] claims =
@@ -161,14 +162,15 @@ No depende de la memoria del autor: un test lo vigila (ver más abajo).
 
 ## La excepción: `IgnoreQueryFilters()`
 
-A veces hay que saltarse el filtro **a propósito**. EF Core ofrece `IgnoreQueryFilters()`, que desactiva el filtro en una consulta concreta. Hoy se usa en **solo dos sitios**, ambos con motivo:
+A veces hay que saltarse el filtro **a propósito**. EF Core ofrece `IgnoreQueryFilters()`, que desactiva el filtro en una consulta concreta. Hoy se usa en **solo tres sitios**, todos con motivo:
 
 | Dónde | Por qué es necesario |
 |---|---|
 | [`LoginCommandHandler.cs:28-30`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs) | En el login **todavía no hay tenant activo**: es justo lo que el login determina. Busca la pertenencia del usuario a una empresa para saber qué poner en el token |
 | [`TokenService.cs:72-74`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) | Al renovar la sesión, relee el rol del usuario **en su empresa** (el rol puede haber cambiado) |
+| [`AcceptInvitationCommandHandler.cs:29`](../../src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs) | Quien acepta una invitación **todavía no tiene cuenta ni empresa activa**: la invitación se busca por el hash de su token (único y de 256 bits), sin saber de qué empresa es. Es un caso gemelo del login |
 
-Es la forma **deliberada** de saltarse el filtro (más abajo verás otra, accidental, que hoy no está vigilada), y por eso esta sí lo está. El test [`IgnoreQueryFilters_IsOnlyUsedInTheAllowList`](../../tests/OfiFlow.Api.Tests/Architecture/SecurityArchitectureTests.cs) escanea el código fuente y falla si `IgnoreQueryFilters(` aparece en cualquier fichero que no esté en una **lista blanca** de esos dos. Para añadir un tercer uso hay que modificar la lista a propósito y justificarlo, es decir, tomar la decisión de forma consciente.
+Es la forma **deliberada** de saltarse el filtro (más abajo verás otra, accidental, que hoy no está vigilada), y por eso esta sí lo está. El test [`IgnoreQueryFilters_IsOnlyUsedInTheAllowList`](../../tests/OfiFlow.Api.Tests/Architecture/SecurityArchitectureTests.cs) escanea el código fuente y falla si `IgnoreQueryFilters(` aparece en cualquier fichero que no esté en una **lista blanca** de esos tres. Para añadir un tercer uso hay que modificar la lista a propósito y justificarlo, es decir, tomar la decisión de forma consciente.
 
 ## De dónde sale el tenant la primera vez
 
@@ -248,7 +250,7 @@ Un buen diseño conoce sus límites. Al escribir este capítulo se identificaron
 Antes, una entidad con su propia columna `TenantId` pero sin la interfaz `ITenantOwned` no tenía filtro y nada fallaba. Ahora [`TenantModelClassificationTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/TenantModelClassificationTests.cs) exige que **toda** entidad mapeada sea de una empresa (con su filtro aplicado) o esté en una lista explícita de entidades globales, cada una con su motivo (`Tenant`, `User`, `ApplicationUser`, `RefreshToken`). Si alguien añade una entidad sin decidir cuál de las dos es, el build falla con un mensaje que dice qué hacer. Es un diseño *fail-closed*: ante la duda, rechaza.
 
 **2. ✅ Cerrado: `Tenants` y `Users` no tienen filtro, y `IApplicationDbContext` los expone.**
-Sigue siendo así por diseño (no pertenecen a una empresa), pero ahora un test de arquitectura prohíbe **leerlos** fuera de una lista blanca (hoy: ningún fichero puede leer `Users` ni `Tenants`; `ApplicationUsers` solo en `IdentityService` y `RefreshTokens` solo en `TokenService`). Crear con `.Add` se admite en cualquier sitio. Un handler futuro que escribiera `dbContext.Users.ToListAsync()` rompería ese test.
+Sigue siendo así por diseño (no pertenecen a una empresa), pero ahora un test de arquitectura prohíbe **leerlos** fuera de una lista blanca (`Tenants`, ningún fichero; `ApplicationUsers`, solo `IdentityService`; `RefreshTokens`, solo `TokenService`; y `Users`, solo dos ficheros de la spec 009 que nunca lo leen suelto: `GetUsersQueryHandler`, que lista a los miembros con un *join* contra `TenantUsers` —que **sí** está filtrada por empresa—, y `RemoveUserCommandHandler`, que busca la ficha a partir de la pertenencia del miembro que se quita). Crear con `.Add` se admite en cualquier sitio. Un handler futuro que escribiera `dbContext.Users.ToListAsync()` rompería ese test. Y como los tests de Application usan una base en memoria **sin** el filtro por empresa, hay tests contra SQL Server real que comprueban que una empresa no ve a los miembros de otra aunque la tabla de personas sea compartida, y que no puede cambiar el rol ni quitar a un miembro ajeno (recibe el mismo 404 que con un `Id` inexistente).
 
 **3. ✅ Cerrado: los tests solo cubrían lecturas de `Customer` y `Job`.**
 Ahora hay tests de **escritura** entre empresas (modificar, borrar, cambiar de estado y asignar, con los handlers reales y SQL Server real), la lectura de `TenantUser`, y el test de extremo a extremo por HTTP con dos empresas registradas. El comentario obsoleto de `ApplicationDbContextTenantFilterTests` está corregido.

@@ -136,7 +136,7 @@ Comprobado: sin el token el paso 3 devuelve **401**, y con él **200**. Esa dife
 Dos cosas que te pueden despistar:
 
 - **Los enumerados entran como número** (por ejemplo el tipo de cliente: 0 = persona, 1 = empresa), aunque las respuestas los devuelven como texto. Es un límite conocido; la colección `.http` lo explica en su cabecera.
-- **El registro admite 3 por hora desde la misma IP**, el login 5 por minuto y la renovación 20 por minuto (capítulo 8). Si pruebas mucho te llevarás un **429** con la cabecera `Retry-After`: no es un fallo, es el control funcionando.
+- **El registro admite 3 por hora desde la misma IP**, aceptar una invitación 10 por hora, el login 5 por minuto y la renovación 20 por minuto (capítulo 8). Si pruebas mucho te llevarás un **429** con la cabecera `Retry-After`: no es un fallo, es el control funcionando.
 
 ## Ejecutar los tests
 

@@ -126,7 +126,11 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         Assert.Equal(HttpStatusCode.NotFound, owner.StatusCode);
     }
 
-    // --- El rol sale del token: lo que el login nunca emite se deniega ---
+    // --- El claim del rol ya no autoriza nada (spec 009 R16): decide la base de datos ---
+    //
+    // Hasta la spec 008, un token sin un rol válido se denegaba (ATokenWithoutAValidRole_IsForbidden). Con la revalidación
+    // en cada petición, el rol sale de la base de datos y el claim del token es solo informativo: esos casos dejan de
+    // denegarse porque el claim ya no importa. Lo que importa, y se comprueba aquí, es que no pueda dar poderes ni quitarlos.
 
     [Theory]
     [InlineData(null)]
@@ -134,15 +138,32 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
     [InlineData("owner")]
     [InlineData("1")]
     [InlineData("")]
-    public async Task ATokenWithoutAValidRole_IsForbidden(string? role)
+    public async Task TheRoleClaim_IsIgnored_ItsAbsenceOrNonsenseDoesNotChangeWhatTheDatabaseAllows(string? role)
     {
         var owner = fixture.UserOf(TenantRole.Owner);
         using var client = fixture.ClientWithToken(fixture.MintToken(owner.UserId, fixture.TenantId, role));
 
         var response = await client.GetAsync("/api/v1/customers");
 
+        // El Owner sigue siendo Owner en la base de datos: el claim ausente o raro no le quita nada.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("Owner")]
+    [InlineData("Admin")]
+    public async Task ATokenThatClaimsAHigherRole_DoesNotEscalate_TheDatabaseRoleDecides(string claimedRole)
+    {
+        // Un token firmado que dice Owner o Admin, pero cuyo dueño es Technician en la base de datos: no puede borrar clientes.
+        var technician = fixture.UserOf(TenantRole.Technician);
+        using var client = fixture.ClientWithToken(fixture.MintToken(technician.UserId, fixture.TenantId, claimedRole));
+        var customer = await CreateCustomerAsync();
+
+        var response = await client.DeleteAsync($"/api/v1/customers/{customer}");
+
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("auth.forbidden", (await ReadProblemAsync(response)).Code);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.ClientOf(TenantRole.Owner).GetAsync($"/api/v1/customers/{customer}")).StatusCode); // el cliente sigue ahí
     }
 
     [Fact]
@@ -155,6 +176,92 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         var response = await client.GetAsync("/api/v1/customers");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    // --- Quitar o degradar surte efecto en la SIGUIENTE petición, sin esperar a que caduque el token ---
+
+    [Fact]
+    public async Task AMemberWhoIsRemoved_IsDeniedImmediately_WithTheSameStillValidToken()
+    {
+        var (userId, tenantUserId, token) = await fixture.NewMemberAsync(TenantRole.Employee);
+        using var client = fixture.ClientWithToken(token);
+
+        // Control: antes de quitarle, su token funciona.
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/customers")).StatusCode);
+
+        var deniedBefore = fixture.Factory.Logs.Entries.Count(e => e.EventId == 1302);
+        await fixture.RemoveMembershipInDatabaseAsync(tenantUserId);
+
+        // El MISMO token, sin renovar, ya no sirve: ni leer, ni escribir.
+        var read = await client.GetAsync("/api/v1/customers");
+        var write = await client.PostAsJsonAsync("/api/v1/customers", new { type = 0, name = "No debería crearse", email = (string?)null, phone = (string?)null, address = (string?)null, notes = (string?)null });
+
+        Assert.Equal(HttpStatusCode.Forbidden, read.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
+        Assert.Equal("auth.forbidden", (await ReadProblemAsync(read)).Code);
+
+        // Queda el evento 1302 con los Ids, y sin datos de la petición.
+        var revoked = fixture.Factory.Logs.Entries.Where(e => e.EventId == 1302).Skip(deniedBefore).ToList();
+        Assert.Equal(2, revoked.Count);
+        Assert.All(revoked, e => Assert.Contains(userId.ToString(), e.Message));
+        Assert.DoesNotContain(fixture.Factory.Logs.Entries, e => e.Message.Contains("No debería crearse"));
+    }
+
+    [Fact]
+    public async Task ADemotedMember_LosesThePowersOfTheOldRoleImmediately()
+    {
+        // Es Manager (puede asignar trabajos): lo degradan a Employee (no puede) y su token sigue diciendo Manager.
+        var (_, tenantUserId, token) = await fixture.NewMemberAsync(TenantRole.Manager);
+        using var client = fixture.ClientWithToken(token);
+        var jobId = await CreateJobAsync();
+
+        var assignBefore = await client.PostAsJsonAsync($"/api/v1/jobs/{jobId}/assign", new { tenantUserId });
+        Assert.Equal(HttpStatusCode.NoContent, assignBefore.StatusCode); // control: antes podía
+
+        await fixture.ChangeRoleInDatabaseAsync(tenantUserId, TenantRole.Employee);
+
+        var assignAfter = await client.PostAsJsonAsync($"/api/v1/jobs/{jobId}/assign", new { tenantUserId });
+        Assert.Equal(HttpStatusCode.Forbidden, assignAfter.StatusCode);
+        Assert.Equal("auth.forbidden", (await ReadProblemAsync(assignAfter)).Code);
+
+        // Y conserva lo que el rol nuevo sí permite.
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/customers")).StatusCode);
+    }
+
+    [Fact]
+    public async Task APromotedMember_GainsThePowersOfTheNewRoleImmediately_WithoutRenewingTheToken()
+    {
+        // Al revés: es Employee (no puede borrar clientes) y lo ascienden a Admin; su token todavía dice Employee.
+        var (_, tenantUserId, token) = await fixture.NewMemberAsync(TenantRole.Employee);
+        using var client = fixture.ClientWithToken(token);
+        var customer = await CreateCustomerAsync();
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.DeleteAsync($"/api/v1/customers/{customer}")).StatusCode); // control
+
+        await fixture.ChangeRoleInDatabaseAsync(tenantUserId, TenantRole.Admin);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/v1/customers/{customer}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ARemovedMembersDenial_DoesNotDependOnTheResourceAsked()
+    {
+        // La denegación por pertenencia no revela nada del recurso: es la misma para un cliente propio, uno ajeno y uno inexistente.
+        var (_, tenantUserId, token) = await fixture.NewMemberAsync(TenantRole.Admin);
+        using var client = fixture.ClientWithToken(token);
+        await fixture.RemoveMembershipInDatabaseAsync(tenantUserId);
+        var own = await CreateCustomerAsync();
+
+        var responses = new[]
+        {
+            await client.GetAsync($"/api/v1/customers/{own}"),
+            await client.GetAsync($"/api/v1/customers/{fixture.CustomerIdOfAnotherTenant}"),
+            await client.GetAsync($"/api/v1/customers/{Guid.NewGuid()}")
+        };
+
+        Assert.All(responses, response => Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode));
+        var problems = await Task.WhenAll(responses.Select(ReadProblemAsync));
+        Assert.Single(problems.Select(p => (p.Status, p.Title, p.Detail, p.Code)).Distinct());
     }
 
     // --- Las operaciones sin sesión siguen funcionando ---
@@ -304,6 +411,15 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         }
 
         return new Context(customerId, freeCustomerId, jobId, unique);
+    }
+
+    private async Task<Guid> CreateCustomerAsync() =>
+        await CreateAsync(fixture.ClientOf(TenantRole.Owner), "/api/v1/customers", new { type = 0, name = $"Cliente {Guid.NewGuid():N}" });
+
+    private async Task<Guid> CreateJobAsync()
+    {
+        var customerId = await CreateCustomerAsync();
+        return await CreateAsync(fixture.ClientOf(TenantRole.Owner), "/api/v1/jobs", new { customerId, title = $"Trabajo {Guid.NewGuid():N}", priority = 1 });
     }
 
     private static HttpRequestMessage WithJson(HttpMethod method, string url, object body) =>

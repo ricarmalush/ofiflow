@@ -9,12 +9,15 @@
 #
 # Cosas que conviene saber
 #   - Los enumerados entran como NÚMERO, no como texto. Cliente: tipo 0 = Person, 1 = Company.
-#     Trabajo: prioridad 0 = Low, 1 = Normal, 2 = High, 3 = Urgent. Las respuestas los devuelven como texto.
-#   - Hay límites de peticiones por IP: el registro admite 3 por hora, el login 5 por minuto y la
-#     renovación 20 por minuto. Si te pasas, la API responde 429 con la cabecera Retry-After.
+#     Trabajo: prioridad 0 = Low, 1 = Normal, 2 = High, 3 = Urgent.
+#     Rol de un miembro: 0 = Owner, 1 = Admin, 2 = Manager, 3 = Technician, 4 = Employee.
+#     Las respuestas los devuelven como texto.
+#   - Hay límites de peticiones por IP: el registro admite 3 por hora, aceptar una invitación 10 por hora,
+#     el login 5 por minuto y la renovación 20 por minuto. Si te pasas, la API responde 429 con la
+#     cabecera Retry-After.
 #   - El token de acceso dura 30 minutos. Pasado ese tiempo, usa la petición "Renovar sesión".
-#   - Hoy todo usuario que se registra es Owner de su empresa, así que aquí no se puede probar un
-#     403 por falta de permisos (no existen las invitaciones): eso solo se prueba en los tests.
+#   - Quien se registra es Owner de su empresa. Para probar los demás roles (y los 403 por falta de
+#     permisos) está la sección 6: el Owner invita a una persona, ella acepta y entra con su rol.
 
 @host = http://localhost:5279
 @suffix = 1
@@ -172,8 +175,24 @@ Content-Type: application/json
 
 @jobId2 = {{createJob2.response.body.$.id}}
 
-### Asignar un trabajo a un TenantUser. Aún no hay forma de listar los TenantUser por la API, así que
-### con un Id inventado responde 404 tenant_user.not_found (en los tests se prueba con uno real).
+### Ver a los miembros de la empresa. Ahora solo está la dueña; el Id que devuelve es el de la PERTENENCIA
+### (el que se usa para asignarle trabajos, cambiarle el rol o quitarla), no el de su cuenta.
+# @name membersOfA
+GET {{host}}/api/v1/users
+Authorization: Bearer {{tokenA}}
+
+@ownerMembershipId = {{membersOfA.response.body.$[0].id}}
+
+### Asignar el trabajo a un miembro de la empresa (204)
+POST {{host}}/api/v1/jobs/{{jobId2}}/assign
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "tenantUserId": "{{ownerMembershipId}}"
+}
+
+### Asignar a un Id que no es de ningún miembro -> 404 tenant_user.not_found
 POST {{host}}/api/v1/jobs/{{jobId2}}/assign
 Authorization: Bearer {{tokenA}}
 Content-Type: application/json
@@ -296,3 +315,143 @@ Authorization: Bearer {{tokenB}}
 ### A sigue viendo su cliente intacto -> 200
 GET {{host}}/api/v1/customers/{{customerOfA}}
 Authorization: Bearer {{tokenA}}
+
+###############################################################################
+# 6. EQUIPO: invitar, aceptar, ver y gestionar miembros (usa el token de A, que es Owner)
+#    Gasta 1 login más (el de Ana) y 1 aceptación de las 10 por hora.
+###############################################################################
+
+### Invitar a Ana como Technician (rol 3). Devuelve el TOKEN de la invitación UNA sola vez: no se
+### guarda en claro ni se puede volver a ver. Hasta que haya envío por email, se lo pasarías a Ana tú.
+# @name inviteAna
+POST {{host}}/api/v1/invitations
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "email": "ana-{{suffix}}@example.com",
+  "role": 3
+}
+
+@inviteToken = {{inviteAna.response.body.$.token}}
+@inviteId = {{inviteAna.response.body.$.id}}
+
+### Invitaciones pendientes (el token NO aparece en la lista)
+GET {{host}}/api/v1/invitations
+Authorization: Bearer {{tokenA}}
+
+### Invitar al mismo email otra vez -> 400 invitation.already_pending
+POST {{host}}/api/v1/invitations
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "email": "ana-{{suffix}}@example.com",
+  "role": 2
+}
+
+### Nadie invita a un Owner (ni el Owner) -> 403 tenant_user.role_not_manageable
+POST {{host}}/api/v1/invitations
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "email": "otro-{{suffix}}@example.com",
+  "role": 0
+}
+
+### Ana acepta la invitación con el token. NO lleva Authorization (todavía no tiene cuenta) y ELLA elige
+### su nombre y su contraseña. Responde 204 sin cuerpo: para entrar usa el login de siempre.
+POST {{host}}/api/v1/auth/accept-invitation
+Content-Type: application/json
+
+{
+  "token": "{{inviteToken}}",
+  "name": "Ana Pérez",
+  "password": "{{password}}"
+}
+
+### El mismo token otra vez -> 400 invitation.invalid (igual que si estuviera caducado, revocado o inventado:
+### quien lo intenta no aprende cuál de los casos es)
+POST {{host}}/api/v1/auth/accept-invitation
+Content-Type: application/json
+
+{
+  "token": "{{inviteToken}}",
+  "name": "Otra Persona",
+  "password": "{{password}}"
+}
+
+### Ana inicia sesión con la contraseña que eligió: su token lleva el rol Technician
+# @name loginAna
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "ana-{{suffix}}@example.com",
+  "password": "{{password}}"
+}
+
+@tokenAna = {{loginAna.response.body.$.accessToken}}
+
+### Ana (Technician) puede VER clientes -> 200
+GET {{host}}/api/v1/customers
+Authorization: Bearer {{tokenAna}}
+
+### ...pero no invitar a nadie -> 403 auth.forbidden (aquí sí se prueba un 403 por falta de permisos)
+POST {{host}}/api/v1/invitations
+Authorization: Bearer {{tokenAna}}
+Content-Type: application/json
+
+{
+  "email": "tercera-{{suffix}}@example.com",
+  "role": 4
+}
+
+### La dueña ve a sus miembros: Ana aparece con su rol (el listado va ordenado por nombre, así que Ana es la primera)
+# @name membersWithAna
+GET {{host}}/api/v1/users
+Authorization: Bearer {{tokenA}}
+
+@anaMembershipId = {{membersWithAna.response.body.$[0].id}}
+
+### Cambiar el rol de Ana a Manager (rol 2): 204. Su token sigue diciendo Technician, pero ya no importa:
+### el rol se comprueba en la base de datos en CADA petición, así que el cambio vale desde la siguiente.
+PUT {{host}}/api/v1/users/{{anaMembershipId}}/role
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "role": 2
+}
+
+### Nadie cambia su propio rol (ni el Owner) -> 403 tenant_user.cannot_manage_self
+PUT {{host}}/api/v1/users/{{ownerMembershipId}}/role
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "role": 1
+}
+
+### Nadie quita al Owner, ni él mismo -> 403 tenant_user.cannot_manage_self
+DELETE {{host}}/api/v1/users/{{ownerMembershipId}}
+Authorization: Bearer {{tokenA}}
+
+### Quitar a Ana: 204. Se borran su cuenta y sus datos, y sus trabajos sin terminar quedan sin asignar.
+DELETE {{host}}/api/v1/users/{{anaMembershipId}}
+Authorization: Bearer {{tokenA}}
+
+### El token de Ana TODAVÍA no ha caducado, pero ya no sirve: 403 en su siguiente petición (se revalida
+### en cada una que siga perteneciendo a la empresa)
+GET {{host}}/api/v1/customers
+Authorization: Bearer {{tokenAna}}
+
+### Y Ana ya no puede volver a entrar -> 401 (su cuenta se borró)
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "ana-{{suffix}}@example.com",
+  "password": "{{password}}"
+}

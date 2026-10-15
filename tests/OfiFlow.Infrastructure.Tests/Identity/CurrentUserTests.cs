@@ -16,17 +16,23 @@ using OfiFlow.Infrastructure.Tests.Common;
 
 namespace OfiFlow.Infrastructure.Tests.Identity;
 
-/// <summary>ADR-012 R4: quién hace la petición, leído del token. Sin Docker.</summary>
+/// <summary>ADR-012 R4: quién hace la petición, leído del token (la identidad y el rol que dice el token). Sin Docker.</summary>
 public class CurrentUserTests
 {
-    private static CurrentUser For(params Claim[] claims)
+    private static ApplicationDbContext NewDb() =>
+        new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            new FixedTenantContext(Guid.NewGuid()));
+
+    private static CurrentUser For(params Claim[] claims) => For(NewDb(), claims);
+
+    private static CurrentUser For(ApplicationDbContext db, params Claim[] claims)
     {
         var accessor = new HttpContextAccessor
         {
             HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")) }
         };
 
-        return new CurrentUser(accessor);
+        return new CurrentUser(accessor, db);
     }
 
     [Fact]
@@ -42,7 +48,7 @@ public class CurrentUserTests
 
         Assert.Equal(userId, user.UserId);
         Assert.Equal(tenantId, user.TenantId);
-        Assert.Equal(TenantRole.Manager, user.Role);
+        Assert.Equal(TenantRole.Manager, user.TokenRole);
     }
 
     [Fact]
@@ -52,17 +58,17 @@ public class CurrentUserTests
 
         Assert.Null(user.UserId);
         Assert.Null(user.TenantId);
-        Assert.Null(user.Role);
+        Assert.Null(user.TokenRole);
     }
 
     [Fact]
     public void WithoutAnHttpContext_EverythingIsNull()
     {
-        var user = new CurrentUser(new HttpContextAccessor());
+        var user = new CurrentUser(new HttpContextAccessor(), NewDb());
 
         Assert.Null(user.UserId);
         Assert.Null(user.TenantId);
-        Assert.Null(user.Role);
+        Assert.Null(user.TokenRole);
     }
 
     [Theory]
@@ -77,7 +83,7 @@ public class CurrentUserTests
     {
         var user = For(new Claim("role", value));
 
-        Assert.Null(user.Role);
+        Assert.Null(user.TokenRole);
     }
 
     [Fact]
@@ -86,7 +92,7 @@ public class CurrentUserTests
         // El tipo largo (ClaimTypes.Role) no es el que escribe TokenService: no se acepta por si acaso.
         var user = For(new Claim(ClaimTypes.Role, "Owner"));
 
-        Assert.Null(user.Role);
+        Assert.Null(user.TokenRole);
     }
 
     [Fact]
@@ -138,7 +144,7 @@ public class CurrentUserTests
         Assert.True(validation.IsValid, validation.Exception?.Message);
 
         var user = For([.. validation.ClaimsIdentity.Claims]);
-        Assert.Equal(role, user.Role);
+        Assert.Equal(role, user.TokenRole);
         Assert.Equal(userId, user.UserId);
         Assert.Equal(tenantId, user.TenantId);
     }

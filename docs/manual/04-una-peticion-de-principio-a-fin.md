@@ -159,12 +159,13 @@ La operación declara el permiso que exige, justo encima de su definición:
 public sealed record CreateJobCommand(...)
 ```
 
-El [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) lee ese permiso y el **rol** de Marta (que sale del token, el claim `role`, que lee `CurrentUser`) y consulta una tabla única, [`RolePermissions`](../../src/OfiFlow.Domain/Tenancy/RolePermissions.cs): ¿tiene este rol `Jobs.Write`? Marta es `Owner`, que lo tiene todo, así que pasa. Un `Technician` no lo tiene: recibiría un **403** aquí mismo, y el handler no se ejecutaría.
+El [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) lee ese permiso y el **rol** de Marta. El rol **no se lee del token**: se comprueba en la **base de datos** en cada petición (una consulta por `CurrentUser`, que además confirma que Marta sigue perteneciendo a la empresa; ver el capítulo 8). Con ese rol consulta una tabla única, [`RolePermissions`](../../src/OfiFlow.Domain/Tenancy/RolePermissions.cs): ¿tiene este rol `Jobs.Write`? Marta es `Owner`, que lo tiene todo, así que pasa. Un `Technician` no lo tiene: recibiría un **403** aquí mismo, y el handler no se ejecutaría.
 
 Tres detalles que importan:
 
 - **Va antes que la validación.** Un técnico que envía un título vacío recibe un 403, no un 400: no se le dice nada sobre si sus datos eran válidos.
 - **Es *fail-closed*.** Una operación que no declara su permiso se deniega, y un test de arquitectura impide que exista una sin declarar.
+- **Revalida la pertenencia en cada petición.** Si a alguien se le quita de la empresa o se le cambia el rol, la **siguiente** petición ya lo nota, aunque su token siga sin caducar: decide la base de datos, no el token. Una persona que ya no pertenece recibe un 403 y queda un evento `1302`.
 - **Depende solo del rol, no del recurso.** Un técnico que pide borrar un cliente de otra empresa y otro que pide borrar uno inexistente reciben el mismo 403: no se revela nada.
 
 Cada denegación queda en el registro de seguridad (evento `1301`) con quién, de qué empresa, con qué rol y qué operación; nunca con los datos de la petición.
@@ -333,7 +334,7 @@ Para no llevarte una idea más optimista de la real:
 - ✅ **Responde siempre con el mismo formato** de error y sin filtrar detalles internos.
 - ⚠️ **No tiene límite de peticiones**: solo lo tiene `auth`. Alguien con un token válido podría crear trabajos sin freno.
 - ✅ **Comprueba el permiso del rol** (`Jobs.Write`) antes de validar los datos y antes de tocar nada.
-- ⚠️ **El rol viaja en el token**: si a alguien se le cambia el rol, no se nota hasta que renueve la sesión (hasta 30 minutos). Hoy no existe todavía la operación de cambiar roles.
+- ✅ **El rol ya no se fía del token** (spec 009): se lee de la base de datos en cada petición, así que un cambio de rol o una baja surten efecto en la siguiente petición. El coste es una consulta más por petición autenticada.
 - ⚠️ **Hace dos viajes a la base de datos** (comprobar el cliente y guardar el trabajo). Es suficiente para el tamaño actual; si hiciera falta, se optimizaría con datos reales.
 - ⚠️ **No publica eventos de dominio**: nadie se entera de que se creó un trabajo salvo quien lo consulte después.
 - ⚠️ **No registra la creación en un log de auditoría** (quién creó qué y cuándo): solo queda `CreatedAt`. El log de auditoría persistente está planificado para más adelante.

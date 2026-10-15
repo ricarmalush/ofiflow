@@ -73,6 +73,9 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:Audience", JwtAudience);
 
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
+
+        // Solo en tests: cada petición puede declarar su IP (ver TestClientIpStartupFilter).
+        builder.ConfigureServices(services => services.AddTransient<IStartupFilter, TestClientIpStartupFilter>());
     }
 
     public override async ValueTask DisposeAsync()

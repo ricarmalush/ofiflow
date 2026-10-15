@@ -118,6 +118,24 @@
   <data name="tenant_user.not_found" xml:space="preserve">
     <value>No se ha encontrado el usuario en la empresa.</value>
   </data>
+  <data name="tenant_user.role_not_manageable" xml:space="preserve">
+    <value>No tienes permiso para gestionar a un usuario con ese rol.</value>
+  </data>
+  <data name="tenant_user.cannot_manage_self" xml:space="preserve">
+    <value>No puedes cambiar tu propio rol ni quitarte de la empresa.</value>
+  </data>
+  <data name="invitation.invalid" xml:space="preserve">
+    <value>La invitación no es válida, ha caducado o ya se ha usado.</value>
+  </data>
+  <data name="invitation.already_pending" xml:space="preserve">
+    <value>Ya hay una invitación pendiente para ese email.</value>
+  </data>
+  <data name="invitation.limit_reached" xml:space="preserve">
+    <value>Se ha alcanzado el máximo de invitaciones pendientes. Revoca alguna o espera a que caduquen.</value>
+  </data>
+  <data name="invitation.not_found" xml:space="preserve">
+    <value>No se ha encontrado la invitación.</value>
+  </data>
 
   <!-- ===== Identity ===== -->
   <data name="user.name_required" xml:space="preserve">

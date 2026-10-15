@@ -22,17 +22,18 @@ Son dos preguntas distintas, y se confunden a menudo:
 
 En el modelo **AAA** de CyberOps (*Authentication, Authorization, Accounting*), esto es la primera A. La segunda es la tabla de permisos por rol. La tercera, *accounting*, es el registro de lo que pasa: los eventos de seguridad que verás aquí también.
 
-## Las tres operaciones
+## Las operaciones anónimas
 
-Hay tres rutas, todas **anónimas** (no exigen sesión, porque sirven justo para conseguirla):
+Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para conseguirla; la cuarta es para quien aún no tiene cuenta):
 
 | Ruta | Qué hace | Límite de peticiones |
 |---|---|---|
 | `POST /api/v1/auth/register` | Crea una empresa y su primer usuario | 3 por hora y por IP |
 | `POST /api/v1/auth/login` | Comprueba la contraseña y entrega los tokens | 5 por minuto y por IP |
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
+| `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
 
-(Los límites están en [`RateLimiting.cs:28-30`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
+(Los límites están en [`RateLimiting.cs:29-33`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
 
 ---
 
@@ -57,6 +58,10 @@ Si se guardara primero el usuario y fallara la creación de la empresa, quedarí
 // junto con Tenant/User/TenantUser en una única transacción (spec 002).
 dbContext.ApplicationUsers.Add(user);
 ```
+
+**Y al revés, para quitar a alguien (spec 009).** Hay dos operaciones gemelas que siguen **la misma regla** de no confirmar por su cuenta: [`IdentityService.DeleteUserAsync`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs) borra las credenciales (y con ello el email vuelve a quedar libre) y [`TokenService.DeleteRefreshTokensAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) borra **todos** los refresh tokens del usuario, también los ya revocados: así no puede renovar la sesión y no quedan filas huérfanas (los tokens guardan el `UserId` sin clave foránea, así que la base no las borraría sola). Las usa el caso de uso [`RemoveUserCommandHandler`](../../src/OfiFlow.Application/Tenancy/Commands/RemoveUser/RemoveUserCommandHandler.cs), junto con la pertenencia, la ficha y la desasignación de los trabajos sin terminar, en un único `SaveChanges`: **todo o nada**. Está probado con los servicios reales y SQL Server real: tras la baja no queda ninguna fila de esa persona, no puede iniciar sesión ni renovar la sesión, y su email se puede volver a usar. Y una baja que falla a medias no borra nada.
+
+**Y el token de acceso que ya tuviera no le sirve de nada.** El token sigue sin caducar hasta 30 minutos (un JWT no se puede anular), pero ya no importa: en **cada** petición se comprueba en la base de datos que la persona sigue en la empresa y con qué rol (capítulo 8), así que una vez quitada recibe un 403 en su siguiente petición, no a los 30 minutos.
 
 Solo anota "este usuario es nuevo". Es `SaveChangesAsync`, que llama el handler **una única vez** al final (línea 33), quien escribe las cuatro filas juntas: o se guardan todas, o ninguna. Hay un test que lo demuestra: [`Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing`](../../tests/OfiFlow.Application.Tests/Identity/RegisterCommandHandlerTests.cs).
 
@@ -90,7 +95,7 @@ No vale cualquier hash. OfiFlow usa el `PasswordHasher` de ASP.NET Core ([`Ident
 // IdentityService.cs:28 (al crear)
 user.PasswordHash = PasswordHasher.HashPassword(user, password);
 
-// IdentityService.cs:52 (al entrar)
+// IdentityService.cs:66 (al entrar)
 var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
 ```
 
@@ -123,9 +128,9 @@ var result = PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, passwo
 
 Dos decisiones de seguridad en este flujo:
 
-**Una sola respuesta de fallo.** Tanto si el email no existe como si la contraseña es incorrecta, la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:29`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
+**Una sola respuesta de fallo.** Tanto si el email no existe como si la contraseña es incorrecta, la API responde exactamente lo mismo: un **401** sin explicación (`result is null ? Results.Unauthorized()`, [`AuthEndpoints.cs:30`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs)). Decir "ese email no existe" regalaría a un atacante la lista de quién usa el sistema.
 
-**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:46-48`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
+**El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:60-62`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
 El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:29`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
 
@@ -159,7 +164,7 @@ El contenido de un token de OfiFlow es este (ejemplo con valores inventados):
 }
 ```
 
-Lo escribe [`TokenService.GenerateAccessToken`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) (líneas 93-113). Dura **30 minutos**.
+Lo escribe [`TokenService.GenerateAccessToken`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) (líneas 103-123). Dura **30 minutos**.
 
 ### Por qué no se puede falsificar
 
@@ -204,7 +209,7 @@ Treinta minutos son pocos: obligar a Marta a escribir su contraseña cada media 
 
 ### Cómo se crea y cómo se guarda
 
-[`TokenService.CreateRefreshToken`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) (líneas 115-123) genera **64 bytes aleatorios** criptográficamente seguros. Eso es lo que recibe el cliente. En la base de datos **no se guarda ese valor**, sino su hash SHA-256 (entidad [`RefreshToken`](../../src/OfiFlow.Infrastructure/Identity/RefreshToken.cs), con un índice único sobre el hash).
+[`TokenService.CreateRefreshToken`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) (líneas 125-133) genera **64 bytes aleatorios** criptográficamente seguros. Eso es lo que recibe el cliente. En la base de datos **no se guarda ese valor**, sino su hash SHA-256 (entidad [`RefreshToken`](../../src/OfiFlow.Infrastructure/Identity/RefreshToken.cs), con un índice único sobre el hash).
 
 Misma idea que con las contraseñas: si alguien robara la base de datos, no encontraría tokens utilizables.
 
@@ -240,22 +245,92 @@ Dos tests lo demuestran: `RotateRefreshTokenAsync_WithAlreadyRevokedToken_Revoke
 
 ---
 
+## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)
+
+Hasta aquí, la única forma de tener cuenta es **registrarse**, y eso crea una empresa nueva donde eres el `Owner`. Para que un técnico o una persona de oficina entre en **la empresa de otro** hace falta otra puerta: la **invitación**.
+
+> **Estado.** Ya tiene endpoints: `POST /api/v1/invitations` (invitar), `GET` y `DELETE` sobre esa misma ruta (ver y revocar) y `POST /api/v1/auth/accept-invitation` (aceptar), además de los de miembros del capítulo 8. Puedes probarlos en Swagger o en la sección 6 de la colección `.http`.
+
+### El recorrido
+
+```
+ Owner/Admin                         La API                              La persona
+     │  "invita a ana@… como Técnico"   │                                     │
+     │ ────────────────────────────────▶│ genera un token aleatorio           │
+     │                                  │ guarda solo su HASH                 │
+     │ ◀──────── el token (UNA vez) ────│                                     │
+     │                                  │                                     │
+     │  se lo pasa por su canal (WhatsApp, en persona...)  ──────────────────▶│
+     │                                  │                                     │
+     │                                  │◀── token + nombre + contraseña ─────│
+     │                                  │ busca la invitación por el hash     │
+     │                                  │ crea cuenta + ficha + pertenencia   │
+     │                                  │ marca la invitación como usada      │
+```
+
+Todavía no hay envío por email, así que el token se **devuelve a quien invita**, que se lo da a la persona. Lo importante es lo que **no** pasa: quien invita **nunca conoce ni elige la contraseña** de la otra persona (la elige ella al aceptar), y no puede cambiar el email ni el rol después.
+
+### El token: igual que el refresh token
+
+Es la misma idea del capítulo anterior, y por las mismas razones:
+
+- **256 bits aleatorios** de un generador criptográfico: imposible de adivinar (se codifica en 43 caracteres aptos para un enlace).
+- **Solo se guarda su hash** (SHA-256). Si roban la base de datos, no encuentran tokens utilizables.
+- **Un solo uso y caduca a los 7 días.** Se puede revocar mientras esté pendiente.
+- Se genera y se hashea en **un único sitio**, [`InvitationToken`](../../src/OfiFlow.Application/Tenancy/InvitationToken.cs), para que crear y aceptar usen exactamente la misma regla.
+
+Un detalle que se parece a la sal y no lo es: este hash **no lleva sal**, a diferencia del de las contraseñas. Una sal sirve para que dos contraseñas iguales no den el mismo hash y para frenar diccionarios; un token ya es aleatorio de 256 bits, no hay diccionario que atacar, y hace falta un hash **determinista** para poder buscarlo en el índice.
+
+### Quién puede invitar a quién
+
+Tener el permiso `Users.Manage` no basta: hay que poder gestionar **ese rol** (la tabla `ManageableRoles` del capítulo 8). Un `Admin` no puede invitar a otro `Admin` y nadie puede invitar a un `Owner`. Si se intenta, **403** y un evento `1301` con el motivo.
+
+### Las reglas de la invitación
+
+- Solo **una pendiente por email** en cada empresa (da igual cómo estén escritas las mayúsculas) y un **máximo de 25 pendientes** por empresa, para que nadie pueda llenar la base de datos.
+- **No se invita a quien ya tiene cuenta**: hoy una cuenta pertenece a una sola empresa. (Esto revela a quien invita si un email tiene cuenta; es el mismo riesgo, aceptado, que ya tiene el registro.)
+- Una invitación caducada o revocada **deja de contar** para esos límites.
+
+### Aceptar: la operación más delicada
+
+Es **anónima** (la persona aún no tiene cuenta) y por eso es la que más cuidado merece:
+
+1. **Se valida la forma del token antes de tocar nada:** longitud exacta y solo caracteres de URL. Así no se hashea ni se busca texto arbitrario de tamaño ilimitado.
+2. **La misma respuesta para cuatro fallos distintos.** Un token desconocido, caducado, revocado o ya usado devuelve **exactamente el mismo error** (`invitation.invalid`). Quien lo intenta no aprende cuál de los cuatro es. El motivo real **sí** queda en el log (evento `1403`), para un analista, sin el token ni el email.
+3. **Se busca saltándose el filtro de empresa.** Aún no hay empresa activa; es el tercer uso justificado de `IgnoreQueryFilters()` (capítulo 5), y como los otros está en la lista blanca vigilada por un test.
+4. **Todo o nada.** Cuenta, ficha, pertenencia y "invitación usada" se confirman en **una sola transacción**. Si algo falla, el token **no se consume**.
+5. **Dos aceptaciones a la vez: gana una.** La invitación lleva una columna de versión (`rowversion`): si dos peticiones la leen a la vez como pendiente, la base de datos solo deja confirmar a una.
+
+### Una lección: el test contra la base real cazó un 500
+
+Al probar la carrera de dos aceptaciones con SQL Server de verdad, la perdedora **no** recibía el error de concurrencia que yo esperaba. Recibía una violación del **índice único del email**: las dos peticiones intentan crear una cuenta con el mismo email, y la base de datos rechaza la segunda *antes* de comprobar la versión de la invitación. Sin arreglo, esa petición habría acabado en un **error 500** en vez del mensaje de "token que ya no sirve".
+
+La corrección fue tratar ambos fallos de la confirmación como lo mismo (ambos significan "este token ya no sirve"). Lo interesante para entender: **los tests con una base en memoria no podían ver esto**, porque no aplican índices únicos ni versiones de fila. Es una de las razones por las que los tests de integración usan SQL Server real (capítulo 9).
+
+**Una segunda lección, más pequeña.** Un test intermitente de mi propia comprobación del formato del token destapó que la función de .NET que usé (`Base64Url.IsValid`) **ignora los espacios en blanco**: un token con un espacio dentro podía darse por bueno según el azar de su último carácter. No era una vulnerabilidad (ese texto daría otro hash y no se encontraría), pero la función prometía "solo caracteres de URL" y no lo cumplía. Ahora se comprueba el alfabeto carácter a carácter. La moraleja: **no confiar en que una función de la librería hace exactamente lo que su nombre sugiere**, y probar con muchos valores aleatorios, no con uno.
+
+---
+
 ## Cómo se protege todo el flujo
 
 Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenazas final del manual). Las técnicas **T1110** son de MITRE ATT&CK, que verás en CyberOps:
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP | `RateLimiting.cs:28` | `RateLimitingTests` |
+| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP | `RateLimiting.cs:29` | `RateLimitingTests` |
 | Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:13,28` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
 | Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
-| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:29` | `Handle_WithInvalidCredentials_ReturnsNull` |
-| Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs:46-48` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEventWithoutEmailOrPassword` |
+| Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:30` | `Handle_WithInvalidCredentials_ReturnsNull` |
+| Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs:60-62` | `ValidateCredentialsAsync_WhenFails_LogsSecurityEventWithoutEmailOrPassword` |
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
 | Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:73-74` | **Sin test propio** (ver "Controles sin test") |
 | **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
-| Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:123` | `RotateRefreshTokenAsync_WithValidToken_...` |
+| Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:133` | `RotateRefreshTokenAsync_WithValidToken_...` |
+| Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `InvitationToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
+| Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `InvitationToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
+| Usar dos veces la misma invitación | Un solo uso + versión de fila: gana una | `Invitation.cs`, `InvitationConfiguration.cs` | `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` |
+| Un invitante que se queda con la contraseña de otro | La persona elige la suya al aceptar; el invitante solo fija email y rol | `AcceptInvitationCommand.cs` | `ThePersonCanThenLogInWithTheirOwnPassword` |
 | Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:49-52` | **Sin test propio** (ver "Controles sin test") |
 | El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:63` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
 
@@ -275,7 +350,7 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007).
 
-**6. Un token de acceso no se puede anular** antes de caducar (hasta 30 minutos), por ser un JWT sin estado.
+**6. Un token de acceso no se puede anular** antes de caducar (hasta 30 minutos), por ser un JWT sin estado. Desde la spec 009 esto importa menos para la autorización: el rol y la pertenencia se revalidan en cada petición, así que un token de alguien al que se quitó de la empresa no autoriza nada. Sigue valiendo, en cambio, para lo que no consulta la base de datos (por ejemplo, la propia firma).
 
 **7. La rotación no tiene control de concurrencia explícito.** Si dos peticiones llegaran *a la vez* con el mismo refresh token, en teoría ambas podrían leerlo como válido antes de que ninguna lo revoque. No está probado ni se ha observado; lo apunto como pregunta abierta, no como fallo confirmado.
 
@@ -304,8 +379,11 @@ Son los tres candidatos más baratos para la próxima ronda de endurecimiento, c
 5. Explica con tus palabras cómo detecta el sistema que le han robado un refresh token.
 6. ¿Por qué las contraseñas tienen un **máximo** de 128 caracteres?
 7. Nombra dos límites que tiene hoy el flujo de autenticación y cómo cerrarías uno.
+8. En una invitación, ¿qué se guarda en la base de datos del token y por qué no se le añade una sal como a las contraseñas?
+9. Un atacante prueba tokens de invitación al azar. ¿Por qué no le sirve, qué respuesta recibe y qué ve un analista?
+10. Dos personas aceptan la misma invitación exactamente a la vez. ¿Qué garantiza que solo nazca una cuenta y qué error inesperado cazó el test contra SQL Server real?
 
-*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos).)*
+*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos). 8 = solo el hash SHA-256; no lleva sal porque el token ya es aleatorio de 256 bits (no hay diccionario que atacar) y hace falta un hash determinista para buscarlo en el índice. 9 = no puede adivinar 256 bits aleatorios; además la forma del token se valida antes de buscar y recibe siempre el mismo error (`invitation.invalid`) sea cual sea el motivo; el analista ve eventos `1403` con el motivo real (y la IP), sin el token ni el email. 10 = la invitación tiene una columna de versión de fila y, además, el índice único del email impide dos cuentas iguales: solo una confirma y la otra recibe `invitation.invalid`; el test con SQL real cazó que la perdedora recibía una violación del índice único (que acababa en un 500) y no el error de concurrencia esperado, porque una base en memoria no aplica índices únicos.)*
 
 ## Siguiente capítulo
 
