@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-013-gestion-de-usuarios.md](../../adr/ADR-013-gestion-de-usuarios.md)
-**Estado general:** En curso (spec aprobada 2026-10-15). Bloques 1 a 6 hechos.
+**Estado general:** Implementada y fusionada en `master` (PR #32, 2026-10-15)
 
 ---
 
@@ -22,8 +22,8 @@ El manual técnico y el código avanzan **a la vez**. Cada bloque termina con su
 
 ### Bloque 0 — Manual al día antes de empezar (≈ 2-3 h, sin código)
 - [x] [manual] Capítulo 10 (CI/CD y pipeline) revisado por ti y commiteado (6327b38)
-- [ ] [externo] Publicar los capítulos 6–10: rebase de `docs/manual-cap6-identidad` sobre `master`, push, PR y los 4 checks en verde
-- [ ] [externo] Merge (con confirmación explícita)
+- [x] [externo] Publicar los capítulos 6–10: rebase de `docs/manual-cap6-identidad` sobre `master`, push, PR y los 4 checks en verde (hecho, PR #29)
+- [x] [externo] Merge (con confirmación explícita) (hecho, PR #29, merge `59e5fba`)
 - [x] [manual] Capítulo 1 (poner en marcha): corregir lo que dice del arranque (LocalDB, Docker para los tests) y comprobarlo ejecutando los pasos desde cero — escrito y comprobado contra un SQL Server en Docker; pendiente de tu lectura y commit
 - [x] [manual] Corregir los `tasks.md` desfasados de las specs 007 y 008 (PR y merge ya hechos) — hecho; además README raíz (requisitos y estado actual); pendiente de commit
 - [x] Spec, tareas y ADR-013 aprobadas (2026-10-15); se trabaja en la rama `spec/009-user-management`, ya actualizada con `master`
@@ -92,8 +92,8 @@ El manual técnico y el código avanzan **a la vez**. Cada bloque termina con su
 - [x] `docs/README.md`: filas de la ADR-013 y de la spec 009
 - [x] `OfiFlow.Api.http`: peticiones nuevas del ciclo de invitación
 - [x] [manual] Revisión final de los capítulos 0, 5, 6, 7, 8, 9, 10 y 11 contra el repositorio (cifras de tests, códigos de error, eventos, límites conocidos) y capítulo 12 (glosario) con los términos nuevos
-- [ ] [externo] Push de la rama y PR contra `master`; los 4 checks en verde
-- [ ] [externo] Merge (con confirmación explícita)
+- [x] [externo] Push de la rama y PR contra `master`; los 4 checks en verde (hecho, PR #32)
+- [x] [externo] Merge (con confirmación explícita) (hecho, 2026-10-15, merge `5bcf345`)
 
 ---
 
