@@ -5,7 +5,7 @@ using OfiFlow.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -44,11 +44,24 @@ app.UseHttpsRedirection();
 app.UseMiddleware<RequestLogScopeMiddleware>();
 app.UseRateLimiter();
 
+// Solo en Development: la pantalla de Swagger lee el documento OpenAPI. Va aquí, después de las
+// cabeceras de seguridad y del manejo de errores, para que sus respuestas también las lleven.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwaggerUI(options =>
+    {
+        options.RoutePrefix = SecurityHeadersMiddleware.SwaggerUiPath.TrimStart('/');
+        options.SwaggerEndpoint("/openapi/v1.json", "OfiFlow API v1");
+    });
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapCustomerEndpoints();
+app.MapInvitationEndpoints();
+app.MapUserEndpoints();
 app.MapJobEndpoints();
 
 app.Run();

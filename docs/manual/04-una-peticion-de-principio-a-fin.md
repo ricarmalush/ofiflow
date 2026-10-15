@@ -70,7 +70,7 @@ Son 14 pasos. Vamos uno a uno.
 
 ## Parte 1 — La puerta (capa Api)
 
-Todo lo que sigue está en [`Program.cs`](../../src/OfiFlow.Api/Program.cs), líneas 33 a 52. Una petición HTTP en ASP.NET Core atraviesa una cadena de **middlewares** (piezas por las que pasa en orden), y el **orden es una decisión de diseño**.
+Todo lo que sigue está en [`Program.cs`](../../src/OfiFlow.Api/Program.cs), líneas 33 a 63. Una petición HTTP en ASP.NET Core atraviesa una cadena de **middlewares** (piezas por las que pasa en orden), y el **orden es una decisión de diseño**.
 
 ### Paso 1 — Cabeceras de seguridad (`Program.cs:33`)
 
@@ -90,7 +90,11 @@ Lee `Accept-Language: es` y fija el idioma de la petición. Va antes del manejad
 - **IP al log:** `RequestLogScopeMiddleware` apunta la IP de origen en el contexto de logging, para que cualquier evento de seguridad que ocurra después la incluya sin tener que pasarla de mano en mano.
 - **Rate limiter:** limita las peticiones por IP. **Pero solo en las rutas que lo piden**, y hoy solo lo piden las de `auth` (registro, login, renovación). Las rutas de trabajos y clientes **no tienen límite de peticiones**. Es una limitación conocida; la comentamos al final.
 
-### Paso 7 — Autenticación (`Program.cs:47`)
+### Un paso que solo existe en desarrollo (`Program.cs:47-56`)
+
+Entre el rate limiter y la autenticación hay un bloque que **solo se ejecuta en `Development`**: registra la pantalla de **Swagger UI** (capítulo 1). Está ahí, después de las cabeceras de seguridad y del manejo de errores, para que sus respuestas también pasen por ellos. En cualquier otro entorno el bloque no existe y `/swagger` devuelve 404.
+
+### Paso 7 — Autenticación (`Program.cs:58`)
 
 Aquí se responde "¿**quién eres**?". El middleware de JWT mira la cabecera `Authorization`, extrae el token y comprueba:
 
@@ -104,7 +108,7 @@ Aquí se responde "¿**quién eres**?". El middleware de JWT mira la cabecera `A
 
 Si todo es correcto, el servidor construye un objeto de usuario con los datos del token (sus *claims*): quién es y, **lo importante, en qué empresa está operando** (`tenant_id`).
 
-### Paso 8 — Autorización (`Program.cs:48`)
+### Paso 8 — Autorización (`Program.cs:59`)
 
 Aquí se responde "¿**puedes pasar**?". El grupo de rutas de trabajos se declaró con `RequireAuthorization()` ([`JobEndpoints.cs:21`](../../src/OfiFlow.Api/Endpoints/JobEndpoints.cs)), lo que significa: **sin sesión válida, no se pasa**. Si Marta no hubiese enviado token (o estuviese caducado), la petición terminaría aquí con un **401**, y **nunca llegaría al código de la aplicación**.
 
@@ -155,12 +159,13 @@ La operación declara el permiso que exige, justo encima de su definición:
 public sealed record CreateJobCommand(...)
 ```
 
-El [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) lee ese permiso y el **rol** de Marta (que sale del token, el claim `role`, que lee `CurrentUser`) y consulta una tabla única, [`RolePermissions`](../../src/OfiFlow.Domain/Tenancy/RolePermissions.cs): ¿tiene este rol `Jobs.Write`? Marta es `Owner`, que lo tiene todo, así que pasa. Un `Technician` no lo tiene: recibiría un **403** aquí mismo, y el handler no se ejecutaría.
+El [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) lee ese permiso y el **rol** de Marta. El rol **no se lee del token**: se comprueba en la **base de datos** en cada petición (una consulta por `CurrentUser`, que además confirma que Marta sigue perteneciendo a la empresa; ver el capítulo 8). Con ese rol consulta una tabla única, [`RolePermissions`](../../src/OfiFlow.Domain/Tenancy/RolePermissions.cs): ¿tiene este rol `Jobs.Write`? Marta es `Owner`, que lo tiene todo, así que pasa. Un `Technician` no lo tiene: recibiría un **403** aquí mismo, y el handler no se ejecutaría.
 
 Tres detalles que importan:
 
 - **Va antes que la validación.** Un técnico que envía un título vacío recibe un 403, no un 400: no se le dice nada sobre si sus datos eran válidos.
 - **Es *fail-closed*.** Una operación que no declara su permiso se deniega, y un test de arquitectura impide que exista una sin declarar.
+- **Revalida la pertenencia en cada petición.** Si a alguien se le quita de la empresa o se le cambia el rol, la **siguiente** petición ya lo nota, aunque su token siga sin caducar: decide la base de datos, no el token. Una persona que ya no pertenece recibe un 403 y queda un evento `1302`.
 - **Depende solo del rol, no del recurso.** Un técnico que pide borrar un cliente de otra empresa y otro que pide borrar uno inexistente reciben el mismo 403: no se revela nada.
 
 Cada denegación queda en el registro de seguridad (evento `1301`) con quién, de qué empresa, con qué rol y qué operación; nunca con los datos de la petición.
@@ -329,7 +334,7 @@ Para no llevarte una idea más optimista de la real:
 - ✅ **Responde siempre con el mismo formato** de error y sin filtrar detalles internos.
 - ⚠️ **No tiene límite de peticiones**: solo lo tiene `auth`. Alguien con un token válido podría crear trabajos sin freno.
 - ✅ **Comprueba el permiso del rol** (`Jobs.Write`) antes de validar los datos y antes de tocar nada.
-- ⚠️ **El rol viaja en el token**: si a alguien se le cambia el rol, no se nota hasta que renueve la sesión (hasta 30 minutos). Hoy no existe todavía la operación de cambiar roles.
+- ✅ **El rol ya no se fía del token** (spec 009): se lee de la base de datos en cada petición, así que un cambio de rol o una baja surten efecto en la siguiente petición. El coste es una consulta más por petición autenticada.
 - ⚠️ **Hace dos viajes a la base de datos** (comprobar el cliente y guardar el trabajo). Es suficiente para el tamaño actual; si hiciera falta, se optimizaría con datos reales.
 - ⚠️ **No publica eventos de dominio**: nadie se entera de que se creó un trabajo salvo quien lo consulte después.
 - ⚠️ **No registra la creación en un log de auditoría** (quién creó qué y cuándo): solo queda `CreatedAt`. El log de auditoría persistente está planificado para más adelante.

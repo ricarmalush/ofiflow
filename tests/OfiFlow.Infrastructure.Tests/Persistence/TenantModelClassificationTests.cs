@@ -70,7 +70,7 @@ public class TenantModelClassificationTests
             .Order()
             .ToArray();
 
-        Assert.Equal(["Customer", "Job", "TenantUser"], owned);
+        Assert.Equal(["Customer", "Invitation", "Job", "TenantUser"], owned);
     }
 
     // --- Las reglas muerden: sobre un modelo con entidades mal clasificadas deben fallar ---

@@ -56,7 +56,7 @@ La carpeta de primer nivel es siempre un **contexto de negocio** (capítulo 2, s
 | `Common/` | `Entity`, `AggregateRoot`, `IDomainEvent`, `DomainException`, `Email`, `ITenantOwned`, `IAuditable`, `CommonErrors` | Lo que comparten todos los contextos. `Email` está aquí porque lo usan a la vez Customers e Identity (*shared kernel*) |
 | `Customers/` | `Customer`, `CustomerType`, `PhoneNumber`, `CustomerErrors` | Todo lo que es un cliente |
 | `Jobs/` | `Job`, `JobStatus`, `JobPriority`, `JobErrors` | Todo lo que es un trabajo y sus transiciones de estado |
-| `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `Permission`, `RolePermissions`, `TenancyErrors` | La empresa, la pertenencia de una persona a ella con un rol, y **qué puede hacer cada rol**: `Permission` son los permisos (`Customers.Write`, `Jobs.Assign`...) y `RolePermissions` es la tabla única rol → permisos |
+| `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `Permission`, `RolePermissions`, `ManageableRoles`, `Invitation`, `InvitationStatus`, `TenancyErrors`, `InvitationErrors` | La empresa, la pertenencia de una persona a ella con un rol, y **qué puede hacer cada rol**: `Permission` son los permisos (`Customers.Write`, `Jobs.Assign`, `Users.Manage`...), `RolePermissions` es la tabla única rol → permisos y `ManageableRoles` la tabla única "a qué roles puede gestionar cada rol". `Invitation` es la invitación para que una persona entre en la empresa (spec 009) |
 | `Identity/` | `User`, `IdentityErrors` | Los **datos de negocio** de la persona. Las credenciales (contraseña) no están aquí: viven en Infrastructure |
 
 Dos interfaces de `Common/` merecen atención, porque son "etiquetas" que activan comportamientos automáticos en otras capas:
@@ -128,7 +128,7 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 | `Customers/` | Crear, ver, listar, modificar y eliminar clientes |
 | `Jobs/` | Crear, ver, listar, modificar, empezar, completar, cancelar y asignar trabajos |
 | `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token) |
-| `Tenancy/` | Reservada: todavía no tiene casos de uso propios (el registro, que crea la empresa, está en `Identity`) |
+| `Tenancy/` | Las **invitaciones y los miembros** (spec 009): `InviteUser`, `RevokeInvitation`, `GetInvitations`, `GetUsers`, `ChangeUserRole` y `RemoveUser`, más `InvitationToken` (cómo se genera el token y su hash). El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
 
 **La carpeta `Common/`**, lo transversal:
 
@@ -214,7 +214,7 @@ Existe para que esos detalles se puedan **cambiar sin tocar las reglas del negoc
 | `Persistence/Interceptors/` | `AuditableEntitySaveChangesInterceptor` | Rellena `CreatedAt` y `UpdatedAt` al guardar, sin que ningún handler lo haga |
 | `Persistence/Migrations/` | Una clase por cambio del esquema | El historial de la base de datos, generado con `dotnet ef`. Es un registro, no se escribe a mano |
 | `Persistence/` (otros) | `ApplicationDbContextFactory`, `ConnectionStringNames` | La fábrica la usa solo `dotnet ef` para generar migraciones; los nombres evitan repetir cadenas mágicas |
-| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario, la empresa y el rol |
+| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario y la empresa, y **comprueba en la base de datos** el rol y la pertenencia en cada petición |
 | `Tenancy/` | `TenantContext` | Lee el `tenant_id` del token del usuario autenticado. Implementa `ITenantContext` |
 
 Y en la raíz, [`DependencyInjection.cs`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs): `AddInfrastructure()` conecta el `DbContext`, los servicios y la validación de tokens JWT. **Si falta el secreto `Jwt:Secret`, la aplicación se niega a arrancar** con un mensaje que indica cómo configurarlo, antes que arrancar de forma insegura.
@@ -281,7 +281,7 @@ Existe para que **ninguna otra capa sepa nada de HTTP**. Mañana podría añadir
 | Elemento | Qué contiene | Por qué está ahí |
 |---|---|---|
 | `Program.cs` | El arranque y el **orden** de los middlewares | El orden es una decisión de seguridad (ver capítulo 8) |
-| `Endpoints/` | `AuthEndpoints`, `CustomerEndpoints`, `JobEndpoints` | Un fichero por contexto. Cada endpoint hace tres cosas: recibir, enviar a MediatR, devolver |
+| `Endpoints/` | `AuthEndpoints`, `CustomerEndpoints`, `JobEndpoints`, `InvitationEndpoints`, `UserEndpoints` | Un fichero por contexto. Cada endpoint hace tres cosas: recibir, enviar a MediatR, devolver |
 | `Common/` | `GlobalExceptionHandler`, `RateLimiting`, `SecurityHeadersMiddleware`, `RequestLogScopeMiddleware`, `Localization`, `ApiErrors` | Todo lo transversal de HTTP: errores, límites, cabeceras, idioma |
 | `Resources/` | `ErrorMessages.resx` | El **diccionario** de mensajes de error en español. El código devuelve un código y el texto sale de aquí |
 | `Properties/` | `launchSettings.json` | Cómo arranca en local |
@@ -303,7 +303,7 @@ Fíjate en que el grupo entero se declara con `RequireAuthorization()`: **toda r
 
 `Api/Common/` parece un cajón de sastre, pero tiene un criterio: es **todo lo transversal que solo tiene sentido en HTTP**. Un middleware de cabeceras o un límite de peticiones por IP no existen fuera de la web, así que no pertenecen a ninguna otra capa.
 
-> **Para probar la API a mano:** `OfiFlow.Api.http` es una colección de 33 peticiones para Visual Studio, en orden y con instrucciones al principio: cuenta, clientes, el ciclo de vida de un trabajo, errores a propósito y el aislamiento entre dos empresas. Se verificó ejecutando la misma secuencia contra una API real. Lo que no se puede probar a mano todavía son los permisos por rol, porque todo usuario que se registra es `Owner`.
+> **Para probar la API a mano:** `OfiFlow.Api.http` es una colección de 51 peticiones para Visual Studio, en orden y con instrucciones al principio: cuenta, clientes, el ciclo de vida de un trabajo, errores a propósito, el aislamiento entre dos empresas y el equipo (invitar, aceptar, cambiar roles y quitar miembros, con sus 403). Se verificó ejecutando la misma secuencia contra una API real.
 
 ### De qué depende
 
@@ -372,7 +372,7 @@ Se detallan en el capítulo 9.
 ## Cosas que verás en el repositorio y que conviene saber
 
 - **Ficheros `.gitkeep`** dentro de carpetas que ya tienen contenido (por ejemplo, `Domain/Jobs/.gitkeep`). Son restos de cuando las carpetas se crearon vacías; no hacen nada y son inofensivos.
-- **`Application/Tenancy/`** solo contiene un `.gitkeep`: es un contexto reservado todavía sin casos de uso.
+- **`Application/Tenancy/`** ya tiene casos de uso (las invitaciones, spec 009), pero ninguno tiene todavía endpoint en la API: llegan en un bloque posterior de esa spec.
 - **`Domain/Common/IAuditable`** declara sus fechas con `set` público, porque quien las rellena (el interceptor) está en otra capa y necesita poder escribirlas. Es una concesión pragmática: a diferencia del resto de propiedades de `Job`, estas dos no están protegidas con `private set`.
 
 ## Para comprobar que lo has entendido

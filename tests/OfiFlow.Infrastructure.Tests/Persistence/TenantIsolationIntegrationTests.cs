@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Jobs;
 using OfiFlow.Domain.Tenancy;
@@ -51,6 +52,27 @@ public class TenantIsolationIntegrationTests(SqlServerContainerFixture fixture) 
         var visibleToTenantB = await dbAsTenantB.Jobs.ToListAsync();
 
         Assert.Empty(visibleToTenantB);
+    }
+
+    [Fact]
+    public async Task Invitations_AreNotVisibleAcrossTenants()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var dbAsTenantA = _fixture.CreateDbContext(tenantA))
+        {
+            dbAsTenantA.Invitations.Add(Invitation.Create(
+                tenantA, Email.Create("ana@example.com"), TenantRole.Technician, Guid.NewGuid().ToString("N"), Guid.NewGuid(), DateTime.UtcNow));
+            await dbAsTenantA.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var dbAsTenantB = _fixture.CreateDbContext(tenantB);
+        Assert.Empty(await dbAsTenantB.Invitations.ToListAsync());
+
+        // Control positivo: la propia empresa sí la ve, así que "vacío" no se debe a un fallo al sembrar.
+        await using var dbAsOwner = _fixture.CreateDbContext(tenantA);
+        Assert.Single(await dbAsOwner.Invitations.ToListAsync());
     }
 
     [Fact]

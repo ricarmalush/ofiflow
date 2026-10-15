@@ -30,5 +30,11 @@ public enum Permission
     JobsCancel,
 
     /// <summary>Jobs.Execute: iniciar y completar un trabajo.</summary>
-    JobsExecute
+    JobsExecute,
+
+    /// <summary>Users.Read: ver quién forma parte de la empresa (miembros y su rol).</summary>
+    UsersRead,
+
+    /// <summary>Users.Manage: invitar, ver y revocar invitaciones, cambiar el rol de un miembro y quitarlo (spec 009).</summary>
+    UsersManage
 }

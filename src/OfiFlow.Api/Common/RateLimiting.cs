@@ -18,6 +18,7 @@ public static partial class RateLimiting
     public const string Login = "auth-login";
     public const string Refresh = "auth-refresh";
     public const string Register = "auth-register";
+    public const string AcceptInvitation = "auth-accept-invitation";
 
     public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services)
     {
@@ -28,6 +29,8 @@ public static partial class RateLimiting
             options.AddPolicy(Login, context => PerIp(context, permitLimit: 5, TimeSpan.FromMinutes(1)));
             options.AddPolicy(Refresh, context => PerIp(context, permitLimit: 20, TimeSpan.FromMinutes(1)));
             options.AddPolicy(Register, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
+            // Anónima y cara (hashea una contraseña con PBKDF2): sin límite sería una vía de agotamiento de CPU (spec 009 D7).
+            options.AddPolicy(AcceptInvitation, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
 
             options.OnRejected = async (rejected, cancellationToken) =>
             {

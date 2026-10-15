@@ -27,6 +27,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<Job> Jobs => Set<Job>();
 
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+
     /// <summary>
     /// Not part of IApplicationDbContext on purpose — only IIdentityService/ITokenService
     /// (Infrastructure) touch credentials/tokens directly (ADR-007).

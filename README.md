@@ -100,7 +100,7 @@ Plantillas en [`docs/specs/TEMPLATE-spec.md`](./docs/specs/TEMPLATE-spec.md) y [
 
 ## Arrancar en local
 
-Requisitos: .NET 10 SDK, SQL Server LocalDB y la herramienta `dotnet-ef`.
+Requisitos: .NET 10 SDK, SQL Server LocalDB (o un SQL Server en Docker) y la herramienta `dotnet-ef`. Para ejecutar los tests hace falta además **Docker** (los de integración levantan un SQL Server real). Guía paso a paso y comprobada: [capítulo 1 del manual](./docs/manual/01-poner-en-marcha.md).
 
 ```bash
 # 1. Secreto JWT: nunca se guarda en el repositorio (ADR-009 R8). Hay que generarlo una vez por máquina.
@@ -155,4 +155,4 @@ OFIFLOW/
 
 ## Estado actual
 
-Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT + aislamiento de tenant). ADR-001 a ADR-011 aceptadas. Implementadas las specs 001 a 004 y 006 (línea base de seguridad y diccionario de errores incluidos); la 005 (pipeline DevSecOps) está en curso. Detalle en [`docs/README.md`](./docs/README.md).
+Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT, aislamiento de tenant, permisos por rol y gestión del equipo: invitar, aceptar, cambiar roles y quitar miembros). ADR-001 a ADR-013 aceptadas. Implementadas las specs 001 a 004 y 006 a 009 (línea base de seguridad, diccionario de errores, aislamiento endurecido, RBAC y gestión de usuarios incluidos); la 005 (pipeline DevSecOps) funciona y tiene pendientes dos pruebas manuales. Siguiente: panel de operador de la plataforma (spec 010) y la Fase 2 (agenda y asignación de técnicos). Detalle en [`docs/README.md`](./docs/README.md).
