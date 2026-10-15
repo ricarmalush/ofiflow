@@ -26,11 +26,11 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 194 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 238 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 84 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 156 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 245 | ~1 s | No |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 96 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 162 | ~15 s | **Sí**, en parte |
 
-En total, **672 casos**. Un "caso" no es lo mismo que un método de test: hay unos 355 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **697 casos**. Un "caso" no es lo mismo que un método de test: hay unos 377 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -82,7 +82,7 @@ Un *handler* necesita una base de datos y otras piezas (quién es el usuario, c�
 |---|---|---|
 | `TestDbContext` | La base de datos, por una **en memoria** (`TestDbContextFactory.Create()` da una nueva y vacía en cada test) | `Common/TestDbContext.cs` |
 | `FakeTenantContext` | "¿En qué empresa estoy?" | `Common/FakeTenantContext.cs` |
-| `FakeCurrentUser` | "¿Quién soy y qué rol tengo?" | `Common/FakeCurrentUser.cs` |
+| `FakeCurrentUser` | "¿Quién soy y qué rol tengo?" Distingue el rol **efectivo** (el de la base de datos) del que diría el token, para probar que decide el primero, y cuenta cuántas veces se verifica la pertenencia | `Common/FakeCurrentUser.cs` |
 | `FakeTimeProvider` | "¿Qué hora es?" (para probar que una invitación caduca a los 7 días **sin esperar 7 días**: el test avanza el reloj) | `Common/FakeTimeProvider.cs` |
 | `FakeIdentityService`, `FakeTokenService` | Las contraseñas y los tokens | `Common/` |
 
@@ -140,13 +140,21 @@ Aquí viven el test obligatorio de aislamiento (`TenantIsolationIntegrationTests
 
 Cada uno va con su control positivo (un caso que sí funciona, para que el "falla" no se deba a un error de preparación), y se verificaron rompiendo la **migración** a propósito, que es como se rompería de verdad el esquema.
 
+Y `CurrentUserMembershipTests`, para la **revalidación en cada petición** (también contra SQL Server real, porque lo que se prueba es una consulta de verdad):
+
+- **Decide la base de datos, no el token:** un token que dice `Owner` de alguien que es `Technician` en la base de datos da como rol efectivo `Technician`. Y un claim ausente o raro no cambia nada.
+- **Quitar o degradar se nota en la siguiente petición:** se cambia el rol en la base de datos sin renovar el token, y la petición siguiente ya ve el rol nuevo.
+- **Solo cuenta la pertenencia a esa empresa y a esa persona:** ni la de otra empresa ni la de otro usuario de la misma.
+- **Fail-closed:** hasta verificar no hay rol, y un token sin usuario o sin empresa se deniega **sin tocar la base de datos**.
+- **El coste:** un interceptor cuenta las consultas y comprueba que verificar cuesta **exactamente una**, aunque se pregunte varias veces. Es la forma de que "una consulta por petición" no sea solo una promesa del manual.
+
 ## Parte 4 — Api: tres clases de test en un mismo proyecto
 
 `OfiFlow.Api.Tests` arranca la **API entera en memoria** (con `WebApplicationFactory`) y le hace peticiones HTTP reales. Dentro hay tres familias:
 
 **1. Contrato HTTP, sin base de datos** (`OfiFlowApiFactory`). Comprueban cabeceras de seguridad, formato de errores, límite de peticiones, idioma o la pantalla de Swagger (`SwaggerUiTests`: solo existe en `Development`, su CSP relajada no se escapa a otras rutas y en `Production` ni existe). No necesitan SQL Server porque no llegan a la base de datos.
 
-**2. Extremo a extremo, con SQL Server real** (`SqlServerApiFactory` con `TwoTenantsFixture` o `RolesFixture`). Registran empresas y usuarios **por HTTP**, hacen login de verdad y comprueban el comportamiento completo: aislamiento entre dos empresas (`TenantIsolationEndToEndTests`) y la matriz de permisos con un usuario de cada rol (`RbacEndToEndTests`). Dos cosas curiosas:
+**2. Extremo a extremo, con SQL Server real** (`SqlServerApiFactory` con `TwoTenantsFixture` o `RolesFixture`). Registran empresas y usuarios **por HTTP**, hacen login de verdad y comprueban el comportamiento completo: aislamiento entre dos empresas (`TenantIsolationEndToEndTests`) y la matriz de permisos con un usuario de cada rol (`RbacEndToEndTests`), incluido lo que ocurre con un token todavía válido cuando se quita o se degrada al miembro en la base de datos (se deniega o cambia de poderes en la siguiente petición). Dos cosas curiosas:
 
 - El **registro** admite 3 por hora y el **login** 5 por minuto (los límites de seguridad). Los fixtures lo respetan a propósito: `RolesFixture` hace **exactamente 5 logins** y fabrica el resto de tokens con el secreto de la factoría. Si alguien añadiera un sexto login, los tests fallarían por el límite.
 - La factoría comprueba que la API usa el **servidor del contenedor** y no tu base de datos local: sin esa salvaguarda, un error de configuración haría que los tests fueran contra tus datos de desarrollo sin avisar.
@@ -195,7 +203,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **672 casos son unos 355 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **697 casos son unos 377 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 
@@ -252,6 +260,7 @@ Esta lista es la mejor lección del capítulo, porque son fallos que **nos pasar
 | Una restauración con `git checkout` borró cambios aún sin commitear | Restaurar tras una mutación con copias de seguridad, o commitear antes |
 | Dos aceptaciones simultáneas de la misma invitación: la perdedora acababa en un **500** y no en el error esperado | Los tests con **SQL Server real** ven lo que una base en memoria no puede (índices únicos, versiones de fila). Los de en memoria pasaban en verde |
 | Una mutación **sobrevivió**: el test de "email duplicado sin distinguir mayúsculas" usaba un segundo email ya en mayúsculas, y coincidía por casualidad | Un test puede pasar por una coincidencia. Una mutación que no se detecta es una pista de que el test es débil: se reforzó con varias variantes de mayúsculas |
+| Mis cuatro tests de extremo a extremo de la revalidación fallaron a la primera: la ayuda de test consultaba con el filtro de empresa sin que hubiera empresa activa, no la revalidación | Antes de culpar al código, confirmar la causa con el mensaje de error: era un fallo de la **preparación** del test, y se corrigió ahí |
 | Un test **intermitente** (pasaba y fallaba con el mismo código) destapó que `Base64Url.IsValid` de .NET ignora los espacios en blanco, y mi comprobación del formato del token los aceptaba según el azar del token | Un test intermitente casi nunca es mala suerte: es el azar mostrando un defecto. No se repite hasta que pase: se investiga, y el arreglo se prueba con **muchas muestras**, no con una |
 
 ## Dónde están hoy los límites

@@ -214,7 +214,7 @@ Existe para que esos detalles se puedan **cambiar sin tocar las reglas del negoc
 | `Persistence/Interceptors/` | `AuditableEntitySaveChangesInterceptor` | Rellena `CreatedAt` y `UpdatedAt` al guardar, sin que ningún handler lo haga |
 | `Persistence/Migrations/` | Una clase por cambio del esquema | El historial de la base de datos, generado con `dotnet ef`. Es un registro, no se escribe a mano |
 | `Persistence/` (otros) | `ApplicationDbContextFactory`, `ConnectionStringNames` | La fábrica la usa solo `dotnet ef` para generar migraciones; los nombres evitan repetir cadenas mágicas |
-| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario, la empresa y el rol |
+| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario y la empresa, y **comprueba en la base de datos** el rol y la pertenencia en cada petición |
 | `Tenancy/` | `TenantContext` | Lee el `tenant_id` del token del usuario autenticado. Implementa `ITenantContext` |
 
 Y en la raíz, [`DependencyInjection.cs`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs): `AddInfrastructure()` conecta el `DbContext`, los servicios y la validación de tokens JWT. **Si falta el secreto `Jwt:Secret`, la aplicación se niega a arrancar** con un mensaje que indica cómo configurarlo, antes que arrancar de forma insegura.

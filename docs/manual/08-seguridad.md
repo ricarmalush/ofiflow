@@ -136,7 +136,7 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
 
-> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados. Ya hay seis operaciones que los exigen en `Application`: invitar, ver y revocar invitaciones (`Users.Manage`), **listar miembros** (`Users.Read`), **cambiar el rol** y **quitar a un miembro** (`Users.Manage`). La jerarquía de abajo se aplica en ellas, con tests. Pero **todavía no tienen endpoint en la API**: llegan en un bloque posterior de esa spec. Hasta entonces, esas filas no se pueden ejercer a mano, solo con tests. Y queda un límite abierto hasta el bloque 5: el rol y la pertenencia siguen viajando en el token, así que un miembro al que se quita o se degrada conserva el acceso (o el rol anterior) hasta 30 minutos.
+> **En construcción (spec 009).** Los dos permisos de usuarios ya existen en la tabla y están probados. Ya hay seis operaciones que los exigen en `Application`: invitar, ver y revocar invitaciones (`Users.Manage`), **listar miembros** (`Users.Read`), **cambiar el rol** y **quitar a un miembro** (`Users.Manage`). La jerarquía de abajo se aplica en ellas, con tests. Pero **todavía no tienen endpoint en la API**: llegan en un bloque posterior de esa spec. Hasta entonces, esas filas no se pueden ejercer a mano, solo con tests. Quitar o degradar a un miembro ya surte efecto **en su siguiente petición** (ver abajo: el rol sale de la base de datos).
 
 **Quién puede gestionar a quién.** Tener `Users.Manage` no basta: sería una vía de escalada de privilegios (un `Admin` comprometido podría ascender a cómplices). Por eso hay una **segunda tabla** en Domain, [`ManageableRoles`](../../src/OfiFlow.Domain/Tenancy/ManageableRoles.cs), que dice a qué roles puede conceder, cambiar y quitar cada rol:
 
@@ -147,6 +147,20 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Manager, Technician, Employee | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 Tres consecuencias: **nadie puede gestionar al `Owner`** (es único por empresa y no se concede), **un `Admin` no toca a otros `Admin`** (solo el `Owner` nombra o quita administradores) y, para **cambiar** un rol, hacen falta las dos cosas: poder gestionar el rol actual **y** el nuevo (así un `Admin` no asciende a un `Manager` a `Admin`). Como la tabla de permisos, va compilada e inmutable y tiene un test por cada celda, escrito aparte de la tabla de producción. Verificado rompiéndola a propósito: dar al `Admin` poder sobre otro `Admin`, hacer gestionable al `Owner` o cambiar el "y" por "o" en el cambio de rol pone tests en rojo.
+
+**El rol sale de la base de datos, no del token.** Un token JWT se firma una vez y vale 30 minutos. Si el rol viajara dentro y se leyera de ahí, quitar a alguien o degradarlo no surtiría efecto hasta que caducara el token: un empleado despedido seguiría con acceso a los datos de los clientes. Por eso el [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) hace esto en **cada** petición autenticada, antes de comprobar el permiso:
+
+1. **Declaración.** Si la operación está mal declarada (sin permiso, o anónima y con permiso a la vez) se deniega **sin consultar nada**.
+2. **Pertenencia.** [`CurrentUser`](../../src/OfiFlow.Infrastructure/Identity/CurrentUser.cs) lee en la base de datos la pertenencia de esa persona a esa empresa (**una sola consulta**, por el índice único `(empresa, usuario)`, usando solo lo que dice el token ya validado, nunca nada que mande el cliente). Si no existe, **403** y un evento `1302`.
+3. **Permiso.** Se comprueba con el rol **de la base de datos**. El rol del token se sigue leyendo (`TokenRole`) pero es solo informativo: no autoriza nada.
+
+Consecuencias que conviene saber explicar:
+
+- **Quitar o degradar surte efecto en la siguiente petición**, con el mismo token sin renovar. Y al revés: ascender a alguien le da el poder nuevo sin que renueve la sesión.
+- **Un token que dice "Owner" no escala.** Si lo firmara alguien (porque conociera el secreto) pero su dueño es `Technician` en la base de datos, sigue siendo `Technician`. El claim del rol dejó de ser algo que alguien pueda falsificar para ganar poder.
+- **Fail-closed también aquí:** hasta que se verifica la pertenencia, `CurrentUser.Role` es nulo, así que quien lo lea antes de tiempo no ve ningún rol. Un token sin usuario o sin empresa se deniega sin tocar la base de datos.
+- **El coste es real y está medido:** una consulta indexada más por petición autenticada, que se hace **una sola vez** aunque se pregunte varias veces (hay un test que cuenta las consultas). Si algún día se mide como cuello de botella, se podría cachear unos segundos, aceptando ese retraso.
+- Cambia una propiedad que el ADR-012 daba por buena ("la autorización no consulta la base de datos"); sus tests se actualizaron de forma explícita. Entre ellos, los cinco que decían "un token sin un rol válido se deniega": ahora el claim ausente o raro **no cambia nada**, y lo que se comprueba es que no pueda dar ni quitar poderes.
 
 Tres propiedades de diseño que merece la pena saber explicar:
 
@@ -191,7 +205,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **trece eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **catorce eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -202,6 +216,7 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **trece eventos de se
 | `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register` o `refresh` |
 | `1201` | Excepción no controlada | Un 500; se registra con el detalle interno completo |
 | `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso, o intenta gestionar a un rol que no le corresponde (la jerarquía de roles) |
+| `1302` | **Pertenencia revocada** | Un token todavía válido de alguien que ya no pertenece a la empresa (se le quitó mientras el token seguía vivo). La revalidación en cada petición lo detecta |
 | `1401` | Invitación creada | Alguien de la empresa invita a una persona (con el rol, sin el email ni el token) |
 | `1402` | Invitación aceptada | Nace una cuenta nueva a partir de una invitación |
 | `1403` | **Invitación rechazada** | Alguien intenta aceptar un token que no sirve (desconocido, caducado, revocado, ya usado o perdido en una carrera). El log guarda el **motivo real**; quien lo intenta recibe siempre la misma respuesta |
@@ -270,6 +285,8 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **S** · Robar un refresh token | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | **S** · Adivinar o reutilizar un token de invitación | 256 bits aleatorios, un solo uso, misma respuesta para los cuatro fallos, evento `1403` | `InvitationToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | **E** · Escalada de privilegios invitando a un `Admin` o a un `Owner` | Jerarquía de roles (`ManageableRoles`) comprobada al invitar y al revocar | `InviteUserCommandHandler.cs`, `ManageableRoles.cs` | `WhenTheHierarchyForbidsIt_ItIsRefused_AndNothingIsCreated` |
+| **E** · Un empleado despedido (o degradado) sigue usando su token | Se revalida la pertenencia y el rol en la base de datos en cada petición; evento `1302` | `AuthorizationBehavior.cs`, `CurrentUser.cs` | `AMemberWhoIsRemoved_IsDeniedImmediately_WithTheSameStillValidToken`, `ADemotedMember_LosesThePowersOfTheOldRoleImmediately` |
+| **E** · Un token que dice "Owner" pero es de un `Technician` | El rol sale de la base de datos; el claim del token no autoriza nada | `CurrentUser.cs` | `ATokenThatClaimsAHigherRole_DoesNotEscalate_TheDatabaseRoleDecides` |
 | **I** · Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token | `InvitationToken.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | **S** · Usar la API sin sesión | `RequireAuthorization()` en cada grupo | `JobEndpoints.cs:21` | `WithoutAToken_EveryRoute_Returns401` |
 | **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:71` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
@@ -301,10 +318,10 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Autenticación**
 1. **No hay bloqueo de cuenta.** El límite es por IP: un ataque repartido entre miles de IPs, con un intento por IP, no lo ve.
 2. **El tiempo de respuesta del login delata si un email existe.** Y el registro dice "ese email ya está registrado".
-3. **No hay cierre de sesión en el servidor**, y un token de acceso no se puede anular antes de caducar (hasta 30 minutos).
+3. **No hay cierre de sesión en el servidor**, y un token de acceso no se puede anular antes de caducar (hasta 30 minutos). Desde la spec 009 esto afecta menos a la autorización, porque la pertenencia se revalida en cada petición, pero un usuario **sigue autenticado** hasta que el token caduca.
 
 **Autorización**
-4. **El rol y la pertenencia a la empresa viajan en el token:** un cambio no se nota hasta renovar la sesión. No se revalidan en cada petición.
+4. ✅ **Cerrado (spec 009): el rol y la pertenencia se revalidan en cada petición.** Antes viajaban en el token y un cambio no se notaba hasta renovar la sesión (hasta 30 minutos). El coste es una consulta indexada más por petición autenticada.
 5. **Un `Technician` puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 6. **Las invitaciones no tienen todavía endpoint:** todo usuario real es `Owner`. La lógica de invitar y aceptar ya existe y está probada (spec 009), pero los permisos y la jerarquía solo se ejercen con tests hasta que se publiquen las rutas.
 
@@ -341,8 +358,9 @@ Los cuatro últimos son los candidatos más baratos para una próxima ronda de e
 6. Un analista quiere saber cuántos intentos de acceso denegado hubo ayer. ¿Qué evento busca y por qué un número y no el texto del mensaje?
 7. ¿Cómo sabes que tus guardarraíles de seguridad funcionan de verdad, y no pasan siempre?
 8. Nombra tres límites de la seguridad actual y di cuál cerrarías primero, y por qué.
+9. Despiden a un empleado a las 10:00 y su token caduca a las 10:30. ¿Qué puede hacer a las 10:15 y por qué? ¿Qué cambió respecto a antes de la spec 009?
 
-*(Respuestas: 1 = poner varias defensas una tras otra para que, si una falla, la siguiente aún proteja; un handler que olvidara filtrar por empresa seguiría estando tras la autenticación, los permisos y la validación. 2 = impide que otra web meta la página en un `iframe` (clickjacking); `OnStarting` las añade en el último instante, después de que el manejador de errores borre las cabeceras, para que los errores también salgan protegidos. 3 = prevenir es impedir (un permiso que deniega un 403); detectar es enterarse (el evento 1301 en el registro); responder es actuar (revocar todos los refresh tokens si se reutiliza uno revocado). 4 = todo el acceso a datos pasa por EF Core, que usa parámetros; el aviso `EF1002` es un error de compilación y un test falla si aparece `FromSqlRaw` o `ExecuteSqlRaw`. 5 = que el cliente fije campos que no debería (`tenantId`, `role`); ningún comando tiene propiedad `TenantId`, el JSON sobrante se descarta y un test lo impone. 6 = el `1301` (acceso denegado); un número estable permite filtrar y crear alertas aunque se cambie la redacción del mensaje. 7 = porque cada uno se verifica rompiendo a propósito el código real y comprobando que el test se pone en rojo, y los de extremo a extremo llevan controles positivos. 8 = por ejemplo, no hay bloqueo de cuenta, el límite de peticiones solo cubre `auth`, y el rol puede estar desfasado hasta 30 minutos; yo cerraría primero el límite de peticiones en clientes y trabajos, porque es barato y hoy un token válido permite crear datos sin freno.)*
+*(Respuestas: 1 = poner varias defensas una tras otra para que, si una falla, la siguiente aún proteja; un handler que olvidara filtrar por empresa seguiría estando tras la autenticación, los permisos y la validación. 2 = impide que otra web meta la página en un `iframe` (clickjacking); `OnStarting` las añade en el último instante, después de que el manejador de errores borre las cabeceras, para que los errores también salgan protegidos. 3 = prevenir es impedir (un permiso que deniega un 403); detectar es enterarse (el evento 1301 en el registro); responder es actuar (revocar todos los refresh tokens si se reutiliza uno revocado). 4 = todo el acceso a datos pasa por EF Core, que usa parámetros; el aviso `EF1002` es un error de compilación y un test falla si aparece `FromSqlRaw` o `ExecuteSqlRaw`. 5 = que el cliente fije campos que no debería (`tenantId`, `role`); ningún comando tiene propiedad `TenantId`, el JSON sobrante se descarta y un test lo impone. 6 = el `1301` (acceso denegado); un número estable permite filtrar y crear alertas aunque se cambie la redacción del mensaje. 7 = porque cada uno se verifica rompiendo a propósito el código real y comprobando que el test se pone en rojo, y los de extremo a extremo llevan controles positivos. 8 = por ejemplo, no hay bloqueo de cuenta, el límite de peticiones solo cubre `auth`, y el rol puede estar desfasado hasta 30 minutos; yo cerraría primero el límite de peticiones en clientes y trabajos, porque es barato y hoy un token válido permite crear datos sin freno. 9 = nada: en cada petición se comprueba en la base de datos que sigue en la empresa, así que a las 10:15 recibe un 403 y queda un evento `1302`, aunque su token siga sin caducar; antes de la spec 009 el rol y la pertenencia viajaban en el token y habría conservado el acceso hasta las 10:30. El coste es una consulta indexada más por petición.)*
 
 ## Siguiente capítulo
 

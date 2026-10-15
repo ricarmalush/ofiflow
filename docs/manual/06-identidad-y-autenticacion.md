@@ -60,7 +60,7 @@ dbContext.ApplicationUsers.Add(user);
 
 **Y al revés, para quitar a alguien (spec 009).** Hay dos operaciones gemelas que siguen **la misma regla** de no confirmar por su cuenta: [`IdentityService.DeleteUserAsync`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs) borra las credenciales (y con ello el email vuelve a quedar libre) y [`TokenService.DeleteRefreshTokensAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) borra **todos** los refresh tokens del usuario, también los ya revocados: así no puede renovar la sesión y no quedan filas huérfanas (los tokens guardan el `UserId` sin clave foránea, así que la base no las borraría sola). Las usa el caso de uso [`RemoveUserCommandHandler`](../../src/OfiFlow.Application/Tenancy/Commands/RemoveUser/RemoveUserCommandHandler.cs), junto con la pertenencia, la ficha y la desasignación de los trabajos sin terminar, en un único `SaveChanges`: **todo o nada**. Está probado con los servicios reales y SQL Server real: tras la baja no queda ninguna fila de esa persona, no puede iniciar sesión ni renovar la sesión, y su email se puede volver a usar. Y una baja que falla a medias no borra nada.
 
-**Un límite que conviene entender.** El token de **acceso** que esa persona ya tuviera sigue valiendo hasta que caduque (30 minutos), porque el rol y la pertenencia viajan dentro del token. Cerrar esa ventana es el bloque 5 de la spec 009: revalidar el rol y la pertenencia en **cada** petición.
+**Y el token de acceso que ya tuviera no le sirve de nada.** El token sigue sin caducar hasta 30 minutos (un JWT no se puede anular), pero ya no importa: en **cada** petición se comprueba en la base de datos que la persona sigue en la empresa y con qué rol (capítulo 8), así que una vez quitada recibe un 403 en su siguiente petición, no a los 30 minutos.
 
 Solo anota "este usuario es nuevo". Es `SaveChangesAsync`, que llama el handler **una única vez** al final (línea 33), quien escribe las cuatro filas juntas: o se guardan todas, o ninguna. Hay un test que lo demuestra: [`Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing`](../../tests/OfiFlow.Application.Tests/Identity/RegisterCommandHandlerTests.cs).
 
@@ -349,7 +349,7 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007).
 
-**6. Un token de acceso no se puede anular** antes de caducar (hasta 30 minutos), por ser un JWT sin estado.
+**6. Un token de acceso no se puede anular** antes de caducar (hasta 30 minutos), por ser un JWT sin estado. Desde la spec 009 esto importa menos para la autorización: el rol y la pertenencia se revalidan en cada petición, así que un token de alguien al que se quitó de la empresa no autoriza nada. Sigue valiendo, en cambio, para lo que no consulta la base de datos (por ejemplo, la propia firma).
 
 **7. La rotación no tiene control de concurrencia explícito.** Si dos peticiones llegaran *a la vez* con el mismo refresh token, en teoría ambas podrían leerlo como válido antes de que ninguna lo revoque. No está probado ni se ha observado; lo apunto como pregunta abierta, no como fallo confirmado.
 
