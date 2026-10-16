@@ -118,6 +118,7 @@ Cada ADR está en [`docs/adr/`](../adr/). El manual **explica cómo funciona**; 
 | [012](../adr/ADR-012-autorizacion-rbac.md) Autorización | Permisos `Entidad.Acción` en una tabla única rol → permisos, comprobados antes que la validación | 8 |
 | [013](../adr/ADR-013-gestion-de-usuarios.md) Gestión de usuarios | Invitación con token de un solo uso; jerarquía de roles como tabla; el rol se lee de la base de datos en cada petición | 6, 8 |
 | [014](../adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) Segundo factor y bloqueo de cuenta | TOTP opcional con el secreto cifrado (AES-GCM) y un desafío opaco de un solo uso para el login; bloqueo por cuenta con el intento reservado antes de comprobarlo | 6, 8 |
+| [015](../adr/ADR-015-logs-a-fichero-con-serilog.md) Logs a fichero | Serilog como un proveedor más (no sustituye la fábrica de loggers), en JSON para que nadie falsifique entradas con un salto de línea; 14 días de retención | 1, 8 |
 
 ## Las especificaciones
 

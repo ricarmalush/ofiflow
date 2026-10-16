@@ -17,3 +17,6 @@ obj/
 ## Misc
 *.log
 .DS_Store
+
+## Logs de la API (ADR-015)
+logs/
