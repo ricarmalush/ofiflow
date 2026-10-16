@@ -8,6 +8,11 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <!--
+      Logs a fichero (ADR-015). Trae el sink de fichero y el formateador JSON; la consola sigue siendo
+      la de Microsoft. Versión de noviembre de 2025: publicada hace más de tres meses.
+    -->
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <!--
       Solo la pantalla (Swagger UI), sin dependencias propias: lee el documento OpenAPI que ya genera
       Microsoft.AspNetCore.OpenApi. Se registra únicamente en Development (Program.cs). Versión
       anterior a la última a propósito: publicada hace más de tres meses.

@@ -156,7 +156,7 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Iniciar y completar trabajos | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Gestionar el segundo factor **de la propia cuenta** (`Mfa.Manage`; spec 010, aún sin rutas) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Gestionar el segundo factor **de la propia cuenta** (`Mfa.Manage`; spec 010) | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 **Las rutas (spec 009).** Cada una exige sesión (salvo aceptar), y quién puede lo decide el permiso más la jerarquía, no el endpoint:
 
@@ -290,6 +290,28 @@ Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores,
 
 Además, un pequeño middleware ([`RequestLogScopeMiddleware`](../../src/OfiFlow.Api/Common/RequestLogScopeMiddleware.cs)) apunta la **IP de origen** en cada petición, de modo que todos los eventos la incluyan sin que cada pieza del código tenga que pasarla de mano en mano. Y el `traceId` de los errores une la respuesta con la entrada exacta del registro.
 
+### Dónde se guardan los logs
+
+Todo lo anterior se escribe en la **consola** y, en desarrollo y en producción, también en un **fichero**: `logs/ofiflow-AAAAMMDD.log` relativo al directorio desde el que arranca la API, uno por día y con los últimos 14 ([ADR-015](../adr/ADR-015-logs-a-fichero-con-serilog.md)). La carpeta está en `.gitignore`: un log lleva Ids e IPs, y una IP es un dato personal. En producción esa carpeta debe tener **permisos restringidos** a la cuenta que ejecuta la API (lo hace el despliegue, no el código), y la ruta se puede cambiar sin recompilar con la variable de entorno `Serilog__WriteTo__0__Args__path`. En un contenedor, sin un volumen montado el fichero se pierde al reiniciar.
+
+Tres decisiones que debes saber explicar:
+
+- **Es JSON, un registro por línea, y no texto.** La ruta de la petición la elige quien llama y puede traer un salto de línea (`%0A`) seguido de una línea inventada (*log forging*, CWE-117). En un fichero de texto esa línea falsa parecería una entrada real; en JSON el salto queda escapado dentro del mismo registro. Se comprobó llamando a la API con una ruta así.
+- **Serilog es un proveedor más, no sustituye al de Microsoft.** Los handlers siguen usando `ILogger<T>`; no se tocó ninguno. La instalación habitual (`UseSerilog`) reemplaza la fábrica de loggers y los tests que comprueban los eventos de seguridad dejarían de ver los logs y pasarían en falso.
+- **Los fallos de arranque también quedan en el fichero.** Si la API no arranca (falta `Jwt:Secret` o `Mfa:EncryptionKey`, el puerto está ocupado...) no hay ningún manejador de peticiones que lo registre, así que `Program.cs` envuelve el arranque en un `try/catch` que lo escribe como `Fatal` con su traza y lo relanza (el proceso sigue cayendo). Se comprobó arrancando la API de verdad sin `Jwt`.
+- **El filtro de ruido es propio.** Serilog ignora el `Logging:LogLevel` de Microsoft; se filtra con `Serilog:MinimumLevel` (`Microsoft` y `System` en `Warning`, para que cada petición no añada dos líneas).
+
+Para encontrar un fallo, en PowerShell:
+
+```powershell
+Get-Content src\OfiFlow.Api\logs\*.log -Encoding UTF8 | ConvertFrom-Json |
+  Where-Object { $_.'@l' -in 'Error','Warning' } | Select-Object '@t','@l','@m','@x'
+```
+
+Para seguir una petición concreta, filtra por su `TraceId` (el `traceId` que recibe el cliente en un error); para vigilar un evento, por `EventId.Id` (por ejemplo `1001`).
+
+**Qué no vas a encontrar en el fichero**, para no buscar donde no hay: los errores 4xx esperables (validación, «no encontrado», reglas de negocio; no son bugs, aunque los 403 sí quedan como evento `1301`), todo lo que el código capture y se trague sin registrar, y los niveles `Debug` y `Trace`. Y si el propio fichero falla (disco lleno, sin permisos), Serilog lo ignora en silencio.
+
 > **Límite importante:** hoy esto es **registro, no vigilancia**. Los eventos se escriben, pero nadie recibe una alerta ni hay un sistema (un SIEM) que los analice. Y no existe un **registro de auditoría persistente** ("quién creó o borró qué y cuándo"): solo queda `CreatedAt` en las filas. Está planificado para cuando existan facturas y pagos.
 
 ---
@@ -315,6 +337,10 @@ Estos tests no prueban una funcionalidad, sino que **la estructura del código r
 | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` | Ninguna operación recibe el `TenantId` del cliente |
 | `EveryMappedEntity_IsTenantOwnedOrDeclaredGlobal` | Toda entidad es de una empresa (con filtro) o está declarada global |
 | `EveryOperationOfTheApplication_DeclaresItsAuthorization` | Toda operación declara su permiso (o que es anónima) |
+| `EveryFileSink_UsesAJsonFormatter` | Ningún log a fichero en texto plano (falsificación de entradas) |
+| `EveryRealEnvironment_WritesLogsToAFile` | Development y Production escriben a fichero (producción no se queda sin dónde mirar) |
+| `SerilogIsAProvider_NotAReplacementOfTheLoggerFactory` | Se usa `AddSerilog`, nunca `UseSerilog` |
+| `AStartupFailure_IsLoggedAsFatal_AndRethrown` | Un fallo de arranque queda en el fichero como `Fatal` y el proceso sigue cayendo |
 
 ### En el pipeline de GitHub
 
@@ -349,7 +375,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Escalada de privilegios invitando a un `Admin` o a un `Owner` | Jerarquía de roles (`ManageableRoles`) comprobada al invitar y al revocar | `InviteUserCommandHandler.cs`, `ManageableRoles.cs` | `WhenTheHierarchyForbidsIt_ItIsRefused_AndNothingIsCreated` |
 | **E** · Un empleado despedido (o degradado) sigue usando su token | Se revalida la pertenencia y el rol en la base de datos en cada petición; evento `1302` | `AuthorizationBehavior.cs`, `CurrentUser.cs` | `AMemberWhoIsRemoved_IsDeniedImmediately_WithTheSameStillValidToken`, `ADemotedMember_LosesThePowersOfTheOldRoleImmediately` |
 | **E** · Un token que dice "Owner" pero es de un `Technician` | El rol sale de la base de datos; el claim del token no autoriza nada | `CurrentUser.cs` | `ATokenThatClaimsAHigherRole_DoesNotEscalate_TheDatabaseRoleDecides` |
-| **S** · Contraseña robada o adivinada | Segundo factor (TOTP, RFC 6238) más el bloqueo de cuenta. **El login en dos pasos llega en el bloque 5** | `Totp.cs`, `MfaService.cs` | `TotpTests` (vectores oficiales de las RFC) |
+| **S** · Contraseña robada o adivinada | Segundo factor (TOTP, RFC 6238) más el bloqueo de cuenta. | `Totp.cs`, `MfaService.cs` | `TotpTests` (vectores oficiales de las RFC) |
 | **I** · Base de datos robada: secretos del segundo factor | Cifrado AES-256-GCM atado al Id de la cuenta; la clave vive fuera de la base de datos | `AesGcmSecretProtector.cs` | `SecretProtectorTests`, `TheSecret_StoredInTheDatabase_IsTheEncryptedValue_NeverThePlainSecret` |
 | **S** · Un código TOTP visto por encima del hombro y reutilizado | El último paso aceptado se anota con un `UPDATE` condicional atómico | `MfaService.cs` | `FourSimultaneousUses_OfTheSameTotpCode_ProduceExactlyOneValid` |
 | **E** · Un token de acceso robado intenta activar o quitar el MFA | Pide la contraseña (y un código para desactivar); los fallos cuentan para el bloqueo | `StartMfaSetupCommandHandler.cs`, `DisableMfaCommandHandler.cs` | `DisableAndRegenerateMfaTests`, `StartAndEnableMfaTests` |
@@ -363,7 +389,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **T** · Datos mal formados o enormes | Validadores y longitudes máximas | `*CommandValidator.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | **R** · Negar una acción | Eventos de seguridad con usuario y empresa | `SecurityEventIds.cs` | `ADenial_IsLoggedAsASecurityEvent_...`, `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` |
-| **I** · Ver datos de otra empresa | Filtro global por empresa | `ApplicationDbContext.cs:63` | `TenantIsolationEndToEndTests`, `CrossTenantWriteIsolationTests` |
+| **I** · Ver datos de otra empresa | Filtro global por empresa | `ApplicationDbContext.cs:72` | `TenantIsolationEndToEndTests`, `CrossTenantWriteIsolationTests` |
 | **I** · Entidad nueva sin filtro | Clasificación obligatoria | `TenantModelRules.cs` (tests) | `EveryMappedEntity_IsTenantOwnedOrDeclaredGlobal` |
 | **I** · Un 500 que cuenta detalles internos | Mensaje genérico y detalle solo al registro | `GlobalExceptionHandler.cs` | `UnhandledException_Returns500WithoutInternalDetails_AndLogsIt` |
 | **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword`, `ADenial_IsLogged...` |

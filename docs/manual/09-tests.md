@@ -28,9 +28,9 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 199 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 445 | ~1 s | No |
 | `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 223 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 325 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 331 | ~15 s | **Sí**, en parte |
 
-En total, **1192 casos**. Un "caso" no es lo mismo que un método de test: hay unos 680 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **1198 casos**. Un "caso" no es lo mismo que un método de test: hay unos 680 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -185,7 +185,7 @@ Y los **tests HTTP del segundo factor** (spec 010, bloque 6), en la clase de API
 - **El reinicio por un gestor, con su jerarquía:** el `Owner` puede (y repetirlo no falla), `Manager`/`Employee`/`Technician` reciben 403, un `Admin` no puede con otro `Admin` pero sí con un `Technician` (control positivo), nadie se reinicia a sí mismo, y un miembro de **otra empresa** da el mismo 404 y el mismo mensaje que uno inexistente.
 - **Los límites de peticiones.** Con el limitador **antes** de la autenticación, se prueba sin sesión: diez peticiones a cada ruta de gestión dan 401 y la undécima, **429**; igual con canjear el desafío (10 por minuto). Cada ruta usa su propia IP de prueba, porque el límite es por IP y por política.
 
-Todavía **no** hay aquí un código TOTP real: confirmar, desactivar y regenerar con códigos válidos, y cada ataque, son el bloque 7.
+Estos tests no calculan códigos TOTP reales (por eso no pueden confirmar, desactivar ni regenerar con códigos válidos): eso lo hace el recorrido completo que se describe más abajo, con un reloj controlado.
 
 Y **el recorrido entero** (spec 010, bloque 7): `MfaEndToEndTests`, con la API real, SQL Server real y **códigos TOTP de verdad**. Aquí está la técnica nueva de este bloque: el **reloj controlado**. El TOTP cambia cada 30 segundos y cada paso solo se acepta una vez, así que probar «login con MFA, otra vez, otra vez» con el reloj real obligaría a esperar. La fábrica de pruebas sustituye el `TimeProvider` de la API por uno que el test avanza a voluntad: 30 s para tener un código nuevo, 5 minutos para caducar un desafío, 15 para terminar un bloqueo. El test hace de app del móvil: decodifica el secreto Base32 que recibe y calcula el código con la misma clase `Totp` que ya se validó contra las RFC.
 
@@ -272,7 +272,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **1192 casos son unos 680 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **1198 casos son unos 680 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

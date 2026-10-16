@@ -29,6 +29,19 @@ internal static class SourceCode
             .Select(file => file.Path)
             .ToList();
 
+    /// <summary>Contenido de un fichero del repositorio (no solo .cs), por ruta relativa a la raíz.</summary>
+    public static string ReadText(string relativePath) => File.ReadAllText(Path.Combine(RepositoryRoot(), relativePath));
+
+    /// <summary>Rutas relativas (con '/') de los ficheros de <c>src/{subfolder}</c> que cumplen el patrón, p. ej. <c>appsettings*.json</c>.</summary>
+    public static List<string> FilesMatching(string subfolder, string pattern)
+    {
+        var root = RepositoryRoot();
+
+        return Directory.EnumerateFiles(Path.Combine(root, "src", subfolder), pattern, SearchOption.TopDirectoryOnly)
+            .Select(file => Path.GetRelativePath(root, file).Replace('\\', '/'))
+            .ToList();
+    }
+
     // bin/obj contienen código generado; Migrations lo genera EF Core.
     private static bool IsGenerated(string file)
     {

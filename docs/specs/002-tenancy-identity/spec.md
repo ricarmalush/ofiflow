@@ -1,6 +1,6 @@
 # Spec — 002-tenancy-identity
 
-**Estado:** Aprobada
+**Estado:** Implementada
 **Fecha:** 2026-09-21
 **Bounded Context:** Identity, Tenancy
 **Depende de:** ADR-002 (Multi-Tenancy), ADR-004 (Identity), ADR-006 (Persistencia y Domain Events), ADR-007 (Modelo Identity y Refresh Token)

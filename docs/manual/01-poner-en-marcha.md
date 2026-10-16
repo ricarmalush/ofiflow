@@ -146,6 +146,19 @@ Dos cosas que te pueden despistar:
 - **Los enumerados entran como número** (por ejemplo el tipo de cliente: 0 = persona, 1 = empresa), aunque las respuestas los devuelven como texto. Es un límite conocido; la colección `.http` lo explica en su cabecera.
 - **El registro admite 3 por hora desde la misma IP**, aceptar una invitación 10 por hora, el login 5 por minuto y la renovación 20 por minuto (capítulo 8). Si pruebas mucho te llevarás un **429** con la cabecera `Retry-After`: no es un fallo, es el control funcionando.
 
+## Dónde ver los logs
+
+Mientras la API corre, la consola de `dotnet run` muestra lo que pasa. Al cerrarla se pierde, así que **también se guarda en un fichero** (en desarrollo y en producción): `src/OfiFlow.Api/logs/ofiflow-AAAAMMDD.log` (un fichero por día, los últimos 14, no se sube a Git). Cada línea es un registro JSON con la hora (`@t`), el nivel (`@l`), el mensaje (`@m`) y, si hubo una excepción, su traza (`@x`).
+
+Cuando algo falle, busca los errores y avisos (en PowerShell, desde la raíz del repositorio):
+
+```powershell
+Get-Content src\OfiFlow.Api\logs\*.log -Encoding UTF8 | ConvertFrom-Json |
+  Where-Object { $_.'@l' -in 'Error','Warning' } | Select-Object '@t','@l','@m','@x'
+```
+
+Si la respuesta de un error trae un `traceId`, filtra por él (`$_.TraceId -eq '...'`) para ver todo lo que ocurrió en esa petición. El porqué del formato y de las demás decisiones está en el capítulo 8 y en el [ADR-015](../adr/ADR-015-logs-a-fichero-con-serilog.md).
+
 ## Ejecutar los tests
 
 ```bash

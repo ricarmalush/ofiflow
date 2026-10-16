@@ -1,6 +1,6 @@
 # Spec — 001-customer
 
-**Estado:** Aprobada
+**Estado:** Implementada
 **Fecha:** 2026-09-21
 **Bounded Context:** Customers
 **Depende de:** ADR-002 (Multi-Tenancy), ADR-003 (CQRS), ADR-006 (Persistencia y Domain Events)
