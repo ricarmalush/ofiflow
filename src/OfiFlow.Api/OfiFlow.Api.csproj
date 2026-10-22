@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <!--
       Logs a fichero (ADR-015). Trae el sink de fichero y el formateador JSON; la consola sigue siendo
       la de Microsoft. Versión de noviembre de 2025: publicada hace más de tres meses.
@@ -17,7 +17,7 @@
       Microsoft.AspNetCore.OpenApi. Se registra únicamente en Development (Program.cs). Versión
       anterior a la última a propósito: publicada hace más de tres meses.
     -->
-    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.3.1" />
   </ItemGroup>
 
   <ItemGroup>
