@@ -60,6 +60,7 @@ Se decide:
 
 ### Qué queda abierto para revisar más adelante
 - Revisar el estado de la licencia de MediatR si el negocio se acerca al umbral de $5M de ingresos anuales.
+- **Registrar la clave Community y configurarla como secreto antes del primer despliegue real** (ver la nota de estado del 2026-10-22).
 - Evaluar si conviene fijar la versión de MediatR usada (Community) de forma explícita en el proyecto para evitar actualizaciones accidentales a una versión que requiera licencia distinta.
 
 ### Nota de estado (2026-10-06)
@@ -67,6 +68,18 @@ Se decide:
 De los cinco Pipeline Behaviors previstos, hoy están implementados y registrados **dos, en este orden**: **Autorización** (`AuthorizationBehavior`, ADR-012, spec 008; va primero) y **Validación** (`ValidationBehavior`). **Logging**, **Transacciones** y **Performance** no se han escrito todavía (cada handler llama a `SaveChangesAsync`, que ya es una transacción por operación). Se añadirán cuando haya una necesidad concreta.
 
 *(Nota anterior, 2026-10-03: solo estaba implementado el de Validación; el de Autorización figuraba como siguiente paso de seguridad.)*
+
+### Nota de estado (2026-10-22): la licencia de MediatR, comprobada en las fuentes del autor
+
+Al guardar los logs a fichero (ADR-015) apareció en ellos un aviso de MediatR: *«no tienes una clave de licencia válida… en producción es obligatoria una versión con licencia»*. Se comprobó qué significa de verdad (anuncio del autor, [jimmybogard.com](https://www.jimmybogard.com/automapper-and-mediatr-commercial-editions-launch-today/), y [mediatr.io](https://mediatr.io/)). La decisión de este ADR **se mantiene**, pero la redacción de arriba se queda corta en tres puntos:
+
+1. **La edición Community exige más que estar por debajo de 5 M$.** Para ser gratuita deben cumplirse **todas**: ingresos brutos anuales (o presupuesto, si no hay ánimo de lucro) por debajo de 5 M$; no haber recibido más de 10 M$ de capital externo (fondos de inversión, capital riesgo); no ser una entidad pública ni casi pública; y no ser una universidad que la use para su software institucional. El uso educativo y los entornos que no son de producción son gratuitos.
+2. **Gratis no significa sin registro.** La edición Community es de autoservicio y sin aprobación, pero hay que **registrar una clave** («solo para auditoría», según el autor). Sin clave **no se bloquea nada**: el autor afirma que no hay límites artificiales y que lo único que ocurre es el aviso en el log. Hoy es un `Warning` informativo, no un fallo.
+3. **Las condiciones se evalúan sobre quien usa el software.** Si OfiFlow acabara en manos de una organización que no cumpla los requisitos de Community, dejaría de ser gratuito. En particular, **no se debe usar OfiFlow dentro de la empresa donde trabaja el autor** (una entidad bancaria), porque ese uso no entraría en la edición gratuita.
+
+**Estado:** el proyecto usa MediatR 14.2.0 y **no tiene clave registrada**. Es válido mientras OfiFlow sea un proyecto de desarrollo y educativo. **Antes de cualquier despliegue real** hay que registrar la clave Community y guardarla como un secreto (igual que `Jwt:Secret`, ADR-009 R8); entonces el aviso desaparecerá. No se pudo leer el texto legal completo de la licencia ni la guía de cómo se pasa la clave al código: ambas cosas se leerán antes de producción, y este punto no debe darse por cerrado hasta entonces.
+
+**Alternativa por si algún día se prefiere no depender de una licencia:** las versiones anteriores a la 13 siguen bajo su licencia original (Apache 2.0), pero dejarían de recibir correcciones; la otra salida es un *mediator* de código abierto o el despacho manual de la opción 2. Hoy no hay motivo para ninguna de las dos.
 
 ---
 
