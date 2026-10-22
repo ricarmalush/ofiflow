@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-016-panel-de-operador-de-la-plataforma.md](../../adr/ADR-016-panel-de-operador-de-la-plataforma.md)
-**Estado general:** Aprobada (2026-10-22); pendiente de implementar, empezando por el bloque 1
+**Estado general:** Aprobada (2026-10-22); bloque 1 implementado y verificado (2026-10-23); siguiente: el bloque 2
 
 ---
 
@@ -30,16 +30,16 @@ Se empieza por lo que **ya se puede probar sin operador**: que la suspensión se
 - [x] Spec y tareas aprobadas (2026-10-22); ADR-016 sigue **Propuesto** hasta el cierre (como la 014 en la spec 010); se trabaja en la rama `spec/011-platform-operator-panel`
 
 ### Bloque 1 — Domain: la empresa se puede suspender (≈ 3 h)
-- [ ] `Tenant.SuspendedAt`, `IsSuspended`, `Suspend(utcNow)` y `Reactivate()`; el reloj entra como parámetro (nada de `DateTime.UtcNow` dentro del dominio)
-- [ ] Errores con código en `TenancyErrors` y sus mensajes en `ErrorMessages.resx` (el test del diccionario los exige): `tenancy.tenant_suspended`, `tenancy.already_suspended`, `tenancy.not_suspended`
-- [ ] Configuración EF de la columna y **migración** `AddTenantSuspension` revisada a mano (el SQL generado): columna nula, sin valor por defecto, no toca ninguna otra tabla
-- [ ] Tests de Domain: suspender una activa, una ya suspendida (error), reactivar una suspendida, una activa (error), la hora que se guarda
-- [ ] Mutaciones: `Suspend` sin comprobar el estado actual; `Reactivate` sin vaciar el campo; guardar la hora local en vez de la recibida
-- [ ] [manual] Capítulo 3 (qué es ahora un `Tenant`) y capítulo 7 (nuevos códigos y nº de entradas del diccionario)
+- [x] `Tenant.SuspendedAt`, `IsSuspended`, `Suspend(utcNow)` y `Reactivate()`; el reloj entra como parámetro (nada de `DateTime.UtcNow` dentro del dominio)
+- [x] Errores con código en `TenancyErrors` y sus mensajes en `ErrorMessages.resx` (el test del diccionario los exige): `tenant.suspended`, `tenant.already_suspended`, `tenant.not_suspended`
+- [x] Configuración EF de la columna y **migración** `AddTenantSuspension` revisada a mano (el SQL generado): columna nula, sin valor por defecto, no toca ninguna otra tabla **Hecho (2026-10-22):** el SQL es una sola sentencia, `ALTER TABLE [Tenants] ADD [SuspendedAt] datetime2 NULL`; las empresas existentes quedan activas. La herramienta `dotnet ef` se ejecuta con `--startup-project src/OfiFlow.Infrastructure` (el proyecto de la API no referencia `EF Design`).
+- [x] Tests de Domain: suspender una activa, una ya suspendida (error), reactivar una suspendida, una activa (error), la hora que se guarda
+- [x] Mutaciones: `Suspend` sin comprobar el estado actual; `Reactivate` sin vaciar el campo; guardar la hora local en vez de la recibida **Hecho (2026-10-22):** 5 mutaciones sobre `Tenant.cs` (las tres anteriores, más `Reactivate` sin comprobar el estado e `IsSuspended` siempre falso) y la entrada del diccionario borrada: todas detectadas. Y la séptima, **el modelo con `SuspendedAt` sin migración ni snapshot**, también: `TheMigrations_MatchTheModel` falla con `PendingModelChangesWarning` («añade una migración»). Suite completa con SQL Server real en verde: **1205 casos** (Domain 206, Application 445, Infrastructure 223, Api 331).
+- [x] [manual] Capítulo 3 (qué es ahora un `Tenant`) y capítulo 7 (nuevos códigos y nº de entradas del diccionario)
 
 ### Bloque 2 — La suspensión se hace cumplir a los miembros (≈ 6 h) — el bloque más delicado para las empresas
 - [ ] `ICurrentUser.VerifyMembershipAsync` incluye el estado de la empresa: una empresa suspendida **no** supera la comprobación (R15d); sigue siendo **una** consulta por petición
-- [ ] `LoginCommand`: tras credenciales correctas, una empresa suspendida da 403 `tenancy.tenant_suspended` y **no cuenta como intento fallido**; decidir y documentar cómo se devuelve la reserva del intento (R15a) respecto al bloqueo de la spec 010
+- [ ] `LoginCommand`: tras credenciales correctas, una empresa suspendida da 403 `tenant.suspended` y **no cuenta como intento fallido**; decidir y documentar cómo se devuelve la reserva del intento (R15a) respecto al bloqueo de la spec 010
 - [ ] Refresh del token y aceptar una invitación: rechazan una empresa suspendida con las respuestas ya existentes (R15b, R15c); registrarse **no** se ve afectado (R16)
 - [ ] Evento `1303` (miembro denegado por empresa suspendida), solo Ids
 - [ ] Tests con dobles: cada rama; dos empresas (suspender A no toca B)

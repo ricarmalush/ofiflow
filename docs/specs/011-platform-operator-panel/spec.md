@@ -70,7 +70,7 @@ Es la **excepción más peligrosa al aislamiento**: una cuenta que ve todas las 
 
 **Qué provoca la suspensión en los miembros**
 
-- **R15.** Una empresa **suspendida**: (a) sus miembros **no obtienen sesión nueva**: el login, tras credenciales correctas, devuelve **403** con `tenancy.tenant_suspended` y **no cuenta como intento fallido**; (b) **no pueden renovar** la sesión (el refresh falla igual que un token caducado); (c) **nadie puede aceptar una invitación** a esa empresa (misma respuesta que un token inválido, spec 009 R7); (d) **cualquier petición con un token todavía válido recibe 403** en la **siguiente** petición: la comprobación de pertenencia incluye el estado de la empresa. Reactivarla lo devuelve todo a como estaba: los refresh tokens no se borran, simplemente no sirven mientras dura la suspensión.
+- **R15.** Una empresa **suspendida**: (a) sus miembros **no obtienen sesión nueva**: el login, tras credenciales correctas, devuelve **403** con `tenant.suspended` y **no cuenta como intento fallido**; (b) **no pueden renovar** la sesión (el refresh falla igual que un token caducado); (c) **nadie puede aceptar una invitación** a esa empresa (misma respuesta que un token inválido, spec 009 R7); (d) **cualquier petición con un token todavía válido recibe 403** en la **siguiente** petición: la comprobación de pertenencia incluye el estado de la empresa. Reactivarla lo devuelve todo a como estaba: los refresh tokens no se borran, simplemente no sirven mientras dura la suspensión.
 - **R16.** Registrar una empresa nueva **no se ve afectado**.
 
 **Auditoría**
@@ -112,7 +112,7 @@ Valores iniciales (se revisan con datos reales): sesión de plataforma **15 minu
 ```
 Domain/Tenancy
 - Tenant            + SuspendedAt? · IsSuspended · Suspend(utcNow) · Reactivate()
-                      (errores: tenancy.tenant_suspended, tenancy.already_suspended, tenancy.not_suspended)
+                      (errores: tenant.suspended, tenant.already_suspended, tenant.not_suspended)
 
 Infrastructure/Identity  (globales: no son de una empresa; no ITenantOwned; a TenantModelRules.GlobalEntities)
 - PlatformOperator    UserId (único) · CreatedAt · DisabledAt?
@@ -154,7 +154,7 @@ Operaciones tras esta spec: **35** (25 con permiso, 7 anónimas y 3 de plataform
 - Dado que la acción falla a mitad (por ejemplo, la fila de auditoría no se puede escribir), entonces la empresa **no** queda suspendida (todo o nada).
 
 **Efecto en los miembros (caso multi-tenant obligatorio)**
-- Dada una empresa suspendida, cuando uno de sus miembros hace login con credenciales correctas, entonces **403** con `tenancy.tenant_suspended` y **no suma un intento fallido**; con credenciales incorrectas, el 401 de siempre.
+- Dada una empresa suspendida, cuando uno de sus miembros hace login con credenciales correctas, entonces **403** con `tenant.suspended` y **no suma un intento fallido**; con credenciales incorrectas, el 401 de siempre.
 - Dada una empresa suspendida, cuando un miembro con un token todavía válido hace **cualquier** petición, entonces 403 en esa petición y queda el evento `1303`.
 - Dada una empresa suspendida, cuando intenta renovar la sesión, entonces falla como un refresh token caducado; y cuando alguien intenta aceptar una invitación a ella, entonces recibe la misma respuesta que con un token inválido.
 - Dada la empresa reactivada, entonces el mismo miembro vuelve a operar con su sesión anterior si no había caducado, y los datos están **intactos**.
@@ -196,7 +196,7 @@ Operaciones tras esta spec: **35** (25 con permiso, 7 anónimas y 3 de plataform
 - **¿Requiere una ADR nueva?** Sí: **ADR-016 (Propuesto)**, redactada junto a esta spec. Recoge la identidad aparte, la sesión con clave propia, el alta fuera de la API, la suspensión como estado de la empresa y la auditoría persistente.
 - **Cambia ADR-009:** se amplía el catálogo de eventos de seguridad y se anota que existe una identidad con acceso global. Se anota al cerrar.
 - **Cambia la declaración de autorización (ADR-012):** a «permiso o anónima» se le suma «operador de plataforma». Se anota al cerrar.
-- **Cambia el contrato del login de empresa:** una empresa suspendida da **403** `tenancy.tenant_suspended` tras credenciales correctas. Hoy no hay frontend, así que no rompe a nadie; se anota en la colección `.http` y en el manual.
+- **Cambia el contrato del login de empresa:** una empresa suspendida da **403** `tenant.suspended` tras credenciales correctas. Hoy no hay frontend, así que no rompe a nadie; se anota en la colección `.http` y en el manual.
 - **Un detalle a resolver en el plan (bloque 4):** dónde vive el comando del servidor (un modo de arranque del propio host o un proyecto de consola aparte). Lo que la spec fija es el **comportamiento** (R2) y que no sea alcanzable por HTTP.
 
 ## Fuera de alcance / Backlog relacionado
