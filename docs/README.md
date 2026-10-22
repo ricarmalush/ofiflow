@@ -31,6 +31,7 @@
 | [013](./adr/ADR-013-gestion-de-usuarios.md) | Gestión de usuarios de una empresa (invitaciones, jerarquía de roles, revalidación por petición) | Aceptado |
 | [014](./adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) | Segundo factor (MFA) y bloqueo de cuenta | Aceptado |
 | [015](./adr/ADR-015-logs-a-fichero-con-serilog.md) | Logs a fichero con Serilog | Aceptado |
+| [016](./adr/ADR-016-panel-de-operador-de-la-plataforma.md) | Panel de operador de la plataforma (identidad aparte, sesión propia, suspensión de empresas) | Propuesto |
 | [017](./adr/ADR-017-cors-para-el-frontend-web.md) | CORS para el frontend web (lista cerrada de orígenes, en Program.cs) | Propuesto |
 
 ## Specs
@@ -47,6 +48,7 @@
 | [008-rbac-authorization](./specs/008-rbac-authorization/spec.md) | Autorización por rol: comprobar los permisos de cada operación (implementa ADR-012) | Implementada |
 | [009-user-management](./specs/009-user-management/spec.md) | Invitar y gestionar usuarios de una empresa: invitaciones, cambio de rol y baja con efecto inmediato (implementa ADR-013) | Implementada |
 | [010-mfa-and-account-lockout](./specs/010-mfa-and-account-lockout/spec.md) | Segundo factor (TOTP), login en dos pasos y bloqueo de cuenta por intentos (implementa ADR-014) | Implementada |
+| [011-platform-operator-panel](./specs/011-platform-operator-panel/spec.md) | Panel de operador de la plataforma: listar, suspender y reactivar empresas con una identidad aparte y segundo factor obligatorio (implementa ADR-016) | Aprobada |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 
