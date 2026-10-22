@@ -166,7 +166,7 @@ Tres detalles que importan:
 
 - **Va antes que la validación.** Un técnico que envía un título vacío recibe un 403, no un 400: no se le dice nada sobre si sus datos eran válidos.
 - **Es *fail-closed*.** Una operación que no declara su permiso se deniega, y un test de arquitectura impide que exista una sin declarar.
-- **Revalida la pertenencia en cada petición.** Si a alguien se le quita de la empresa o se le cambia el rol, la **siguiente** petición ya lo nota, aunque su token siga sin caducar: decide la base de datos, no el token. Una persona que ya no pertenece recibe un 403 y queda un evento `1302`.
+- **Revalida la pertenencia en cada petición.** Si a alguien se le quita de la empresa o se le cambia el rol, la **siguiente** petición ya lo nota, aunque su token siga sin caducar: decide la base de datos, no el token. Una persona que ya no pertenece recibe un 403 y queda un evento `1302`. Lo mismo vale si su **empresa se suspende** (spec 011): la siguiente petición recibe un 403 con el código `tenant.suspended` y queda un evento `1303`, sin tocar la pertenencia ni los datos; al reactivarla, el mismo token vuelve a servir.
 - **Depende solo del rol, no del recurso.** Un técnico que pide borrar un cliente de otra empresa y otro que pide borrar uno inexistente reciben el mismo 403: no se revela nada.
 
 Cada denegación queda en el registro de seguridad (evento `1301`) con quién, de qué empresa, con qué rol y qué operación; nunca con los datos de la petición.

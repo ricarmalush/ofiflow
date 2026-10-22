@@ -2,10 +2,13 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OfiFlow.Application.Common.Abstractions;
+using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Application.Common.Security;
 using OfiFlow.Application.Identity.Mfa;
+using OfiFlow.Application.Tenancy;
+using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
 
@@ -44,6 +47,14 @@ public sealed partial class VerifyMfaChallengeCommandHandler(
             return null;
         }
 
+        // La empresa se suspendió entre la contraseña y el código (spec 011 R15a). La persona ya probó quién es (contraseña y
+        // código), así que se le dice la verdad con su código; el login ya la habría parado en el primer paso si lo estuviera.
+        if (await dbContext.IsSuspendedAsync(tenantUser.TenantId, cancellationToken))
+        {
+            LogBlockedBySuspension(logger, redemption.UserId, tenantUser.TenantId);
+            throw new ForbiddenException(TenancyErrors.TenantSuspended);
+        }
+
         return await tokenService.IssueTokensAsync(redemption.UserId, tenantUser.TenantId, tenantUser.Role, cancellationToken);
     }
 
@@ -51,6 +62,10 @@ public sealed partial class VerifyMfaChallengeCommandHandler(
     [LoggerMessage(EventId = SecurityEventIds.MfaVerificationFailed, Level = LogLevel.Warning,
         Message = "Segundo paso del login rechazado. Motivo {Reason}")]
     private static partial void LogRejected(ILogger logger, string reason);
+
+    [LoggerMessage(EventId = SecurityEventIds.TenantSuspendedAccessDenied, Level = LogLevel.Warning,
+        Message = "Segundo paso del login denegado: la empresa está suspendida. UserId {UserId}, TenantId {TenantId}")]
+    private static partial void LogBlockedBySuspension(ILogger logger, Guid userId, Guid tenantId);
 
     [LoggerMessage(EventId = SecurityEventIds.LoginWithoutTenantMembership, Level = LogLevel.Warning,
         Message = "Segundo factor superado pero sin pertenencia a ningún tenant. UserId {UserId}")]

@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-016-panel-de-operador-de-la-plataforma.md](../../adr/ADR-016-panel-de-operador-de-la-plataforma.md)
-**Estado general:** Aprobada (2026-10-22); bloque 1 implementado y verificado (2026-10-23); siguiente: el bloque 2
+**Estado general:** Aprobada (2026-10-22); bloques 1 y 2 implementados y verificados (2026-10-23); siguiente: el bloque 3
 
 ---
 
@@ -38,14 +38,14 @@ Se empieza por lo que **ya se puede probar sin operador**: que la suspensión se
 - [x] [manual] Capítulo 3 (qué es ahora un `Tenant`) y capítulo 7 (nuevos códigos y nº de entradas del diccionario)
 
 ### Bloque 2 — La suspensión se hace cumplir a los miembros (≈ 6 h) — el bloque más delicado para las empresas
-- [ ] `ICurrentUser.VerifyMembershipAsync` incluye el estado de la empresa: una empresa suspendida **no** supera la comprobación (R15d); sigue siendo **una** consulta por petición
-- [ ] `LoginCommand`: tras credenciales correctas, una empresa suspendida da 403 `tenant.suspended` y **no cuenta como intento fallido**; decidir y documentar cómo se devuelve la reserva del intento (R15a) respecto al bloqueo de la spec 010
-- [ ] Refresh del token y aceptar una invitación: rechazan una empresa suspendida con las respuestas ya existentes (R15b, R15c); registrarse **no** se ve afectado (R16)
-- [ ] Evento `1303` (miembro denegado por empresa suspendida), solo Ids
-- [ ] Tests con dobles: cada rama; dos empresas (suspender A no toca B)
-- [ ] **Tests contra SQL Server real**: el miembro con un token válido recibe 403 en la **siguiente** petición tras suspender, y vuelve a operar tras reactivar con sus datos intactos
-- [ ] Mutaciones: `VerifyMembershipAsync` sin mirar la suspensión; el login que cuenta el intento; el refresh que ignora la suspensión; la invitación que entra; quitar el evento
-- [ ] [manual] Capítulo 5 (la empresa suspendida y la comprobación por petición) y capítulo 8 (evento `1303`)
+- [x] `ICurrentUser.VerifyMembershipAsync` incluye el estado de la empresa: una empresa suspendida **no** supera la comprobación (R15d); sigue siendo **una** consulta por petición **Hecho (2026-10-23):** la suspensión viaja en la MISMA consulta que la pertenencia (una subconsulta sobre la clave de la empresa); un test cuenta las consultas. `ICurrentUser` gana `TenantSuspended` para distinguir «ya no pertenece» de «empresa suspendida».
+- [x] `LoginCommand`: tras credenciales correctas, una empresa suspendida da 403 `tenant.suspended` y **no cuenta como intento fallido**; decidir y documentar cómo se devuelve la reserva del intento (R15a) respecto al bloqueo de la spec 010 **Decidido y hecho:** no hace falta «devolver» ningún intento, porque `AuthenticateAsync` ya dejó el contador como en cualquier acierto; la comprobación va justo después de autenticar y ANTES de crear el desafío. Probado con 7 intentos seguidos con la contraseña correcta (que, si contaran, habrían bloqueado la cuenta al quinto).
+- [x] Refresh del token y aceptar una invitación: rechazan una empresa suspendida con las respuestas ya existentes (R15b, R15c); registrarse **no** se ve afectado (R16) **Hecho:** el refresh no revoca el token (al reactivar vuelve a servir) y la invitación no se consume. También el canje del segundo factor.
+- [x] Evento `1303` (acceso denegado por empresa suspendida: petición, login y canje), solo Ids. Refresh e invitación dejan `1004` y `1403` con el motivo `TenantSuspended`.
+- [x] Tests con dobles: cada rama; dos empresas (suspender A no toca B) **Hecho:** +19 en Application (login, canje, invitación, comportamiento de autorización y el nuevo `TenantStatus`).
+- [x] **Tests contra SQL Server real**: el miembro con un token válido recibe 403 en la **siguiente** petición tras suspender, y vuelve a operar tras reactivar con sus datos intactos **Hecho:** +8 de extremo a extremo por HTTP con dos empresas y SQL Server real y +8 en Infrastructure (pertenencia, una sola consulta y refresh).
+- [x] Mutaciones: `VerifyMembershipAsync` sin mirar la suspensión; el login que cuenta el intento; el refresh que ignora la suspensión; la invitación que entra; quitar el evento **Hecho:** 14 mutaciones sobre el código real, todas detectadas; 3 repetidas ejecutando SOLO los tests de extremo a extremo, también detectadas; y una lectura de `Tenants` colada en el login, que detecta el test de la lista blanca (con su control positivo). El código quedó idéntico a la copia previa.
+- [x] [manual] Capítulo 5 (la empresa suspendida y la comprobación por petición) y capítulo 8 (evento `1303`) **Hecho**, y corregidas las referencias de línea del manual a `LoginCommandHandler`, `TokenService` y `VerifyMfaChallengeCommandHandler` (los capítulos 5, 6 y 8 las citaban por número).
 
 ### Bloque 3 — La identidad del operador (≈ 5 h)
 - [ ] Entidades `PlatformOperator` y `PlatformAuditEntry` con sus configuraciones (longitudes desde constantes, índice **único** por `UserId`, sin `RowVersion` en la auditoría), globales; **migración** `AddPlatformOperator` revisada a mano

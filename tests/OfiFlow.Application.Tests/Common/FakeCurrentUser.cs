@@ -8,13 +8,16 @@ namespace OfiFlow.Application.Tests.Common;
 /// en producción); <paramref name="tokenRole"/>, lo que diría el token, que puede ser otro. Si <paramref name="role"/> es
 /// nulo, la persona ya no pertenece a la empresa. Cuenta cuántas veces se verifica la pertenencia.
 /// </summary>
-public sealed class FakeCurrentUser(TenantRole? role, Guid? userId = null, Guid? tenantId = null, TenantRole? tokenRole = null) : ICurrentUser
+public sealed class FakeCurrentUser(TenantRole? role, Guid? userId = null, Guid? tenantId = null, TenantRole? tokenRole = null, bool tenantSuspended = false) : ICurrentUser
 {
     public Guid? UserId { get; } = userId;
 
     public Guid? TenantId { get; } = tenantId;
 
     public TenantRole? Role { get; } = role;
+
+    /// <summary>La empresa está suspendida: la persona sigue siendo miembro, pero no hay rol efectivo (spec 011 R15d).</summary>
+    public bool TenantSuspended { get; } = tenantSuspended;
 
     public TenantRole? TokenRole { get; } = tokenRole ?? role;
 

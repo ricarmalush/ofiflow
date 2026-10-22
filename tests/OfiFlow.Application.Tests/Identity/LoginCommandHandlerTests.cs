@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Security;
 using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.Login;
@@ -151,5 +153,80 @@ public class LoginCommandHandlerTests
         Assert.IsType<LoginResult.Rejected>(result);
         Assert.Empty(_mfa.CreatedChallenges);
         Assert.Equal(0, _tokens.IssuedSessions);
+    }
+
+    // ===== Empresa suspendida (spec 011 R15a) =====
+
+    private async Task SuspendTenantAsync(Guid tenantId)
+    {
+        var tenant = await _db.Tenants.SingleAsync(t => t.Id == tenantId);
+        tenant.Suspend(Start);
+        await _db.SaveChangesAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task AMemberOfASuspendedCompany_WithTheCorrectPassword_IsForbidden_AndNoSessionIsIssued()
+    {
+        var (_, tenantId) = await SeedAccountAsync();
+        await SuspendTenantAsync(tenantId);
+
+        var denied = await Assert.ThrowsAsync<ForbiddenException>(() => LoginAsync());
+
+        Assert.Equal(TenancyErrors.TenantSuspended, denied.Code);
+        Assert.Equal(0, _tokens.IssuedSessions);
+    }
+
+    [Fact]
+    public async Task AMemberOfASuspendedCompany_WithMfa_GetsNoChallenge()
+    {
+        // Sin sesión posible no hay segundo paso: se corta ANTES de crear el desafío, no después de gastarlo.
+        var (userId, tenantId) = await SeedAccountAsync();
+        _identity.AccountsWithSecondFactor.Add(userId);
+        await SuspendTenantAsync(tenantId);
+
+        var denied = await Assert.ThrowsAsync<ForbiddenException>(() => LoginAsync());
+
+        Assert.Equal(TenancyErrors.TenantSuspended, denied.Code);
+        Assert.Empty(_mfa.CreatedChallenges);
+        Assert.Equal(0, _tokens.IssuedSessions);
+    }
+
+    [Fact]
+    public async Task AMemberOfASuspendedCompany_WithAWrongPassword_GetsTheSameRejectionAsAnyone()
+    {
+        // Sin las credenciales correctas no se revela que la empresa existe ni que está suspendida.
+        var (_, tenantId) = await SeedAccountAsync();
+        await SuspendTenantAsync(tenantId);
+
+        var result = await LoginAsync(password: "incorrecta");
+
+        Assert.IsType<LoginResult.Rejected>(result);
+    }
+
+    [Fact]
+    public async Task SuspendingOneCompany_DoesNotStopTheMemberOfAnother()
+    {
+        var (_, suspendedTenant) = await SeedAccountAsync("a@example.com");
+        var (userOfB, tenantOfB) = await SeedAccountAsync("b@example.com");
+        await SuspendTenantAsync(suspendedTenant);
+
+        var result = await LoginAsync("b@example.com");
+
+        Assert.IsType<LoginResult.Authenticated>(result);
+        Assert.Equal([(userOfB, tenantOfB, TenantRole.Owner)], _tokens.Issued);
+    }
+
+    [Fact]
+    public async Task AfterReactivatingTheCompany_TheMemberLogsInAgain()
+    {
+        var (_, tenantId) = await SeedAccountAsync();
+        await SuspendTenantAsync(tenantId);
+        await Assert.ThrowsAsync<ForbiddenException>(() => LoginAsync());
+
+        var tenant = await _db.Tenants.SingleAsync();
+        tenant.Reactivate();
+        await _db.SaveChangesAsync(CancellationToken.None);
+
+        Assert.IsType<LoginResult.Authenticated>(await LoginAsync());
     }
 }

@@ -45,6 +45,14 @@ public sealed class AuthorizationBehavior<TRequest, TResponse>(ICurrentUser curr
         // Revalidación (R16): ¿sigue perteneciendo a la empresa? Si no, el token todavía válido ya no sirve de nada.
         if (!await currentUser.VerifyMembershipAsync(cancellationToken))
         {
+            // Sigue siendo miembro, pero su empresa está suspendida (spec 011 R15d): se distingue de «ya no pertenece» para
+            // dar el código correcto (la persona está autenticada: puede saberlo) y dejar el evento correcto.
+            if (currentUser.TenantSuspended)
+            {
+                AuthorizationLog.TenantSuspended(logger, Declared.Operation, currentUser.UserId, currentUser.TenantId);
+                throw new ForbiddenException(TenancyErrors.TenantSuspended);
+            }
+
             AuthorizationLog.MembershipRevoked(logger, Declared.Operation, currentUser.UserId, currentUser.TenantId);
             throw new ForbiddenException(TenancyErrors.Forbidden);
         }
@@ -105,6 +113,10 @@ internal static partial class AuthorizationLog
     [LoggerMessage(EventId = SecurityEventIds.AccessDenied, Level = LogLevel.Warning,
         Message = "Acceso denegado a {Operation} ({Reason}). UserId {UserId}, TenantId {TenantId}, rol {Role}")]
     public static partial void AccessDenied(ILogger logger, string operation, string reason, Guid? userId, Guid? tenantId, string? role);
+
+    [LoggerMessage(EventId = SecurityEventIds.TenantSuspendedAccessDenied, Level = LogLevel.Warning,
+        Message = "Acceso denegado a {Operation}: la empresa está suspendida. UserId {UserId}, TenantId {TenantId}")]
+    public static partial void TenantSuspended(ILogger logger, string operation, Guid? userId, Guid? tenantId);
 
     [LoggerMessage(EventId = SecurityEventIds.MembershipRevoked, Level = LogLevel.Warning,
         Message = "Token válido sin pertenencia a la empresa en {Operation}. UserId {UserId}, TenantId {TenantId}")]

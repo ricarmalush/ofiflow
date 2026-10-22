@@ -2,9 +2,12 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OfiFlow.Application.Common.Abstractions;
+using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Application.Common.Security;
+using OfiFlow.Application.Tenancy;
+using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Identity.Commands.Login;
 
@@ -42,6 +45,15 @@ public sealed partial class LoginCommandHandler(
             return new LoginResult.Rejected();
         }
 
+        // Empresa suspendida (spec 011 R15a): las credenciales eran correctas, así que la persona puede saberlo (403 con su
+        // código) y no se la confunde con quien falló la contraseña. NO cuenta como intento fallido: AuthenticateAsync ya
+        // dejó el contador como en cualquier acierto. Va ANTES de crear el desafío: sin sesión posible no hay segundo paso.
+        if (await dbContext.IsSuspendedAsync(tenantUser.TenantId, cancellationToken))
+        {
+            LogBlockedBySuspension(logger, userId, tenantUser.TenantId);
+            throw new ForbiddenException(TenancyErrors.TenantSuspended);
+        }
+
         if (authentication.SecondFactorRequired)
         {
             // La contraseña NO da sesión (spec 010 R10, R12): se entrega un desafío y nada más. Esta rama no llama
@@ -58,6 +70,10 @@ public sealed partial class LoginCommandHandler(
         return new LoginResult.Authenticated(
             await tokenService.IssueTokensAsync(userId, tenantUser.TenantId, tenantUser.Role, cancellationToken));
     }
+
+    [LoggerMessage(EventId = SecurityEventIds.TenantSuspendedAccessDenied, Level = LogLevel.Warning,
+        Message = "Login denegado: la empresa está suspendida. UserId {UserId}, TenantId {TenantId}")]
+    private static partial void LogBlockedBySuspension(ILogger logger, Guid userId, Guid tenantId);
 
     [LoggerMessage(EventId = SecurityEventIds.LoginWithoutTenantMembership, Level = LogLevel.Warning,
         Message = "Login con credenciales válidas pero sin pertenencia a ningún tenant. UserId {UserId}")]

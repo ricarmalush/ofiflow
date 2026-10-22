@@ -132,7 +132,9 @@ Dos decisiones de seguridad en este flujo:
 
 **El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:90` y `:109`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
-El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:34`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:37`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+
+**Una empresa suspendida no obtiene sesión** (spec 011). Tras la contraseña correcta, el login comprueba si la empresa de la persona está suspendida y, si lo está, responde **403** con `tenant.suspended` (con una contraseña errónea sigue siendo el 401 de siempre, sin revelar nada). Se hace **antes** de crear el desafío del segundo factor: sin sesión posible no hay segundo paso. No cuenta como intento fallido: se pueden hacer siete intentos seguidos y la cuenta no se bloquea por ello. El detalle de los cinco sitios que lo hacen cumplir está en el [capítulo 5](./05-multi-tenancy.md).
 
 ### El bloqueo de cuenta (spec 010)
 
@@ -250,7 +252,7 @@ Marta usa su token T1  → recibe T2        (T1 queda revocado)
 El ladrón usa T1       → T1 ya estaba revocado: ¡alguien lo está reutilizando!
 ```
 
-Un token revocado **no debería volver a aparecer** nunca, salvo que lo hayan copiado. Cuando el servidor lo detecta ([`TokenService.cs:46-63`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)):
+Un token revocado **no debería volver a aparecer** nunca, salvo que lo hayan copiado. Cuando el servidor lo detecta ([`TokenService.cs:47-64`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)):
 
 - **Revoca todos los refresh tokens activos de ese usuario**, incluido el T2 que tenía Marta. El ladrón se queda sin nada, y Marta también (tendrá que volver a iniciar sesión, que es lo seguro).
 - Registra el evento de seguridad `1003` (*reutilización de refresh token*) con el usuario y la empresa, sin el token.
@@ -435,8 +437,8 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
 | Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:78-79` | **Sin test propio** (ver "Controles sin test") |
-| **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
-| Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:133` | `RotateRefreshTokenAsync_WithValidToken_...` |
+| **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:47-64` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
+| Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:142` | `RotateRefreshTokenAsync_WithValidToken_...` |
 | Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `OpaqueToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | Usar dos veces la misma invitación | Un solo uso + versión de fila: gana una | `Invitation.cs`, `InvitationConfiguration.cs` | `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` |

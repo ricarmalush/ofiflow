@@ -224,4 +224,60 @@ public class AcceptInvitationCommandHandlerTests
         Assert.DoesNotContain("ana.secreta@example.com", entry.Message);
         Assert.DoesNotContain("Ana Pérez", entry.Message);
     }
+
+    // ===== Empresa suspendida (spec 011 R15c) =====
+
+    private async Task<(Invitation Invitation, string Token, Tenant Tenant)> SeedForSuspendedTenantAsync()
+    {
+        // La invitación se siembra contra una empresa REAL (con su fila) para que la suspensión pueda leerse.
+        var tenant = Tenant.Create("Fontanería Pérez");
+        tenant.Suspend(Now);
+        _db.Tenants.Add(tenant);
+
+        var (token, hash) = OpaqueToken.Generate();
+        var invitation = Invitation.Create(tenant.Id, Email.Create("Ana@Example.com"), TenantRole.Technician, hash, Guid.NewGuid(), Now);
+        _db.Invitations.Add(invitation);
+        await _db.SaveChangesAsync(CancellationToken.None);
+
+        return (invitation, token, tenant);
+    }
+
+    [Fact]
+    public async Task AnInvitationToASuspendedCompany_IsRejectedWithTheSameErrorAsAnInvalidToken_AndNothingIsCreated()
+    {
+        var (_, token, _) = await SeedForSuspendedTenantAsync();
+
+        var exception = await Assert.ThrowsAsync<DomainException>(() => AcceptAsync(token));
+
+        Assert.Equal(InvitationErrors.Invalid, exception.Code); // el mismo que un token desconocido o caducado
+        Assert.Empty(await _db.Users.ToListAsync());
+        Assert.Empty(await _db.TenantUsers.ToListAsync());
+        Assert.False(await _identity.IsEmailRegisteredAsync("Ana@Example.com", CancellationToken.None)); // no se creó la cuenta
+    }
+
+    [Fact]
+    public async Task AnInvitationToASuspendedCompany_IsNotConsumed_AndTheRealReasonOnlyGoesToTheLog()
+    {
+        var (invitation, token, tenant) = await SeedForSuspendedTenantAsync();
+
+        await Assert.ThrowsAsync<DomainException>(() => AcceptAsync(token));
+
+        Assert.Null((await _db.Invitations.SingleAsync(i => i.Id == invitation.Id)).AcceptedAt); // sigue pendiente
+        var entry = Assert.Single(_logger.Entries, e => e.EventId.Id == SecurityEventIds.InvitationRejected);
+        Assert.Contains("TenantSuspended", entry.Message);
+        Assert.Contains(tenant.Id.ToString(), entry.Message);
+    }
+
+    [Fact]
+    public async Task OnceTheCompanyIsReactivated_ThePendingInvitationCanBeAccepted()
+    {
+        var (_, token, tenant) = await SeedForSuspendedTenantAsync();
+        await Assert.ThrowsAsync<DomainException>(() => AcceptAsync(token));
+
+        tenant.Reactivate();
+        await _db.SaveChangesAsync(CancellationToken.None);
+        await AcceptAsync(token);
+
+        Assert.Equal(tenant.Id, (await _db.TenantUsers.SingleAsync()).TenantId);
+    }
 }

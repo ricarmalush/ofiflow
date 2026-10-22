@@ -139,4 +139,72 @@ public class TokenServiceTests
         Assert.Contains(userId.ToString(), entry.Message);
         Assert.DoesNotContain(issued.RefreshToken, entry.Message);
     }
+
+    // ===== Empresa suspendida (spec 011 R15b) =====
+
+    /// <summary>Una empresa real (con su fila, para que la suspensión pueda leerse) y un miembro suyo con sesión emitida.</summary>
+    private static async Task<(Tenant Tenant, Guid UserId, string RefreshToken)> SeedSessionAsync(
+        ApplicationDbContext db, TokenService service, bool suspended)
+    {
+        var tenant = Tenant.Create("Fontanería Pérez");
+        if (suspended)
+        {
+            tenant.Suspend(new DateTime(2026, 10, 22, 10, 0, 0, DateTimeKind.Utc));
+        }
+
+        var userId = Guid.NewGuid();
+        db.Tenants.Add(tenant);
+        db.TenantUsers.Add(TenantUser.CreateOwner(tenant.Id, userId));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        var issued = await service.IssueTokensAsync(userId, tenant.Id, TenantRole.Owner, CancellationToken.None);
+
+        return (tenant, userId, issued.RefreshToken);
+    }
+
+    [Fact]
+    public async Task Rotate_OfASuspendedCompany_ReturnsNull_ButDoesNotRevokeNorDeleteTheToken()
+    {
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        session.Tenant.Suspend(new DateTime(2026, 10, 22, 10, 0, 0, DateTimeKind.Utc));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        var rotated = await service.RotateRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.Null(rotated);
+        var stored = await db.RefreshTokens.SingleAsync();
+        Assert.Null(stored.RevokedAt); // no se revoca: mientras dura la suspensión no sirve, y al reactivar vuelve a servir
+        var entry = Assert.Single(logger.Entries, e => e.EventId.Id == SecurityEventIds.RefreshTokenRejected);
+        Assert.Contains("TenantSuspended", entry.Message);
+        Assert.Contains(session.UserId.ToString(), entry.Message);
+        Assert.DoesNotContain(session.RefreshToken, entry.Message);
+    }
+
+    [Fact]
+    public async Task Rotate_AfterTheCompanyIsReactivated_WorksWithTheSameToken()
+    {
+        var (db, service) = CreateSut();
+        var session = await SeedSessionAsync(db, service, suspended: true);
+        Assert.Null(await service.RotateRefreshTokenAsync(session.RefreshToken, CancellationToken.None)); // control: suspendida, no sirve
+
+        session.Tenant.Reactivate();
+        await db.SaveChangesAsync(CancellationToken.None);
+        var rotated = await service.RotateRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.NotNull(rotated);
+    }
+
+    [Fact]
+    public async Task Rotate_OfAnActiveCompany_IsNotAffectedByAnotherCompanyBeingSuspended()
+    {
+        var (db, service) = CreateSut();
+        await SeedSessionAsync(db, service, suspended: true);
+        var active = await SeedSessionAsync(db, service, suspended: false);
+
+        var rotated = await service.RotateRefreshTokenAsync(active.RefreshToken, CancellationToken.None);
+
+        Assert.NotNull(rotated);
+    }
 }

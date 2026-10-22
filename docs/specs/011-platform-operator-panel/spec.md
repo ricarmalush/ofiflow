@@ -155,7 +155,7 @@ Operaciones tras esta spec: **35** (25 con permiso, 7 anónimas y 3 de plataform
 
 **Efecto en los miembros (caso multi-tenant obligatorio)**
 - Dada una empresa suspendida, cuando uno de sus miembros hace login con credenciales correctas, entonces **403** con `tenant.suspended` y **no suma un intento fallido**; con credenciales incorrectas, el 401 de siempre.
-- Dada una empresa suspendida, cuando un miembro con un token todavía válido hace **cualquier** petición, entonces 403 en esa petición y queda el evento `1303`.
+- Dada una empresa suspendida, cuando un miembro con un token todavía válido hace **cualquier** petición, entonces **403 con el código `tenant.suspended`** en esa petición y queda el evento `1303`.
 - Dada una empresa suspendida, cuando intenta renovar la sesión, entonces falla como un refresh token caducado; y cuando alguien intenta aceptar una invitación a ella, entonces recibe la misma respuesta que con un token inválido.
 - Dada la empresa reactivada, entonces el mismo miembro vuelve a operar con su sesión anterior si no había caducado, y los datos están **intactos**.
 - Dadas **dos empresas A y B**, cuando se suspende A, entonces **B no se ve afectada en nada** (login, peticiones, invitaciones).
@@ -177,7 +177,7 @@ Operaciones tras esta spec: **35** (25 con permiso, 7 anónimas y 3 de plataform
 - **SQL crudo:** ninguno previsto. El recuento por empresa se hace con LINQ.
 - **Abuso:** el login y el canje de plataforma son anónimos y cuestan CPU y base de datos: **5 y 10 por minuto y por IP**. Las operaciones autenticadas, **30 por minuto y por IP**. **Riesgo aceptado:** el bloqueo permite a quien conozca el email del operador bloquearlo 15 minutos (D8).
 - **Eventos de seguridad (nuevos, sin datos personales)** — nueve, con lo que el catálogo pasa de 23 a 32:
-  - `1303` miembro con token válido denegado por **empresa suspendida** (UserId y TenantId)
+  - `1303` acceso denegado por **empresa suspendida**: una petición con un token todavía válido, el login o el canje del segundo factor (con la operación, `UserId` y `TenantId`). Renovar la sesión y aceptar una invitación **no** usan el `1303`: dejan sus eventos de siempre (`1004` y `1403`) con el motivo `TenantSuspended`
   - `1601` sesión de operador emitida · `1602` login de plataforma rechazado (**motivo real**: no es operador, dado de baja, sin MFA, desafío inválido…)
   - `1603` empresas listadas (operador, página y número de resultados) · `1604` empresa suspendida · `1605` empresa reactivada (operador y empresa, solo Ids)
   - `1606` operador creado · `1607` operador dado de baja

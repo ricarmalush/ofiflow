@@ -47,6 +47,14 @@ public sealed partial class AcceptInvitationCommandHandler(
             throw new DomainException(InvitationErrors.Invalid);
         }
 
+        // Una empresa suspendida no recibe gente nueva (spec 011 R15c). El MISMO error que con un token que no sirve: quien
+        // lo intenta no aprende que la empresa existe ni que está suspendida; el motivo real solo va al log.
+        if (await dbContext.IsSuspendedAsync(invitation.TenantId, cancellationToken))
+        {
+            LogRejected(logger, "TenantSuspended", invitation.Id, invitation.TenantId);
+            throw new DomainException(InvitationErrors.Invalid);
+        }
+
         var userId = Guid.NewGuid();
 
         // El email lo fijó quien invitó: aquí no se puede elegir otro (R4). Si entre tanto se registró alguien con ese

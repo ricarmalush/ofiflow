@@ -35,6 +35,13 @@ public static class SecurityEventIds
     /// </summary>
     public const int MembershipRevoked = 1302;
 
+    /// <summary>
+    /// Alguien de una empresa <b>suspendida</b> intentó entrar, canjear el segundo factor o seguir usando una sesión todavía
+    /// válida (spec 011 R15, ADR-016). Lleva la operación y los Ids, nunca datos personales. Una ráfaga sobre la misma empresa
+    /// es normal (su equipo reintentando); lo que merece mirarse es una suspensión que no esperaba nadie.
+    /// </summary>
+    public const int TenantSuspendedAccessDenied = 1303;
+
     // 1400-1499: usuarios e invitaciones (spec 009). Ninguno registra emails ni tokens: solo Ids, rol y motivo.
 
     /// <summary>Alguien de la empresa creó una invitación.</summary>

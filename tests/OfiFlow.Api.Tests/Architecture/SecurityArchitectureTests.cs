@@ -43,7 +43,10 @@ public class SecurityArchitectureTests
             "src/OfiFlow.Application/Tenancy/Queries/GetUsers/GetUsersQueryHandler.cs",
             "src/OfiFlow.Application/Tenancy/Commands/RemoveUser/RemoveUserCommandHandler.cs"
         ],
-        ["Tenants"] = [],
+        // el estado de suspensión de la empresa (spec 011): UNA sola lectura, reutilizada por el login, el canje del segundo
+        // factor, el refresh, aceptar una invitación y la comprobación de pertenencia de cada petición. Un sitio nuevo que
+        // necesite saber si una empresa está suspendida llama a TenantStatus; no lee la tabla por su cuenta.
+        ["Tenants"] = ["src/OfiFlow.Application/Tenancy/TenantStatus.cs"],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
         ["ApplicationUsers"] = [
             "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
@@ -97,6 +100,14 @@ public class SecurityArchitectureTests
         Assert.True(offenders.Count == 0,
             $"'{api}' ejecuta SQL fuera de LINQ y solo está permitido en {RawSqlAllowedFile} (ADR-014: la reserva atómica del " +
             $"intento). Un uso nuevo hay que justificarlo y añadirlo aquí a propósito. Aparece en: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void TheTenantsAllowList_StillCorrespondsToARealRead()
+    {
+        // Control positivo de la lista blanca de «Tenants» (spec 011): si TenantStatus dejara de leer esa tabla (o se moviera),
+        // el test de las lecturas globales pasaría en vacío para ella. Este avisa de que la lista ya no corresponde a nada.
+        Assert.Contains("src/OfiFlow.Application/Tenancy/TenantStatus.cs", SourceCode.FilesContaining("dbContext.Tenants"));
     }
 
     [Fact]
