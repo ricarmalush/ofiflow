@@ -32,8 +32,9 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next, IHostEnviron
             headers.XFrameOptions = "DENY";
             headers["Referrer-Policy"] = "no-referrer";
             headers.ContentSecurityPolicy = isSwaggerUi ? SwaggerUiContentSecurityPolicy : StrictContentSecurityPolicy;
-            // Ningún frontend consume esta API todavía (sin CORS configurado): el valor más
-            // restrictivo. Hallazgo real del primer escaneo DAST (ADR-010), no una suposición.
+            // El valor más restrictivo. Hallazgo real del primer escaneo DAST (ADR-010), no una suposición.
+            // No estorba al frontend: esta cabecera solo afecta a las cargas que no son CORS (una imagen, un script);
+            // las peticiones fetch con CORS (ADR-017) se autorizan con Access-Control-Allow-Origin, no con esta.
             headers["Cross-Origin-Resource-Policy"] = "same-origin";
             return Task.CompletedTask;
         });

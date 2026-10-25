@@ -61,7 +61,7 @@ public class UnhandledExceptionTests : IClassFixture<UnhandledExceptionTests.Thr
         }
     }
 
-    private sealed class ThrowingSender : ISender
+    internal sealed class ThrowingSender : ISender
     {
         public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(InternalDetail);

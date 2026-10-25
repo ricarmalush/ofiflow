@@ -31,6 +31,7 @@
 | [013](./adr/ADR-013-gestion-de-usuarios.md) | Gestión de usuarios de una empresa (invitaciones, jerarquía de roles, revalidación por petición) | Aceptado |
 | [014](./adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) | Segundo factor (MFA) y bloqueo de cuenta | Aceptado |
 | [015](./adr/ADR-015-logs-a-fichero-con-serilog.md) | Logs a fichero con Serilog | Aceptado |
+| [017](./adr/ADR-017-cors-para-el-frontend-web.md) | CORS para el frontend web (lista cerrada de orígenes, en Program.cs) | Propuesto |
 
 ## Specs
 
