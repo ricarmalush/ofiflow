@@ -61,7 +61,7 @@ public sealed partial class LoginCommandHandler(
             var (challenge, challengeHash) = OpaqueToken.Generate();
             var expiresAt = timeProvider.GetUtcNow().UtcDateTime + AuthenticationPolicy.ChallengeLifetime;
 
-            await mfaService.CreateChallengeAsync(userId, challengeHash, expiresAt, cancellationToken);
+            await mfaService.CreateChallengeAsync(userId, challengeHash, expiresAt, ChallengeAudience.Tenant, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             return new LoginResult.SecondFactorRequired(new MfaChallengeDto(challenge, expiresAt));

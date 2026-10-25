@@ -554,7 +554,7 @@ public partial class MfaServiceTests(SqlServerContainerFixture fixture) : IClass
 
         await using (var seed = Open())
         {
-            seed.MfaChallenges.Add(MfaChallenge.Create(ana, Guid.NewGuid().ToString("N"), Start.AddMinutes(5)));
+            seed.MfaChallenges.Add(MfaChallenge.Create(ana, Guid.NewGuid().ToString("N"), Start.AddMinutes(5), ChallengeAudience.Tenant));
             await seed.SaveChangesAsync(CancellationToken.None);
         }
 

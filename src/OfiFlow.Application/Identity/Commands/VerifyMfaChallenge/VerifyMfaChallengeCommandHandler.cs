@@ -29,7 +29,7 @@ public sealed partial class VerifyMfaChallengeCommandHandler(
             return null;
         }
 
-        var redemption = await mfaService.RedeemChallengeAsync(OpaqueToken.Hash(request.Challenge), request.Code, cancellationToken);
+        var redemption = await mfaService.RedeemChallengeAsync(OpaqueToken.Hash(request.Challenge), request.Code, ChallengeAudience.Tenant, cancellationToken);
         if (!redemption.Succeeded)
         {
             return null;

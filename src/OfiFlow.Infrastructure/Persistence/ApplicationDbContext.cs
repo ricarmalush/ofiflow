@@ -44,6 +44,37 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     internal DbSet<MfaChallenge> MfaChallenges => Set<MfaChallenge>();
 
+    /// <summary>
+    /// Los operadores de la plataforma y su auditoría (spec 011, ADR-016): globales, no de una empresa, y solo los toca
+    /// Infrastructure (<see cref="PlatformOperators"/> y <see cref="PlatformAudit"/>).
+    /// </summary>
+    internal DbSet<PlatformOperator> PlatformOperators => Set<PlatformOperator>();
+
+    internal DbSet<PlatformAuditEntry> PlatformAuditEntries => Set<PlatformAuditEntry>();
+
+    // La auditoría de plataforma es de SOLO inserción (spec 011 R17): una auditoría que se puede reescribir no prueba nada.
+    // Se comprueba aquí, en el propio contexto, y no en un interceptor registrado aparte, para que valga con CUALQUIER forma
+    // de construirlo (la API, los tests, una herramienta): no hay un camino que se la salte por olvidar registrar algo.
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureThePlatformAuditIsAppendOnly();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        EnsureThePlatformAuditIsAppendOnly();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void EnsureThePlatformAuditIsAppendOnly()
+    {
+        if (ChangeTracker.Entries<PlatformAuditEntry>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            throw new InvalidOperationException("La auditoría de plataforma es de solo inserción: no se modifica ni se borra (spec 011 R17).");
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);

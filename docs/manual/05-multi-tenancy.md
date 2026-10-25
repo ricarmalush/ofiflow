@@ -162,7 +162,7 @@ No depende de la memoria del autor: un test lo vigila (ver más abajo).
 
 ## La excepción: `IgnoreQueryFilters()`
 
-A veces hay que saltarse el filtro **a propósito**. EF Core ofrece `IgnoreQueryFilters()`, que desactiva el filtro en una consulta concreta. Hoy se usa en **solo cuatro sitios**, todos con motivo:
+A veces hay que saltarse el filtro **a propósito**. EF Core ofrece `IgnoreQueryFilters()`, que desactiva el filtro en una consulta concreta. Hoy se usa en **solo cinco sitios**, todos con motivo:
 
 | Dónde | Por qué es necesario |
 |---|---|
@@ -170,6 +170,7 @@ A veces hay que saltarse el filtro **a propósito**. EF Core ofrece `IgnoreQuery
 | [`TokenService.cs:73-75`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) | Al renovar la sesión, relee el rol del usuario **en su empresa** (el rol puede haber cambiado) |
 | [`AcceptInvitationCommandHandler.cs:30`](../../src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs) | Quien acepta una invitación **todavía no tiene cuenta ni empresa activa**: la invitación se busca por el hash de su token (único y de 256 bits), sin saber de qué empresa es. Es un caso gemelo del login |
 | [`VerifyMfaChallengeCommandHandler.cs:41`](../../src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs) | Canjear el desafío del login en dos pasos es **anónimo** y aún no hay empresa activa: la pertenencia se busca por la cuenta del desafío para emitir la sesión de **esa** empresa (spec 010) |
+| [`PlatformOperators.cs:21-23`](../../src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs) | Al dar de alta a un operador de la plataforma (spec 011) hay que saber si la cuenta tiene **alguna pertenencia a alguna empresa**, y el operador no tiene empresa activa. Solo comprueba si existe una fila (`AnyAsync`), no la lee |
 
 Es la forma **deliberada** de saltarse el filtro (más abajo verás otra, accidental, que hoy no está vigilada), y por eso esta sí lo está. El test [`IgnoreQueryFilters_IsOnlyUsedInTheAllowList`](../../tests/OfiFlow.Api.Tests/Architecture/SecurityArchitectureTests.cs) escanea el código fuente y falla si `IgnoreQueryFilters(` aparece en cualquier fichero que no esté en una **lista blanca** de esos tres. Para añadir un tercer uso hay que modificar la lista a propósito y justificarlo, es decir, tomar la decisión de forma consciente.
 

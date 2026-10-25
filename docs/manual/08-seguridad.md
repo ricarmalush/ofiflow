@@ -362,6 +362,8 @@ Estos tests no prueban una funcionalidad, sino que **la estructura del código r
 | `SourceCode_DoesNotUseRawSqlApis` | Nada de SQL escrito a mano |
 | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` | Solo dos ficheros pueden saltarse el filtro de empresa, por ruta completa |
 | `GlobalEntities_AreOnlyReadInTheAllowList` | Las tablas sin filtro de empresa solo se leen donde está permitido |
+| `TenantMemberships_AreOnlyCreatedForBrandNewAccounts` | Solo el registro y aceptar una invitación crean una pertenencia, y siempre para una cuenta nueva (un operador de la plataforma nunca es miembro de una empresa) |
+| `TheTenantsAllowList_StillCorrespondsToARealRead` | Control positivo de la lista blanca de `Tenants`: avisa si deja de corresponder a un código real |
 | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` | Ninguna operación recibe el `TenantId` del cliente |
 | `EveryMappedEntity_IsTenantOwnedOrDeclaredGlobal` | Toda entidad es de una empresa (con filtro) o está declarada global |
 | `EveryOperationOfTheApplication_DeclaresItsAuthorization` | Toda operación declara su permiso (o que es anónima) |

@@ -1,3 +1,4 @@
+using OfiFlow.Application.Common.Abstractions;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -54,7 +55,7 @@ public class MfaPersistenceTests(SqlServerContainerFixture fixture) : IClassFixt
         await using (var db = Open())
         {
             db.RecoveryCodes.Add(RecoveryCode.Create(userId, codeHash));
-            db.MfaChallenges.Add(MfaChallenge.Create(userId, tokenHash, Now.AddMinutes(5)));
+            db.MfaChallenges.Add(MfaChallenge.Create(userId, tokenHash, Now.AddMinutes(5), ChallengeAudience.Tenant));
             await db.SaveChangesAsync(CancellationToken.None);
         }
 
@@ -135,12 +136,12 @@ public class MfaPersistenceTests(SqlServerContainerFixture fixture) : IClassFixt
         var hash = UniqueHash();
         await using (var db = Open())
         {
-            db.MfaChallenges.Add(MfaChallenge.Create(Guid.NewGuid(), hash, Now.AddMinutes(5)));
+            db.MfaChallenges.Add(MfaChallenge.Create(Guid.NewGuid(), hash, Now.AddMinutes(5), ChallengeAudience.Tenant));
             await db.SaveChangesAsync(CancellationToken.None);
         }
 
         await using var second = Open();
-        second.MfaChallenges.Add(MfaChallenge.Create(Guid.NewGuid(), hash, Now.AddMinutes(5)));
+        second.MfaChallenges.Add(MfaChallenge.Create(Guid.NewGuid(), hash, Now.AddMinutes(5), ChallengeAudience.Tenant));
 
         await Assert.ThrowsAsync<DbUpdateException>(() => second.SaveChangesAsync(CancellationToken.None));
     }
@@ -198,7 +199,7 @@ public class MfaPersistenceTests(SqlServerContainerFixture fixture) : IClassFixt
         var hash = UniqueHash();
         await using (var seed = Open())
         {
-            seed.MfaChallenges.Add(MfaChallenge.Create(Guid.NewGuid(), hash, Now.AddMinutes(5)));
+            seed.MfaChallenges.Add(MfaChallenge.Create(Guid.NewGuid(), hash, Now.AddMinutes(5), ChallengeAudience.Tenant));
             await seed.SaveChangesAsync(CancellationToken.None);
         }
 
@@ -251,7 +252,7 @@ public class MfaPersistenceTests(SqlServerContainerFixture fixture) : IClassFixt
 
         db.MfaCredentials.Add(MfaCredential.CreatePending(id, "cifrado"));
         db.RecoveryCodes.AddRange(Enumerable.Range(0, 3).Select(_ => RecoveryCode.Create(id, UniqueHash())));
-        db.MfaChallenges.Add(MfaChallenge.Create(id, UniqueHash(), Now.AddMinutes(5)));
+        db.MfaChallenges.Add(MfaChallenge.Create(id, UniqueHash(), Now.AddMinutes(5), ChallengeAudience.Tenant));
         await db.SaveChangesAsync(CancellationToken.None);
 
         return id;

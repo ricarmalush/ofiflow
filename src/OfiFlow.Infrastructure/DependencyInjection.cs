@@ -35,6 +35,8 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IMfaService, MfaService>();
+        services.AddScoped<IPlatformOperators, PlatformOperators>();
+        services.AddScoped<IPlatformAudit, PlatformAudit>();
         services.AddScoped<ITokenService, TokenService>();
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));

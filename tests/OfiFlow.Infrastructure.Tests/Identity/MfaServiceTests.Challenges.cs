@@ -16,21 +16,21 @@ namespace OfiFlow.Infrastructure.Tests.Identity;
 /// </summary>
 public partial class MfaServiceTests
 {
-    private async Task<string> NewChallengeAsync(Guid userId, FakeTimeProvider clock)
+    private async Task<string> NewChallengeAsync(Guid userId, FakeTimeProvider clock, ChallengeAudience audience = ChallengeAudience.Tenant)
     {
         var (value, hash) = OpaqueToken.Generate();
 
         await using var db = Open();
-        await Service(db, clock).CreateChallengeAsync(userId, hash, clock.GetUtcNow().UtcDateTime + AuthenticationPolicy.ChallengeLifetime, CancellationToken.None);
+        await Service(db, clock).CreateChallengeAsync(userId, hash, clock.GetUtcNow().UtcDateTime + AuthenticationPolicy.ChallengeLifetime, audience, CancellationToken.None);
         await db.SaveChangesAsync(CancellationToken.None);
 
         return value;
     }
 
-    private async Task<ChallengeRedemption> RedeemAsync(string challenge, string code, FakeTimeProvider clock, ListLogger<MfaService>? logger = null)
+    private async Task<ChallengeRedemption> RedeemAsync(string challenge, string code, FakeTimeProvider clock, ListLogger<MfaService>? logger = null, ChallengeAudience audience = ChallengeAudience.Tenant)
     {
         await using var db = Open();
-        return await Service(db, clock, logger).RedeemChallengeAsync(OpaqueToken.Hash(challenge), code, CancellationToken.None);
+        return await Service(db, clock, logger).RedeemChallengeAsync(OpaqueToken.Hash(challenge), code, audience, CancellationToken.None);
     }
 
     private async Task<(int Failed, DateTimeOffset? LockedUntil)> AccountStateAsync(Guid id)
@@ -346,5 +346,101 @@ public partial class MfaServiceTests
             Assert.DoesNotContain(wrong, entry.Message);
             Assert.DoesNotContain(codes[0].Code, entry.Message);
         });
+    }
+
+    // ===== Un desafío no cruza de un mundo a otro (spec 011 R9) =====
+
+    [Fact]
+    public async Task ATenantChallenge_RedeemedAsPlatform_IsRejected_EvenWithAValidCode()
+    {
+        var clock = new FakeTimeProvider(Start);
+        var (id, secret, _) = await SeedEnabledAsync(clock);
+        var challenge = await NewChallengeAsync(id, clock, ChallengeAudience.Tenant);
+
+        var result = await RedeemAsync(challenge, CodeFor(secret, clock), clock, audience: ChallengeAudience.Platform);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task APlatformChallenge_RedeemedAsTenant_IsRejected_EvenWithAValidCode()
+    {
+        var clock = new FakeTimeProvider(Start);
+        var (id, secret, _) = await SeedEnabledAsync(clock);
+        var challenge = await NewChallengeAsync(id, clock, ChallengeAudience.Platform);
+
+        var result = await RedeemAsync(challenge, CodeFor(secret, clock), clock, audience: ChallengeAudience.Tenant);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task APlatformChallenge_RedeemedAsPlatform_Succeeds()
+    {
+        // Control positivo: sin él, los dos tests de arriba pasarían aunque los desafíos de plataforma no se pudieran canjear nunca.
+        var clock = new FakeTimeProvider(Start);
+        var (id, secret, _) = await SeedEnabledAsync(clock);
+        var challenge = await NewChallengeAsync(id, clock, ChallengeAudience.Platform);
+
+        var result = await RedeemAsync(challenge, CodeFor(secret, clock), clock, audience: ChallengeAudience.Platform);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(id, result.UserId);
+    }
+
+    [Fact]
+    public async Task ARedemptionInTheWrongWorld_SpendsNothing_NeitherAnAttemptNorTheCode()
+    {
+        // Se trata como un desafío desconocido, ANTES de comprobar el código: no cuenta contra la cuenta (si contara, cualquiera
+        // podría bloquear una cuenta ajena con desafíos del otro mundo) y no gasta el código, que sigue valiendo en el suyo.
+        var clock = new FakeTimeProvider(Start);
+        var (id, secret, _) = await SeedEnabledAsync(clock);
+        var challenge = await NewChallengeAsync(id, clock, ChallengeAudience.Tenant);
+        var code = CodeFor(secret, clock);
+
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            Assert.False((await RedeemAsync(challenge, code, clock, audience: ChallengeAudience.Platform)).Succeeded);
+        }
+
+        var (failed, lockedUntil) = await AccountStateAsync(id);
+        Assert.Equal(0, failed); // ningún intento gastado, y por tanto ni un bloqueo
+        Assert.Null(lockedUntil);
+        await using (var read = Open())
+        {
+            Assert.Equal(0, (await read.MfaChallenges.AsNoTracking().SingleAsync(c => c.UserId == id)).FailedAttempts); // ni el desafío
+        }
+
+        // El código nunca llegó a comprobarse, así que sigue valiendo en su mundo.
+        Assert.True((await RedeemAsync(challenge, code, clock, audience: ChallengeAudience.Tenant)).Succeeded);
+    }
+
+    [Fact]
+    public async Task ARedemptionInTheWrongWorld_LogsTheRealReason_WithoutTheChallengeOrTheCode()
+    {
+        var clock = new FakeTimeProvider(Start);
+        var logger = new ListLogger<MfaService>();
+        var (id, secret, _) = await SeedEnabledAsync(clock);
+        var challenge = await NewChallengeAsync(id, clock, ChallengeAudience.Tenant);
+        var code = CodeFor(secret, clock);
+
+        await RedeemAsync(challenge, code, clock, logger, ChallengeAudience.Platform);
+
+        var entry = Assert.Single(logger.Entries, e => e.Message.Contains("ChallengeWrongAudience"));
+        Assert.Contains(id.ToString(), entry.Message);
+        Assert.DoesNotContain(challenge, entry.Message);
+        Assert.DoesNotContain(code, entry.Message);
+    }
+
+    [Fact]
+    public async Task TheAudience_IsStoredWithTheChallenge()
+    {
+        var clock = new FakeTimeProvider(Start);
+        var (id, _, _) = await SeedEnabledAsync(clock);
+
+        await NewChallengeAsync(id, clock, ChallengeAudience.Platform);
+
+        await using var read = Open();
+        Assert.Equal(ChallengeAudience.Platform, (await read.MfaChallenges.AsNoTracking().SingleAsync(c => c.UserId == id)).Audience);
     }
 }

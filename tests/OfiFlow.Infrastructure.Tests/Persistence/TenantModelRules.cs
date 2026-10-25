@@ -30,7 +30,9 @@ internal static class TenantModelRules
         [typeof(RefreshToken)] = "guarda el TenantId de la sesión, pero solo se busca por el hash del token (ADR-007)",
         [typeof(MfaCredential)] = "el secreto TOTP de una cuenta, no de una empresa (ADR-014)",
         [typeof(RecoveryCode)] = "código de recuperación de una cuenta, no de una empresa (ADR-014)",
-        [typeof(MfaChallenge)] = "desafío del login en dos pasos: se canjea sin empresa activa, buscándolo por el hash de su valor (ADR-014)"
+        [typeof(MfaChallenge)] = "desafío del login en dos pasos: se canjea sin empresa activa, buscándolo por el hash de su valor (ADR-014)",
+        [typeof(PlatformOperator)] = "una cuenta con acceso a los metadatos de TODAS las empresas, no de una (spec 011, ADR-016)",
+        [typeof(PlatformAuditEntry)] = "lo que hizo un operador de la plataforma; guarda el Id de la empresa afectada, pero quien la lee es el operador (spec 011, ADR-016)"
     };
 
     /// <summary>R1: toda entidad mapeada es de una empresa o está declarada como global.</summary>

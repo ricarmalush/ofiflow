@@ -12,6 +12,9 @@ public sealed class MfaChallengeConfiguration : IEntityTypeConfiguration<MfaChal
 
         builder.Property(c => c.TokenHash).HasMaxLength(MfaChallenge.TokenHashMaxLength).IsRequired();
 
+        // «Tenant» o «Platform» como texto, como los demás enumerados. La longitud cubre cualquier valor futuro razonable.
+        builder.Property(c => c.Audience).HasConversion<string>().HasMaxLength(16).IsRequired();
+
         // Único: el desafío se busca por el hash de su valor (el valor en claro no se guarda).
         builder.HasIndex(c => c.TokenHash).IsUnique();
 

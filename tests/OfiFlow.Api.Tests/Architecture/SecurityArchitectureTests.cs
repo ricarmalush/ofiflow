@@ -22,7 +22,9 @@ public class SecurityArchitectureTests
         // canjear el desafío del login en dos pasos: la petición es anónima y aún no hay empresa activa; la pertenencia se busca por la cuenta del desafío (ADR-014)
         "src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs",
         // el refresh relee el rol del usuario en su tenant
-        "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
+        "src/OfiFlow.Infrastructure/Identity/TokenService.cs",
+        // dar de alta a un operador de la plataforma (spec 011 R1): hay que saber si la cuenta tiene ALGUNA pertenencia, en cualquier empresa, y no hay empresa activa; solo mira si existe una fila (AnyAsync), no la lee
+        "src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs"
     ];
 
     /// <summary>
@@ -65,7 +67,11 @@ public class SecurityArchitectureTests
         ["RecoveryCodes"] = [MfaServiceFile, MfaStoreFile],
         ["MfaChallenges"] = [MfaServiceFile, MfaStoreFile],
         // se buscan por el hash del token, que es secreto y único
-        ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"]
+        ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"],
+        // los operadores de la plataforma (spec 011): se consulta siempre por el Id de la cuenta ("¿es operador activo?", alta y baja), nunca por listado
+        ["PlatformOperators"] = ["src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs"],
+        // la auditoría de plataforma es de solo inserción (.Add se admite en cualquier sitio) y hoy NADIE la lee desde la aplicación: una lectura nueva tiene que añadirse aquí a propósito
+        ["PlatformAuditEntries"] = []
     };
 
     [Theory]
@@ -100,6 +106,34 @@ public class SecurityArchitectureTests
         Assert.True(offenders.Count == 0,
             $"'{api}' ejecuta SQL fuera de LINQ y solo está permitido en {RawSqlAllowedFile} (ADR-014: la reserva atómica del " +
             $"intento). Un uso nuevo hay que justificarlo y añadirlo aquí a propósito. Aparece en: {string.Join(", ", offenders)}");
+    }
+
+    /// <summary>
+    /// Los ÚNICOS sitios que crean una pertenencia a una empresa (<c>TenantUser</c>), y los dos con una cuenta <b>recién
+    /// creada</b> (un <c>Guid.NewGuid()</c> justo antes de crear las credenciales). Es el lado contrario de la regla R1 de la
+    /// spec 011: un operador de la plataforma nunca es miembro de una empresa. Se cumple porque ninguna ruta añade una
+    /// pertenencia a una cuenta que ya existe; si alguna lo hiciera (una cuenta con dos empresas, un «invitar a quien ya
+    /// tiene cuenta»), un operador podría acabar siendo miembro. Un sitio nuevo exige repensar R1 y añadirlo aquí a propósito.
+    /// </summary>
+    private static readonly string[] TenantMembershipCreators =
+    [
+        "src/OfiFlow.Application/Identity/Commands/Register/RegisterCommandHandler.cs",
+        "src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs"
+    ];
+
+    [Fact]
+    public void TenantMemberships_AreOnlyCreatedForBrandNewAccounts()
+    {
+        var creators = SourceCode.FilesContaining("TenantUser.Create");
+
+        var offenders = creators.Where(path => !TenantMembershipCreators.Contains(path)).ToList();
+        Assert.True(offenders.Count == 0,
+            "Solo el registro y aceptar una invitación pueden crear una pertenencia, y siempre para una cuenta recién creada " +
+            $"(spec 011 R1: un operador nunca es miembro de una empresa). Aparece en: {string.Join(", ", offenders)}");
+
+        // Control positivo: los dos sitios permitidos siguen creando pertenencias. Si uno dejara de hacerlo, la lista estaría
+        // describiendo un código que ya no existe.
+        Assert.All(TenantMembershipCreators, path => Assert.Contains(path, creators));
     }
 
     [Fact]

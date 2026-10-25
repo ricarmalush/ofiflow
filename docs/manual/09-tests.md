@@ -27,10 +27,10 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 206 | ~0,1 s | No |
 | `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 464 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 231 | ~12 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 340 | ~15 s | **Sí**, en parte |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 253 | ~12 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 363 | ~15 s | **Sí**, en parte |
 
-En total, **1241 casos**. Un "caso" no es lo mismo que un método de test: hay unos 725 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **1286 casos**. Un "caso" no es lo mismo que un método de test: hay unos 760 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -205,11 +205,22 @@ Y `MfaPersistenceTests`, para el **almacén del segundo factor** (spec 010, bloq
 
 Aparte, sin base de datos, `SecretProtectorTests` prueba el cifrado como lo que es: una función que debe **negarse**. Cualquier byte cambiado (nonce, etiqueta o texto), otra clave, otra cuenta o una versión desconocida acaban en `CryptographicException`, nunca en datos corruptos; y `MfaOptionsTests` junto con `MfaStartupTests` comprueban que la API entera **no arranca** sin la clave o con una de tamaño incorrecto (en entorno de producción, para que los user-secrets de la máquina no tapen el fallo).
 
+Y los de la **spec 011** (el panel del operador de la plataforma, bloques 1 a 3), de riesgo alto porque una cuenta con acceso a todas las empresas es lo más delicado del sistema:
+
+- **La suspensión de una empresa, en Domain y Application.** `Tenant.Suspend` y `Reactivate` rechazan suspender dos veces o reactivar a quien no está suspendido. `TenantStatusTests` comprueba la lectura en sí (suspendida, activa, inexistente, reactivada y la consulta componible). Que la suspensión se lea **en un solo sitio** (`TenantStatus`) lo fija el test de arquitectura de la lista blanca de lecturas de `Tenants`, y los cinco puntos que la aplican (cada petición, login, canje del segundo factor, renovación y aceptar invitación) se prueban de punta a punta en el siguiente punto.
+- **La suspensión de punta a punta** (`TenantSuspensionEndToEndTests`, API con SQL Server real): una petición con un token aún válido recibe 403 `tenant.suspended` incluso del `Owner`; el login con la contraseña buena también, **antes** de crear el desafío del segundo factor y sin contar como intento fallido (siete seguidos no bloquean la cuenta); con la contraseña mala, el 401 de siempre, para que nadie sepa que la empresa existe sin credenciales; la renovación no revoca el token (vuelve a servir al reactivar) y la invitación no se consume.
+- **El operador, con SQL Server real** (`PlatformOperatorPersistenceTests`): una cuenta no puede tener dos filas de operador (la clave primaria es la propia cuenta); una cuenta con pertenencia a una empresa **no** puede ser operador (regla R1); un operador dado de baja no se reactiva por la puerta de atrás; la fila de **auditoría** se puede insertar pero no modificar ni borrar desde la aplicación; y la auditoría y la acción **confirman juntas o no confirman**.
+- **Que el desafío no cruce de mundo** (`MfaServiceTests`): un desafío del segundo factor creado para una empresa no se canjea como sesión de plataforma, ni al revés (R9).
+- **Arquitectura.** Una entidad global sin clasificar rompe el test centinela; las dos tablas nuevas solo se leen desde sus ficheros; y `TenantMemberships_AreOnlyCreatedForBrandNewAccounts` fija que solo el registro y aceptar una invitación crean una pertenencia, que es lo que hace cierta la regla R1.
+- **Mutaciones.** 17 en el bloque 2 y 15 en el 3 (alta sin comprobar la pertenencia, la baja que no mira si sigue activo, la auditoría que deja de ser de solo inserción, la audiencia ignorada, lecturas colgadas de otro fichero, una entidad sin clasificar, el modelo cambiado sin migración y la clave primaria quitada de la migración). Todas detectadas. Una salió «no cambió nada» la primera vez por un fallo del propio script de mutaciones, no del código: por eso el script comprueba siempre que la mutación cambió el fichero.
+
 ## Parte 4 — Api: tres clases de test en un mismo proyecto
 
 `OfiFlow.Api.Tests` arranca la **API entera en memoria** (con `WebApplicationFactory`) y le hace peticiones HTTP reales. Dentro hay tres familias:
 
 **1. Contrato HTTP, sin base de datos** (`OfiFlowApiFactory`). Comprueban cabeceras de seguridad, formato de errores, límite de peticiones, idioma o la pantalla de Swagger (`SwaggerUiTests`: solo existe en `Development`, su CSP relajada no se escapa a otras rutas y en `Production` ni existe). No necesitan SQL Server porque no llegan a la base de datos.
+
+**Y el CORS** (`CorsTests`, ADR-017), en esta misma familia pero **arrancando en Production** para que no entre el origen de desarrollo: hacen lo que hace un navegador, con la petición previa `OPTIONS` y la real con `Origin`. Comprueban que el origen permitido puede leer y uno ajeno no, que nunca se pide `AllowCredentials`, que un verbo o una cabecera que la API no usa no se autorizan, que un `429` y un `500` conservan las cabeceras CORS (el manejador de excepciones borra las de la respuesta), y que un origen mal escrito (`*`, con barra final, `http` fuera de `localhost`, con usuario en la URL) **impide arrancar la API**, con un control positivo para los válidos. Su primera ejecución cazó un hueco real (el origen con usuario se aceptaba) y dos suposiciones erróneas sobre cómo responde ASP.NET (la cabecera `Vary` y qué devuelve una petición previa no permitida): cuando el test falla, a veces el que estaba equivocado es el test, y hay que comprobar cuál antes de tocar.
 
 **2. Extremo a extremo, con SQL Server real** (`SqlServerApiFactory` con `TwoTenantsFixture` o `RolesFixture`). Registran empresas y usuarios **por HTTP**, hacen login de verdad y comprueban el comportamiento completo: aislamiento entre dos empresas (`TenantIsolationEndToEndTests`) y la matriz de permisos con un usuario de cada rol (`RbacEndToEndTests`), incluido lo que ocurre con un token todavía válido cuando se quita o se degrada al miembro en la base de datos (se deniega o cambia de poderes en la siguiente petición). Dos cosas curiosas:
 
@@ -272,7 +283,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **1241 casos son unos 725 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **1286 casos son unos 760 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 
@@ -352,6 +363,8 @@ Esta lista es la mejor lección del capítulo, porque son fallos que **nos pasar
 **7. La imagen de SQL Server está escrita en dos ficheros** (con un comentario cruzado), y Dependabot no la vigila: si hay que cambiar de versión, hay que acordarse de las dos.
 
 **8. No hay tests del frontend** (todavía no existe).
+
+**9. Un fallo intermitente sin explicar.** Una sola vez, en una suite completa, falló `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` (dos aceptaciones simultáneas del mismo token en Infrastructure). No se pudo reproducir: pasó 12 veces sola, 4 veces con el proyecto entero, en una segunda suite completa y en 380 iteraciones del mismo escenario bajo carga, con diagnóstico de la excepción. El código está pensado para esa carrera y el mismo escenario por HTTP (`UserManagementAcceptanceTests`) no ha fallado nunca. La hipótesis más probable es saturación puntual de Docker justo después de muchas ejecuciones seguidas, pero **es una hipótesis**: si vuelve a salir, hay que guardar la salida íntegra antes de relanzar, porque el mensaje de la excepción es lo único que distingue un test frágil de una carrera real.
 
 ## Para comprobar que lo has entendido
 

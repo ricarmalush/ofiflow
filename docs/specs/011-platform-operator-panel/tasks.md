@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-016-panel-de-operador-de-la-plataforma.md](../../adr/ADR-016-panel-de-operador-de-la-plataforma.md)
-**Estado general:** Aprobada (2026-10-22); bloques 1 y 2 implementados y verificados (2026-10-23); siguiente: el bloque 3
+**Estado general:** Aprobada (2026-10-22); bloques 1 y 2 implementados y verificados (2026-10-23); bloque 3 implementado y verificado (2026-10-25), pendiente de commit
 
 ---
 
@@ -48,14 +48,15 @@ Se empieza por lo que **ya se puede probar sin operador**: que la suspensión se
 - [x] [manual] Capítulo 5 (la empresa suspendida y la comprobación por petición) y capítulo 8 (evento `1303`) **Hecho**, y corregidas las referencias de línea del manual a `LoginCommandHandler`, `TokenService` y `VerifyMfaChallengeCommandHandler` (los capítulos 5, 6 y 8 las citaban por número).
 
 ### Bloque 3 — La identidad del operador (≈ 5 h)
-- [ ] Entidades `PlatformOperator` y `PlatformAuditEntry` con sus configuraciones (longitudes desde constantes, índice **único** por `UserId`, sin `RowVersion` en la auditoría), globales; **migración** `AddPlatformOperator` revisada a mano
-- [ ] Clasificación del modelo de la spec 007: las dos entidades como **globales** con su motivo en `TenantModelRules.GlobalEntities` (el test centinela lo exige)
-- [ ] `MfaChallenge.Audience` (`tenant` | `platform`) en la misma migración, con valor `tenant` para las filas existentes; el canje de empresa solo acepta `tenant` (R9)
-- [ ] `IPlatformOperators` (¿es operador activo?, alta, baja) y `IPlatformAudit` (escribe la fila **sin confirmarla**: la confirma el handler en su único `SaveChanges`)
-- [ ] Invariante R1: una cuenta con `TenantUser` no puede ser operador y un operador no puede tener `TenantUser`; test contra SQL Server real
-- [ ] Tests de integración: índice único; la fila de auditoría no se puede modificar desde la aplicación; migración coherente con el modelo
-- [ ] Mutaciones: quitar el índice único (también en la propia migración); el canje de empresa que acepta un desafío de plataforma; el alta sin comprobar la pertenencia
-- [ ] [manual] Capítulo 6 (qué es un operador y por qué no es un rol) y capítulo 5 (las dos entidades globales nuevas)
+> **Estado (2026-10-25): implementado y verificado.** Código y tests en verde; 15 mutaciones sobre el código real, todas detectadas (las 13 del script `mutate3.sh`, el modelo cambiado sin migración y la clave primaria quitada de la propia migración); suite completa 1286 casos en verde (Domain 206, Application 464, Infrastructure 253, Api 363). En la primera suite completa falló una vez, de forma intermitente y sin explicar, `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount`; no se reprodujo en 380 iteraciones bajo carga (ver capítulo 9, límite 9). **Pendiente:** el commit.
+- [x] Entidades `PlatformOperator` y `PlatformAuditEntry` con sus configuraciones (longitudes desde constantes, índice **único** por `UserId`, sin `RowVersion` en la auditoría), globales; **migración** `AddPlatformOperator` revisada a mano
+- [x] Clasificación del modelo de la spec 007: las dos entidades como **globales** con su motivo en `TenantModelRules.GlobalEntities` (el test centinela lo exige)
+- [x] `MfaChallenge.Audience` (`tenant` | `platform`) en la misma migración, con valor `tenant` para las filas existentes; el canje de empresa solo acepta `tenant` (R9)
+- [x] `IPlatformOperators` (¿es operador activo?, alta, baja) y `IPlatformAudit` (escribe la fila **sin confirmarla**: la confirma el handler en su único `SaveChanges`)
+- [x] Invariante R1: una cuenta con `TenantUser` no puede ser operador y un operador no puede tener `TenantUser`; test contra SQL Server real
+- [x] Tests de integración: índice único; la fila de auditoría no se puede modificar desde la aplicación; migración coherente con el modelo
+- [x] Mutaciones: quitar el índice único (también en la propia migración); el canje de empresa que acepta un desafío de plataforma; el alta sin comprobar la pertenencia **Hecho:** 15 mutaciones, todas detectadas. La del índice único es la clave primaria (la unicidad es la clave): quitarla de la migración la detectan `TheOperatorKey_IsUniquePerAccount_InTheDatabase` y otro test de atomicidad de la auditoría. Código idéntico a la copia previa tras cada una.
+- [x] [manual] Capítulo 6 (qué es un operador y por qué no es un rol) y capítulo 5 (las dos entidades globales nuevas)
 
 ### Bloque 4 — Alta y baja del operador, fuera de la API (≈ 5 h)
 - [ ] **Decidir y documentar dónde vive el comando del servidor** (modo de arranque del propio host o proyecto de consola aparte) y cómo se lee la contraseña (por consola, sin eco, nunca por argumento)

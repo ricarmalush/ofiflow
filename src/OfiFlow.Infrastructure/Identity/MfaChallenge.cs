@@ -1,3 +1,5 @@
+using OfiFlow.Application.Common.Abstractions;
+
 namespace OfiFlow.Infrastructure.Identity;
 
 /// <summary>
@@ -15,6 +17,9 @@ public sealed class MfaChallenge
 
     public string TokenHash { get; private set; } = string.Empty;
 
+    /// <summary>En qué mundo vale (spec 011 R9): un desafío de empresa solo se canjea por una sesión de empresa, y uno de plataforma, por una de plataforma.</summary>
+    public ChallengeAudience Audience { get; private set; }
+
     public DateTime ExpiresAt { get; private set; }
 
     /// <summary>Códigos erróneos recibidos con este desafío; al llegar al tope muere (R11).</summary>
@@ -28,11 +33,11 @@ public sealed class MfaChallenge
         // Requerido por EF Core.
     }
 
-    public static MfaChallenge Create(Guid userId, string tokenHash, DateTime expiresAt)
+    public static MfaChallenge Create(Guid userId, string tokenHash, DateTime expiresAt, ChallengeAudience audience)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(tokenHash.Length, TokenHashMaxLength);
 
-        return new MfaChallenge { Id = Guid.NewGuid(), UserId = userId, TokenHash = tokenHash, ExpiresAt = expiresAt };
+        return new MfaChallenge { Id = Guid.NewGuid(), UserId = userId, TokenHash = tokenHash, ExpiresAt = expiresAt, Audience = audience };
     }
 }
