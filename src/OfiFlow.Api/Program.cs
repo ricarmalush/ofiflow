@@ -30,6 +30,40 @@ try
     builder.Services.AddAuthRateLimiting();
     builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
 
+    // ADR-017: CORS. El navegador solo deja que una web de otro origen (el frontend) lea las respuestas de la API si la
+    // propia API lo autoriza. La autorización es una lista cerrada de orígenes en la configuración ("Cors:AllowedOrigins");
+    // sin lista, nadie queda autorizado. Sin comodines ni credenciales de navegador: la sesión viaja en la cabecera
+    // Authorization, que una web ajena no puede añadir por su cuenta.
+    const string corsOriginsKey = "Cors:AllowedOrigins";
+    var allowedOrigins = builder.Configuration.GetSection(corsOriginsKey).Get<string[]>() ?? [];
+
+    foreach (var origin in allowedOrigins)
+    {
+        // Falla al arrancar, como una clave que falta (ADR-009 R8): un origen mal escrito no debe degradar la protección
+        // en silencio. Debe ser lo que envía el navegador en la cabecera Origin (esquema, host y puerto, sin barra final
+        // ni ruta), con https salvo en localhost.
+        var isValidOrigin = Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
+                            && originUri.GetLeftPart(UriPartial.Authority) == origin
+                            && string.IsNullOrEmpty(originUri.UserInfo)
+                            && (originUri.Scheme == Uri.UriSchemeHttps || (originUri.Scheme == Uri.UriSchemeHttp && originUri.IsLoopback));
+
+        if (!isValidOrigin)
+        {
+            throw new InvalidOperationException(
+                $"'{corsOriginsKey}' contiene un origen no válido: '{origin}'. Debe ser esquema, host y puerto sin barra final " +
+                "(por ejemplo 'https://app.ejemplo.com'), con https salvo en localhost, y sin comodines.");
+        }
+    }
+
+    builder.Services.AddCors(options => options.AddPolicy("frontend", policy => policy
+        .WithOrigins(allowedOrigins)
+        // Solo los verbos que usa la API y las cabeceras que el cliente envía de verdad (sesión, cuerpo JSON, idioma).
+        .WithMethods(HttpMethods.Get, HttpMethods.Post, HttpMethods.Put, HttpMethods.Delete)
+        .WithHeaders("Authorization", "Content-Type", "Accept-Language")
+        // Sin esto el navegador esconde Retry-After al JavaScript y el cliente no sabría cuánto esperar tras un 429.
+        .WithExposedHeaders("Retry-After")
+        .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
+
     var app = builder.Build();
 
     if (app.Environment.IsDevelopment())
@@ -51,6 +85,10 @@ try
     }
 
     app.UseHttpsRedirection();
+
+    // CORS antes del rate limiting y de la autenticación: la petición previa (OPTIONS) la responde él mismo sin pasar
+    // por ellas, y un 429 también lleva las cabeceras, porque si no el navegador se lo escondería al frontend.
+    app.UseCors("frontend");
 
     app.UseMiddleware<RequestLogScopeMiddleware>();
     app.UseRateLimiter();

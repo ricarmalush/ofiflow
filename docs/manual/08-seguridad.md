@@ -95,14 +95,41 @@ Una **aclaración honesta**: OfiFlow hoy es una API que solo devuelve JSON, sin 
 Tres detalles de diseño:
 
 - Se registran con **`OnStarting`** (línea 28): "justo antes de enviar la respuesta, añade esto". Es necesario porque, cuando ocurre un error, el manejador de excepciones **borra** las cabeceras para escribir la respuesta de error; con `OnStarting` se añaden después de eso, y los errores también salen protegidos. Lo comprueba un test sobre una respuesta 401.
-- El middleware es **el primero** del pipeline ([`Program.cs:33`](../../src/OfiFlow.Api/Program.cs)), para cubrir también lo que falle más adentro.
-- No hay `CORS` configurado: ningún frontend consume la API todavía.
+- El middleware es **el primero** del pipeline ([`Program.cs:78`](../../src/OfiFlow.Api/Program.cs)), para cubrir también lo que falle más adentro.
+- El CORS (qué webs de otro origen pueden leer las respuestas) se explica en la sección siguiente.
 
 **Una excepción, y por qué.** La pantalla de Swagger (capítulo 1) es HTML con scripts y estilos, y la CSP estricta (`default-src 'none'`) la dejaba **en blanco**: el navegador se negaba a cargar sus propios ficheros. Para poder usarla, el middleware aplica una CSP más laxa (`default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'`) **solo si se cumplen las dos cosas a la vez**: el entorno es `Development` y la ruta empieza por `/swagger`. Cualquier otra ruta, y todo `Production`, conserva la estricta; `X-Frame-Options: DENY` y `frame-ancestors 'none'` siguen impidiendo que nadie la meta en un `iframe`. Es un **cambio consciente de una regla** que este capítulo daba por absoluta ("lo más restrictivo posible"), y por eso tiene sus propios tests ([`SwaggerUiTests`](../../tests/OfiFlow.Api.Tests/Security/SwaggerUiTests.cs)): que la relajada no se escape a otras rutas (ni a `/swaggerfoo`, que empieza igual), que en `Production` ni exista y que la política laxa nunca incluya `unsafe-eval`, comodines ni orígenes externos. Se comprobó rompiéndolos a propósito: relajarla en todas las rutas, fuera de `Development` o con `unsafe-eval` pone tests en rojo.
 
+### CORS: quién puede leer las respuestas (ADR-017)
+
+**El problema.** Un navegador aplica la regla del *mismo origen*: una página de `https://app.ejemplo.com` no puede leer las respuestas de `https://api.ejemplo.com`, porque son orígenes distintos (cambia el host, el puerto o el esquema). Sin esa regla, cualquier web que visitases podría usar tu navegador, donde estás identificado, para leer datos de otro sitio. **CORS** (*Cross-Origin Resource Sharing*) es la forma en que la API le dice al navegador "a esta web sí la dejo leer".
+
+**Cómo funciona.** Para peticiones que pueden tener efectos (las que llevan `Authorization` o cuerpo JSON), el navegador antes pregunta con una petición `OPTIONS` (la *preflight*): "¿puede `https://app.ejemplo.com` hacer un `POST` con estas cabeceras?". La API contesta con `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` y `Access-Control-Allow-Headers`. Si no coinciden, el navegador **no envía la petición real**. Lo importante: es el *navegador* quien hace cumplir esto. Quien llama con `curl` o desde un servidor lo ignora. CORS no protege la API: protege **al usuario**.
+
+**Qué se configuró** ([`Program.cs:33-64`](../../src/OfiFlow.Api/Program.cs) y `:91`):
+
+| Decisión | Por qué |
+|---|---|
+| **Lista cerrada** de orígenes en la configuración (`Cors:AllowedOrigins`); sin lista, nadie | El valor por defecto es el seguro. Nunca `AllowAnyOrigin` (`*`) |
+| Solo `GET`, `POST`, `PUT` y `DELETE` | Los verbos que usa la API. Nada de `AllowAnyMethod` |
+| Solo `Authorization`, `Content-Type` y `Accept-Language` | Lo que el cliente envía de verdad. Nada de `AllowAnyHeader` |
+| **Sin credenciales de navegador** (`AllowCredentials`) | La sesión viaja en la cabecera `Authorization`, que una web ajena no puede añadir; permitir cookies abriría un riesgo que hoy no existe |
+| Expone `Retry-After` | Sin esto el navegador se lo esconde al JavaScript y el frontend no sabría cuánto esperar tras un `429` |
+| El *preflight* se cachea 10 minutos | Menos peticiones `OPTIONS`, sin dejar una autorización vieja durante horas |
+
+**Un origen mal escrito impide arrancar la API**, igual que una clave que falta. Debe ser exactamente lo que envía el navegador (esquema, host y puerto, sin barra final ni ruta), con `https` salvo en `localhost`. Rechaza `*`, `https://app.ejemplo.com/`, `http://app.ejemplo.com` y `https://usuario@app.ejemplo.com`. Esta última se aceptaba en el primer borrador: la pillaron los tests.
+
+**Dónde va en el pipeline.** `UseCors` está **antes** del rate limiter y de la autenticación (paso 4 a 6 del capítulo 4): la petición `OPTIONS` no lleva token y debe contestarse sin pasar por ellos, y un `429` también debe llevar las cabeceras CORS; si no, el navegador lo convertiría en un error de red sin código ni `Retry-After`. Lo mismo para un `500`. Los dos casos tienen test.
+
+**En desarrollo** se permite `http://localhost:4200` (el puerto por defecto de Angular) en `appsettings.Development.json`. **En producción** la lista no está en el repositorio: se pasa por configuración de entorno (`Cors__AllowedOrigins__0=https://...`).
+
+**Cómo se comprueba.** [`CorsTests`](../../tests/OfiFlow.Api.Tests/Security/CorsTests.cs) hace lo que hace un navegador (la petición previa y la real con `Origin`) y comprueba: el origen permitido puede leer, uno ajeno no, no se piden credenciales, no se autoriza un verbo ni una cabecera que la API no usa, los `429` y `500` llevan las cabeceras, y los orígenes mal escritos impiden el arranque. Se comprobó rompiéndolo a propósito 12 veces (comodín, credenciales, cualquier verbo o cabecera, quitar `UseCors`, ponerlo después del rate limiter, `http` fuera de `localhost`, no validar el origen...) y los tests fallaron en todas.
+
+**Un detalle que desconcierta.** La cabecera `Cross-Origin-Resource-Policy: same-origin` (más arriba) **no choca** con CORS: solo afecta a cargas que no son CORS (una imagen o un script de otra web). Las peticiones `fetch` de un frontend se autorizan con `Access-Control-Allow-Origin`.
+
 ### HTTPS y HSTS
 
-La petición debe viajar cifrada. `UseHttpsRedirection` (línea 42) redirige de HTTP a HTTPS. Y **HSTS** (*HTTP Strict Transport Security*) añade una cabecera que le dice al navegador "durante un año (365 días), contacta conmigo **siempre** por HTTPS, aunque te digan lo contrario". Frena los ataques que intentan degradar la conexión a HTTP. Solo se activa **fuera de desarrollo** (líneas 37-40), porque en tu máquina no hay certificado de producción.
+La petición debe viajar cifrada. `UseHttpsRedirection` (línea 87) redirige de HTTP a HTTPS. Y **HSTS** (*HTTP Strict Transport Security*) añade una cabecera que le dice al navegador "durante un año (365 días), contacta conmigo **siempre** por HTTPS, aunque te digan lo contrario". Frena los ataques que intentan degradar la conexión a HTTP. Solo se activa **fuera de desarrollo** (líneas 37-40), porque en tu máquina no hay certificado de producción.
 
 ### El límite de peticiones
 
@@ -401,7 +428,8 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Una operación sin permiso declarado | *Fail-closed* y test de arquitectura | `AuthorizationBehavior.cs` | `EveryOperationOfTheApplication_DeclaresItsAuthorization` |
 | **E** · El cliente fija su empresa o su rol | Ningún comando acepta `TenantId` | Los `*Command.cs` | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` |
 | **E** · Inyección SQL | EF Core parametrizado y SQL a mano prohibido, salvo una sentencia parametrizada en `AccountLockout.cs` | `Directory.Build.props:17`, `AccountLockout.cs` | `SourceCode_DoesNotUseRawSqlApis`, `ParameterizedRawSql_IsOnlyUsedInTheLockout` |
-| Bajar la conexión a HTTP | HTTPS y HSTS (365 días) | `Program.cs:37-42` | **Sin test propio** |
+| Bajar la conexión a HTTP | HTTPS y HSTS (365 días) | `Program.cs:82-87` | **Sin test propio** |
+| **I** · Otra web lee, desde el navegador de un usuario, las respuestas de la API | CORS: lista cerrada de orígenes, sin comodín ni credenciales de navegador | `Program.cs:33-64`, `:91` | `CorsTests` |
 | Dependencia con vulnerabilidad conocida | NuGetAudit como error y Dependabot | `Directory.Build.props`, `dependabot.yml` | El propio build y el pipeline |
 | Vulnerabilidad en el código | Analizadores de seguridad como error y CodeQL | `.editorconfig`, `codeql.yml` | El propio build y el pipeline |
 | Vulnerabilidad en la API en ejecución | Escaneo ZAP en cada cambio | `dast.yml` | El propio job `zap-scan` |
@@ -435,7 +463,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Abuso y red**
 7. **El límite de peticiones solo cubre `auth`.** Clientes y trabajos no tienen límite: alguien con un token válido puede crear datos sin freno.
 8. **Los límites viven en memoria y por IP.** Se reinician al desplegar, no se comparten entre instancias, y detrás de un proxy inverso todos los clientes compartirían la IP del proxy hasta que se configure `UseForwardedHeaders`.
-9. **No hay `CORS` configurado**: se hará cuando exista el frontend.
+9. **El `CORS` depende de que la lista de orígenes de producción esté bien puesta.** En el repositorio solo está el origen de desarrollo; si falta el de producción, el frontend no podrá leer la API (falla cerrado, que es lo seguro), y si se pone uno de más, esa web podrá leer las respuestas de sus usuarios. Además, CORS solo frena a los navegadores: no limita a quien llama sin navegador.
 
 **Observabilidad**
 10. **Hay registro, pero no vigilancia**: nadie recibe alertas, ni hay un registro de auditoría persistente.
