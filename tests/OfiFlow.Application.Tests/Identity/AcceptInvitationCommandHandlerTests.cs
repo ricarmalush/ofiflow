@@ -178,6 +178,28 @@ public class AcceptInvitationCommandHandlerTests
     // ===== Dos aceptaciones simultáneas (R8) =====
 
     [Fact]
+    public async Task IfAnotherRequestConsumedTheInvitationBeforeTheAccountWasCreated_TheLoserGetsTheInvalidCode_NotEmailAlreadyRegistered()
+    {
+        // La carrera tal como ocurre de verdad (la vio el CI): las dos leen la invitación como pendiente, la primera confirma
+        // (cuenta y token consumido) y la segunda intenta crear la cuenta con el MISMO email, que ya existe. No es «alguien se
+        // registró con ese email»: es que el token ya no sirve, y recibe lo mismo que cualquier token que no sirve (R7).
+        var (invitation, token) = await SeedAsync("Ana@Example.com");
+        _identity.AddExistingAccount("Ana@Example.com");
+        _identity.BeforeCreate = async () =>
+        {
+            await using var winner = TestDbContextFactory.CreateSharing(_db);
+            (await winner.Invitations.SingleAsync(i => i.Id == invitation.Id)).Accept(Now);
+            await winner.SaveChangesAsync(CancellationToken.None);
+        };
+
+        var exception = await Assert.ThrowsAsync<DomainException>(() => AcceptAsync(token));
+
+        Assert.Equal(InvitationErrors.Invalid, exception.Code);
+        Assert.Contains("Concurrent", Assert.Single(_logger.Entries, e => e.EventId.Id == SecurityEventIds.InvitationRejected).Message);
+        Assert.DoesNotContain(_logger.Entries, e => e.EventId.Id == SecurityEventIds.InvitationAccepted);
+    }
+
+    [Fact]
     public async Task IfTheDatabaseDetectsAConcurrentAcceptance_TheLoserGetsTheSameInvalidCode()
     {
         var (_, token) = await SeedAsync();

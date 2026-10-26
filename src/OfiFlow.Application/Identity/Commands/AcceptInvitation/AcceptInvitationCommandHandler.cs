@@ -62,6 +62,22 @@ public sealed partial class AcceptInvitationCommandHandler(
         var identityResult = await identityService.CreateUserAsync(userId, invitation.Email.Value, request.Password, cancellationToken);
         if (!identityResult.Succeeded)
         {
+            // Dos aceptaciones simultáneas del mismo token: las dos leyeron la invitación como pendiente, la primera confirmó
+            // (cuenta y token consumido) y esta intenta crear una cuenta con el mismo email, que ya existe. Eso NO es «alguien
+            // se registró con ese email»: es que el token ya no sirve, y recibe la misma respuesta que cualquier token que no
+            // sirve (R7). Se distingue volviendo a leer el estado ACTUAL de la invitación (sin seguimiento: el que ya se cargó
+            // sigue diciendo «pendiente»). Si sigue pendiente, sí fue otro registro con ese email y la invitación no se consume.
+            var current = await dbContext.Invitations
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == invitation.Id, cancellationToken);
+
+            if (current is null || current.StatusAt(now) != InvitationStatus.Pending)
+            {
+                LogRejected(logger, "Concurrent", invitation.Id, invitation.TenantId);
+                throw new DomainException(InvitationErrors.Invalid);
+            }
+
             LogRejected(logger, "EmailAlreadyRegistered", invitation.Id, invitation.TenantId);
             throw new IdentityOperationException(identityResult.Errors);
         }

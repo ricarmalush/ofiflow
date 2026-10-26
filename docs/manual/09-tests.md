@@ -26,11 +26,11 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 206 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 558 | ~1 s | No |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 559 | ~1 s | No |
 | `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 309 | ~55 s | **Sí**, en parte |
 | `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 448 | ~2 min | **Sí**, en parte |
 
-En total, **1521 casos**. Un "caso" no es lo mismo que un método de test: hay unos 950 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
+En total, **1522 casos**. Un "caso" no es lo mismo que un método de test: hay unos 950 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 65 veces).
 
 ---
 
@@ -289,7 +289,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **1521 casos son unos 950 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **1522 casos son unos 950 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 50 celdas y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 
@@ -370,7 +370,7 @@ Esta lista es la mejor lección del capítulo, porque son fallos que **nos pasar
 
 **8. No hay tests del frontend** (todavía no existe).
 
-**9. Un fallo intermitente sin explicar.** Una sola vez, en una suite completa, falló `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` (dos aceptaciones simultáneas del mismo token en Infrastructure). No se pudo reproducir: pasó 12 veces sola, 4 veces con el proyecto entero, en una segunda suite completa y en 380 iteraciones del mismo escenario bajo carga, con diagnóstico de la excepción. El código está pensado para esa carrera y el mismo escenario por HTTP (`UserManagementAcceptanceTests`) no ha fallado nunca. La hipótesis más probable es saturación puntual de Docker justo después de muchas ejecuciones seguidas, pero **es una hipótesis**: si vuelve a salir, hay que guardar la salida íntegra antes de relanzar, porque el mensaje de la excepción es lo único que distingue un test frágil de una carrera real. Una segunda vez, al lanzar la suite completa de golpe, fallaron 25 tests de `MfaEndToEndTests` porque un contenedor de SQL Server salió con código 191 al arrancar: varios SQL Server a la vez (entre proyectos y clases) en un Docker con unos 12 GB de memoria. Relanzado el proyecto de la API solo, pasó entero. Es contención de recursos, no del código, y en local la suite completa va mejor **proyecto a proyecto**. Si el primer fallo fue lo mismo, no se sabe.
+**9. Un fallo intermitente, ya explicado y corregido (a medias).** `TwoSimultaneousAcceptancesOfTheSameToken_CreateExactlyOneAccount` falló una vez en el CI de la spec 011 (en la versión por HTTP, que hasta entonces «no había fallado nunca»): la perdedora recibía `user.email_already_registered` en vez de `invitation.invalid`. **No era un test frágil sino una ventana real** del handler de aceptar invitaciones (capítulo 6, «una tercera vuelta de la misma carrera»), ya corregida y fijada con un test determinista (un doble que consume la invitación justo antes de crear la cuenta; falla sin la corrección). Lo que sigue **sin explicar** es el fallo, una sola vez, de la versión de Infrastructure de ese mismo escenario: probablemente la misma ventana, pero no se guardó la salida y es una hipótesis. Además, al lanzar la suite completa de golpe fallaron una vez 25 tests de `MfaEndToEndTests` porque un contenedor de SQL Server salió con código 191 al arrancar (varios SQL Server a la vez en un Docker con unos 12 GB): es contención de recursos, no del código, y en local la suite completa va mejor **proyecto a proyecto**.
 
 ## Para comprobar que lo has entendido
 
