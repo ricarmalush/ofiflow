@@ -86,11 +86,26 @@ public static class SecurityEventIds
     public const int MfaResetByManager = 1507;
 
     // 1600-1699: panel de la plataforma (spec 011). Solo Ids y el motivo: ni emails, ni contraseñas, ni códigos.
-    // 1603-1605 (suspender y reactivar) y 1601, 1602 y 1608 (la sesión de plataforma) llegan en los bloques 5 y 6.
+    // 1603-1605 (listar, suspender y reactivar) llegan en el bloque 6.
+
+    /// <summary>Un operador superó la contraseña y el segundo factor y recibió una sesión de plataforma (15 minutos, sin refresh token).</summary>
+    public const int PlatformSessionIssued = 1601;
+
+    /// <summary>
+    /// Un inicio de sesión de plataforma fue rechazado, con el <b>motivo real</b> en el registro (credenciales, no es un operador, dado de
+    /// baja, sin segundo factor, desafío o código inválido...). Quien lo intenta recibe siempre el mismo 401 (R6).
+    /// </summary>
+    public const int PlatformLoginRejected = 1602;
 
     /// <summary>Se creó un operador de la plataforma con el comando del servidor (con su segundo factor ya confirmado).</summary>
     public const int PlatformOperatorCreated = 1606;
 
     /// <summary>Se dio de baja a un operador de la plataforma con el comando del servidor.</summary>
     public const int PlatformOperatorDisabled = 1607;
+
+    /// <summary>
+    /// Un token de plataforma todavía válido fue rechazado porque su cuenta ya no es un operador activo (R10). Un <c>1607</c> seguido de un
+    /// <c>1608</c> es la baja haciendo efecto; un <c>1608</c> sin baja previa merece mirarse.
+    /// </summary>
+    public const int PlatformSessionRevoked = 1608;
 }

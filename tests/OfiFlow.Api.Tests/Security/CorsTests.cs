@@ -25,6 +25,7 @@ public class CorsTests
         {
             builder.UseEnvironment("Production");
             builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            builder.UseSetting("Jwt:PlatformSecret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting("Jwt:Issuer", "OfiFlow.Api.Tests");
             builder.UseSetting("Jwt:Audience", "OfiFlow.Api.Tests.Client");
             builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));

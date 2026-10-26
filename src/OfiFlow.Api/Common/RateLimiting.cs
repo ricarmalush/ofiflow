@@ -26,6 +26,12 @@ public static partial class RateLimiting
     /// <summary>Gestionar el segundo factor (pedir el secreto, confirmar, desactivar, regenerar, reiniciar): 10 por hora y por IP (spec 010).</summary>
     public const string MfaManage = "mfa-manage";
 
+    /// <summary>Primer paso del inicio de sesión de plataforma (anónimo y con acceso a la base de datos): 5 por minuto y por IP, como el login de empresa (spec 011).</summary>
+    public const string PlatformLogin = "platform-login";
+
+    /// <summary>Canjear el desafío de plataforma: 10 por minuto y por IP, como el de empresa (spec 011).</summary>
+    public const string PlatformVerify = "platform-verify";
+
     public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services)
     {
         services.AddRateLimiter(options =>
@@ -42,6 +48,9 @@ public static partial class RateLimiting
             options.AddPolicy(MfaVerify, context => PerIp(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
             // Operaciones raras (activar, desactivar, regenerar): pocas por hora es más que suficiente y frena el abuso.
             options.AddPolicy(MfaManage, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
+            // La plataforma es la cuenta más valiosa: mismos límites que el login y el canje de empresa, con contador propio (spec 011, valores iniciales).
+            options.AddPolicy(PlatformLogin, context => PerIp(context, permitLimit: 5, TimeSpan.FromMinutes(1)));
+            options.AddPolicy(PlatformVerify, context => PerIp(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
 
             options.OnRejected = async (rejected, cancellationToken) =>
             {

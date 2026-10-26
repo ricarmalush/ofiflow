@@ -290,7 +290,7 @@ Además permite **Pipeline Behaviors**: código que se ejecuta **antes de todos 
 
 **Estado real:** el ADR-003 prevé cinco behaviors (validación, logging, autorización, transacciones y rendimiento). **Hoy hay dos implementados, y en este orden:**
 
-1. [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) (spec 008, ADR-012): comprueba que el rol del usuario tiene el permiso que declara la operación (`[RequiresPermission(Permission.JobsWrite)]`, por ejemplo). Va **primero**: quien no puede hacer algo no recibe ni siquiera información sobre si sus datos eran válidos.
+1. [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) (spec 008, ADR-012): comprueba que el rol del usuario tiene el permiso que declara la operación (`[RequiresPermission(Permission.JobsWrite)]`, por ejemplo) o, desde la spec 011, que la sesión es la de un operador de la plataforma que sigue activo (`[RequiresPlatformOperator]`). Va **primero**: quien no puede hacer algo no recibe ni siquiera información sobre si sus datos eran válidos.
 2. [`ValidationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/ValidationBehavior.cs): ejecuta los validadores antes de cada handler.
 
 Los de logging, transacciones y rendimiento no se han escrito aún. La autorización es *fail-closed*: una operación que no declara su permiso se deniega, y un test de arquitectura impide que exista una sin declarar.

@@ -23,6 +23,8 @@ using OfiFlow.Application.Jobs.Commands.StartJob;
 using OfiFlow.Application.Jobs.Commands.UpdateJob;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
+using OfiFlow.Application.Platform.Commands.PlatformLogin;
+using OfiFlow.Application.Platform.Commands.VerifyPlatformChallenge;
 using OfiFlow.Application.Tenancy.Commands.ChangeUserRole;
 using OfiFlow.Application.Tenancy.Commands.InviteUser;
 using OfiFlow.Application.Tenancy.Commands.RemoveUser;
@@ -36,7 +38,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 30 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009 y las del segundo factor de la spec 010) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 32 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y las dos del inicio de sesión de plataforma de la spec 011) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -77,7 +79,9 @@ public class OperationPermissionsTests
         typeof(LoginCommand),
         typeof(RefreshTokenCommand),
         typeof(AcceptInvitationCommand), // spec 009: anónima, el token de la invitación es la credencial
-        typeof(VerifyMfaChallengeCommand) // spec 010: anónima, el desafío del primer paso es la credencial
+        typeof(VerifyMfaChallengeCommand), // spec 010: anónima, el desafío del primer paso es la credencial
+        typeof(PlatformLoginCommand), // spec 011: anónima, la contraseña del operador es la credencial (y solo da un desafío)
+        typeof(VerifyPlatformChallengeCommand) // spec 011: anónima, el desafío de plataforma es la credencial
     ];
 
     public static TheoryData<Type, Permission> Authenticated
@@ -119,6 +123,7 @@ public class OperationPermissionsTests
 
         Assert.Equal([expected], declared);
         Assert.False(operation.IsDefined(typeof(AllowAnonymousRequestAttribute), inherit: true));
+        Assert.False(operation.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true));
     }
 
     [Theory]
@@ -127,6 +132,7 @@ public class OperationPermissionsTests
     {
         Assert.True(operation.IsDefined(typeof(AllowAnonymousRequestAttribute), inherit: true));
         Assert.False(operation.IsDefined(typeof(RequiresPermissionAttribute), inherit: true));
+        Assert.False(operation.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true));
     }
 
     [Fact]
@@ -140,7 +146,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(30, inTheTable.Count);
+        Assert.Equal(32, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

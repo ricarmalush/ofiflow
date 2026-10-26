@@ -151,7 +151,32 @@ Todo lo anterior habla de personas que **pertenecen a una empresa**. La spec 011
 
 **La auditoría solo se inserta.** Cada acción de un operador que cambia algo dejará una fila en [`PlatformAuditEntry`](../../src/OfiFlow.Infrastructure/Identity/PlatformAuditEntry.cs) (solo Ids, un código de acción y la hora), en la **misma transacción** que la acción: si la acción falla, no queda fila. El log no sirve de auditoría (caduca a los 14 días, ADR-015). El `ApplicationDbContext` rechaza cualquier intento de **modificar o borrar** una fila de auditoría. **Límite honesto:** eso protege contra el código de la aplicación, no contra alguien con acceso directo a la base de datos, ni contra una sentencia `ExecuteUpdate`; una garantía a nivel de base de datos (un usuario sin permiso de `UPDATE`/`DELETE` sobre esa tabla) queda como mejora futura.
 
-Todavía **no hay forma de crear un operador**: el comando del servidor que lo hace, enrolando el segundo factor en el mismo acto, es el bloque 4.
+Un operador **no se crea por HTTP**: lo da de alta el programa del servidor `OfiFlow.Admin`, enrolando el segundo factor en el mismo acto (capítulo 1 y capítulo 8).
+
+### La sesión de plataforma: otro mundo, otra llave (spec 011, bloque 5)
+
+Un operador entra por **su propia puerta**: `POST /api/v1/platform/auth/login` y `POST /api/v1/platform/auth/verify`. No comparte con las empresas ni la ruta, ni la clave, ni la audiencia, ni el esquema de autenticación. La razón es la misma que separa los dos tipos de cuenta: si fueran el mismo mundo, un solo fallo en una validación dejaría que un token de empresa valiera para suspender empresas.
+
+| | Sesión de empresa | Sesión de plataforma |
+|---|---|---|
+| Clave que firma | `Jwt:Secret` | `Jwt:PlatformSecret` (otra; la API no arranca si es igual) |
+| Audiencia | `Jwt:Audience` | `Jwt:PlatformAudience` (otra; la API no arranca si es igual) |
+| Esquema de autenticación | `Bearer` (el de por defecto) | `PlatformBearer`, fijado por la política `PlatformOperator` |
+| Qué lleva | `sub`, `tenant_id`, `role` | `sub`, `realm = platform`, `jti`. Ni empresa ni rol: un operador no tiene ninguno |
+| Duración | 30 minutos, con *refresh token* | **15 minutos fijos, sin refresh token**: pasado el tiempo hay que repetir contraseña y código |
+| Quién la emite | Login sin segundo factor, canje del desafío y *refresh* | **Un único sitio**: el canje del desafío de plataforma |
+
+**Siempre dos pasos.** El primer paso (`/login`) **nunca** devuelve una sesión: con las credenciales de un operador activo devuelve un desafío (`200 { mfaRequired, challenge, expiresAt }`); con cualquier otra cosa, un `401`. El segundo (`/verify`) canjea el desafío con un código de la app o de recuperación y devuelve la sesión. No hay operador sin segundo factor (el alta lo exige), y si por algún error faltara, la contraseña sola no da nada.
+
+**Un único 401 (R6).** En el primer paso, seis casos —email desconocido, contraseña errónea, cuenta bloqueada, **cuenta de empresa con su contraseña correcta**, operador dado de baja y operador sin segundo factor— dan **exactamente la misma respuesta** (mismo estado, mismas cabeceras, mismo cuerpo) y cuestan **una verificación de contraseña cada uno** (los que no tienen hash real la hacen contra uno ficticio). Así quien intenta entrar no aprende si un email es de un operador, y la respuesta tampoco delata a una persona de empresa que puso bien su contraseña. En el segundo paso, un desafío desconocido, caducado, agotado o de la empresa, o un código erróneo o mal formado, también dan el mismo 401. El motivo real solo llega al registro de eventos (1602 y el 1504 del canje). *Lo único que no es un 401 es un campo vacío o enorme: es un error de validación (`400`), igual que en la puerta de las empresas.*
+
+**Se revalida en cada petición (R10).** El token dice «soy un operador», pero lo que decide es la base de datos: la política de las rutas de plataforma deja pasar la petición y después la operación, declarada con [`[RequiresPlatformOperator]`](../../src/OfiFlow.Application/Common/Authorization/RequiresPlatformOperatorAttribute.cs), pregunta si esa cuenta **sigue siendo un operador activo** (una consulta, una vez por petición). Dar de baja a un operador surte efecto en **su siguiente petición**, no a los 15 minutos de su sesión; esa petición recibe un `403` y deja el evento `1608`. Es el mismo principio que ya usan el rol y la suspensión de empresa (capítulo 5).
+
+**Tres tipos de declaración, y se excluyen.** Toda operación declara una de tres cosas: `[RequiresPermission]` (un rol de empresa), `[AllowAnonymousRequest]` (nadie en particular) o `[RequiresPlatformOperator]` (un operador). Combinar dos se deniega y lo detecta un test de arquitectura. Dentro del espacio `OfiFlow.Application.Platform` solo caben operaciones de plataforma o anónimas: ningún permiso de empresa se cuela en el mundo de la plataforma (R14).
+
+**Qué se prueba, y cómo.** El ciclo completo contra SQL Server real; un token de empresa en una ruta de plataforma y al revés (siempre `401`); fabricar tokens con la clave de empresa y la audiencia de plataforma, o con la clave de plataforma y la audiencia de empresa; un token de plataforma sin el claim del mundo (`403`); un desafío de empresa canjeado en plataforma y al revés **sin gastarse** (con el código correcto sigue valiendo en su mundo); y que la API no arranca con la clave ausente, mal formada, de otra longitud o repetida. Como todavía no hay rutas de plataforma con efecto (llegan en el bloque 6), los tests añaden una ruta de prueba que pasa por el pipeline real.
+
+**Un riesgo que no se cierra con código.** Mientras dure la sesión (15 minutos), un operador **al que han robado la sesión** puede hacer todo lo que el rol permite; la baja lo corta en la siguiente petición, pero hay que enterarse. Por eso cada sesión emitida deja el evento `1601` y una fila de auditoría, y las operaciones del bloque 6 dejarán la suya.
 
 ### El bloqueo de cuenta (spec 010)
 

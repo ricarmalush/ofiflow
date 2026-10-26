@@ -234,6 +234,62 @@ public class SecurityArchitectureTests
         Assert.Contains("return new LoginResult.SecondFactorRequired", login[secondFactorBranch..issue]);
     }
 
+    private const string PlatformLoginHandler = "src/OfiFlow.Application/Platform/Commands/PlatformLogin/PlatformLoginCommandHandler.cs";
+
+    private const string PlatformRedemptionHandler = "src/OfiFlow.Application/Platform/Commands/VerifyPlatformChallenge/VerifyPlatformChallengeCommandHandler.cs";
+
+    [Fact]
+    public void OnlyTheChallengeRedemptionOfThePlatform_CanIssueAPlatformSession()
+    {
+        // Spec 011 R8: junto al login sin segundo factor y al canje del desafío de empresa, hay UN tercer sitio que emite una sesión,
+        // el canje del desafío de plataforma. Si alguien añade otro camino (un «recordarme», una renovación), este test falla y
+        // obliga a decidir, a propósito, qué pasa con el segundo factor en él.
+        var definitions = new[]
+        {
+            "src/OfiFlow.Application/Common/Abstractions/IPlatformTokenService.cs",
+            "src/OfiFlow.Infrastructure/Identity/PlatformTokenService.cs"
+        };
+
+        var callers = SourceCode.FilesContaining("IssuePlatformSession(").Where(path => !definitions.Contains(path)).Order().ToList();
+
+        Assert.True(callers.SequenceEqual([PlatformRedemptionHandler]),
+            $"Solo el canje del desafío de plataforma puede emitir una sesión de plataforma (spec 011 R8). Hoy la emiten: {string.Join(", ", callers)}");
+    }
+
+    [Fact]
+    public void ThePlatformLogin_NeverIssuesAnySession_AndOnlyCreatesChallengesForThePlatform()
+    {
+        // R5: la contraseña de un operador nunca da una sesión, solo un desafío, y de plataforma (R9). La clase ni siquiera
+        // recibe un servicio de tokens.
+        var login = SourceCode.ReadText(PlatformLoginHandler);
+
+        Assert.DoesNotContain("ITokenService", login);
+        Assert.DoesNotContain("IPlatformTokenService", login);
+        Assert.DoesNotContain("IssuePlatformSession", login);
+        Assert.DoesNotContain("IssueTokensAsync", login);
+        Assert.Contains("ChallengeAudience.Platform", login);
+        Assert.DoesNotContain("ChallengeAudience.Tenant", login);
+    }
+
+    [Fact]
+    public void ThePlatformRedemption_RedeemsThenChecksTheOperatorThenIssuesThenAudits()
+    {
+        // El orden es la seguridad: canjear el desafío de plataforma, volver a comprobar que sigue siendo un operador activo (R10),
+        // emitir la sesión, y escribir y CONFIRMAR la auditoría antes de devolverla (R17).
+        var handler = SourceCode.ReadText(PlatformRedemptionHandler);
+
+        var redeem = handler.IndexOf("RedeemChallengeAsync(", StringComparison.Ordinal);
+        var check = handler.IndexOf("IsActiveOperatorAsync(", StringComparison.Ordinal);
+        var issue = handler.IndexOf("IssuePlatformSession(", StringComparison.Ordinal);
+        var audit = handler.IndexOf("platformAudit.Add(", StringComparison.Ordinal);
+        var save = handler.IndexOf("SaveChangesAsync(", StringComparison.Ordinal);
+
+        Assert.True(redeem >= 0 && check > redeem && issue > check && audit > issue && save > audit,
+            "El canje de plataforma debe ir en este orden: RedeemChallengeAsync, IsActiveOperatorAsync, IssuePlatformSession, platformAudit.Add, SaveChangesAsync.");
+        Assert.Contains("ChallengeAudience.Platform", handler);
+        Assert.DoesNotContain("ChallengeAudience.Tenant", handler);
+    }
+
     [Fact]
     public void TheTotpCodeComparison_IsConstantTime()
     {

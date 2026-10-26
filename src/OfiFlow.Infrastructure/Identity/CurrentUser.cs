@@ -18,11 +18,39 @@ namespace OfiFlow.Infrastructure.Identity;
 /// </summary>
 public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, ApplicationDbContext dbContext) : ICurrentUser
 {
+    private readonly PlatformOperators _platformOperators = new(dbContext);
+
     private bool _verified;
     private TenantRole? _effectiveRole;
     private bool _tenantSuspended;
+    private bool _platformVerified;
+    private bool _platformOperatorActive;
 
     private ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
+
+    /// <summary>
+    /// El token trae el claim del mundo de plataforma. Solo lo puede traer una sesión firmada con la clave de plataforma
+    /// (<see cref="PlatformTokenService"/>); una de empresa no lo lleva ni puede añadirlo, porque la firma la rompería.
+    /// </summary>
+    public bool IsPlatformSession =>
+        Principal?.FindFirst(OfiFlowClaimTypes.Realm)?.Value == OfiFlowClaimTypes.PlatformRealm;
+
+    public async Task<bool> VerifyPlatformOperatorAsync(CancellationToken cancellationToken)
+    {
+        // Una sola consulta por petición, y fail-closed: sin sesión de plataforma o sin la cuenta no se consulta nada.
+        if (_platformVerified)
+        {
+            return _platformOperatorActive;
+        }
+
+        var userId = UserId;
+        _platformOperatorActive = IsPlatformSession
+            && userId is not null
+            && await _platformOperators.IsActiveOperatorAsync(userId.Value, cancellationToken);
+        _platformVerified = true;
+
+        return _platformOperatorActive;
+    }
 
     public Guid? UserId => ParseGuid(JwtRegisteredClaimNames.Sub);
 

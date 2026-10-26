@@ -109,6 +109,9 @@ dotnet user-secrets set "Jwt:Secret" "$(openssl rand -base64 32)" --project src/
 # 1b. Clave que cifra los secretos del segundo factor (spec 010). Sin ella la API no arranca.
 dotnet user-secrets set "Mfa:EncryptionKey" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
 
+# 1c. Clave que firma las sesiones de los operadores de la plataforma (spec 011): distinta de Jwt:Secret. Sin ella la API no arranca.
+dotnet user-secrets set "Jwt:PlatformSecret" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
+
 # 2. Base de datos
 dotnet ef database update --project src/OfiFlow.Infrastructure
 
@@ -121,7 +124,7 @@ Sin `openssl`, en PowerShell (funciona también en Windows PowerShell 5.1):
 ```powershell
 $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
 dotnet user-secrets set "Jwt:Secret" ([Convert]::ToBase64String($b)) --project src/OfiFlow.Api
-# (para la clave del segundo factor, lo mismo con "Mfa:EncryptionKey")
+# (para la clave del segundo factor y la de la plataforma, lo mismo con "Mfa:EncryptionKey" y "Jwt:PlatformSecret")
 ```
 
 Para probar la API a mano, abre [`src/OfiFlow.Api/OfiFlow.Api.http`](./src/OfiFlow.Api/OfiFlow.Api.http) en Visual Studio: es una colección de peticiones en orden (cuenta, clientes, trabajos, errores a propósito y aislamiento entre empresas), con instrucciones al principio.

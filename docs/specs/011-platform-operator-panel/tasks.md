@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-016-panel-de-operador-de-la-plataforma.md](../../adr/ADR-016-panel-de-operador-de-la-plataforma.md)
-**Estado general:** Aprobada (2026-10-22); bloques 1 a 3 implementados, verificados y commiteados (2026-10-23 y 2026-10-25); bloque 4 implementado y verificado (2026-10-25), pendiente de commit
+**Estado general:** Aprobada (2026-10-22); bloques 1 a 4 implementados, verificados y commiteados (2026-10-23 y 2026-10-25); bloque 5 implementado y verificado (2026-10-26), pendiente de commit
 
 ---
 
@@ -70,18 +70,21 @@ Se empieza por lo que **ya se puede probar sin operador**: que la suspensión se
 - [x] [manual] Capítulo 1 (cómo se crea el primer operador, con el procedimiento paso a paso) y capítulo 8 (eventos `1606`, `1607`)
 
 ### Bloque 5 — La sesión de plataforma (≈ 7 h) — el bloque más delicado para la seguridad
-- [ ] `Jwt:PlatformSecret` y audiencia propia: **sin valor por defecto**, la API no arranca si falta o no mide 32 bytes, con el mismo trato que `Jwt:Secret` (y el mismo mensaje útil)
-- [ ] Esquema de autenticación de plataforma separado del de empresa (otra clave, otra audiencia, 15 minutos, sin refresh token)
-- [ ] `IPlatformTokenService` (emitir la sesión de plataforma) y `PlatformLoginCommand`: **siempre** desafío; mismas respuestas y misma verificación de contraseña para todos los fallos (R6)
-- [ ] `VerifyPlatformChallengeCommand`: canjea solo desafíos de plataforma (R9) y es el **único** sitio que emite sesión de plataforma
-- [ ] `[RequiresPlatformOperator]`: tercer tipo de declaración, excluyente con permiso y anónima, **fail-closed**; el `AuthorizationBehavior` revalida en cada petición que el operador sigue activo (R10)
-- [ ] Eventos `1601`, `1602` y `1608`; la fila de auditoría de la sesión emitida
-- [ ] **Tests de arquitectura:** R8 (solo tres sitios emiten sesiones) y la declaración exclusiva de los tres tipos
-- [ ] Tests con dobles: cada rama; cuenta de **empresa** con su contraseña correcta → mismo 401; cuenta bloqueada; operador dado de baja
-- [ ] **Tests de no confusión de esquemas:** un token de empresa firmado correctamente en `/platform` → 401; uno de plataforma en cualquier otra ruta → 401; un token firmado con la clave equivocada o la audiencia equivocada → 401
-- [ ] Mutaciones: la misma clave o audiencia para los dos mundos; el login de plataforma que devuelve sesión sin desafío; la revalidación omitida; el desafío que cruza de mundo; un atributo de declaración ausente
-- [ ] Clave de **pruebas** de plataforma en los fixtures de la API y en el workflow de ZAP (`dast.yml`, efímera) y en la guía de arranque
-- [ ] [manual] Capítulo 6 (la sesión de plataforma frente a la de empresa) y capítulo 8 (eventos, el tercer tipo de declaración y el riesgo del operador comprometido)
+
+> **Estado (2026-10-26): implementado y verificado.** Esquema `PlatformBearer` con clave (`Jwt:PlatformSecret`) y audiencia propias, política `PlatformOperator`, sesión de 15 minutos sin refresh token, `POST /api/v1/platform/auth/login` y `/verify` (límites 5 y 10 por minuto y por IP), `[RequiresPlatformOperator]` como tercer tipo de declaración y revalidación en la base de datos en cada petición. 28 mutaciones sobre el código real, todas detectadas (la 27 se repitió: el script usaba `/` como delimitador). Suite, proyecto a proyecto: Domain 206, Application 515, Infrastructure 296, Api 415 (1432 casos). **Notas:** (1) la API de desarrollo ya no arranca sin `Jwt:PlatformSecret` en los user-secrets (README y capítulo 1); (2) como aún no hay rutas de plataforma con efecto, los tests montan una ruta y una operación de prueba que pasan por el pipeline real; (3) un campo vacío o enorme en `/verify` es un `400`, igual que en la puerta de empresa, no un `401`; (4) el segundo caso de R6, «operador sin segundo factor», solo se prueba con dobles (el alta lo hace inalcanzable por HTTP).
+
+- [x] `Jwt:PlatformSecret` y audiencia propia: **sin valor por defecto**, la API no arranca si falta o no mide 32 bytes, con el mismo trato que `Jwt:Secret` (y el mismo mensaje útil)
+- [x] Esquema de autenticación de plataforma separado del de empresa (otra clave, otra audiencia, 15 minutos, sin refresh token)
+- [x] `IPlatformTokenService` (emitir la sesión de plataforma) y `PlatformLoginCommand`: **siempre** desafío; mismas respuestas y misma verificación de contraseña para todos los fallos (R6)
+- [x] `VerifyPlatformChallengeCommand`: canjea solo desafíos de plataforma (R9) y es el **único** sitio que emite sesión de plataforma
+- [x] `[RequiresPlatformOperator]`: tercer tipo de declaración, excluyente con permiso y anónima, **fail-closed**; el `AuthorizationBehavior` revalida en cada petición que el operador sigue activo (R10)
+- [x] Eventos `1601`, `1602` y `1608`; la fila de auditoría de la sesión emitida
+- [x] **Tests de arquitectura:** R8 (solo tres sitios emiten sesiones) y la declaración exclusiva de los tres tipos
+- [x] Tests con dobles: cada rama; cuenta de **empresa** con su contraseña correcta → mismo 401; cuenta bloqueada; operador dado de baja
+- [x] **Tests de no confusión de esquemas:** un token de empresa firmado correctamente en `/platform` → 401; uno de plataforma en cualquier otra ruta → 401; un token firmado con la clave equivocada o la audiencia equivocada → 401
+- [x] Mutaciones: la misma clave o audiencia para los dos mundos; el login de plataforma que devuelve sesión sin desafío; la revalidación omitida; el desafío que cruza de mundo; un atributo de declaración ausente
+- [x] Clave de **pruebas** de plataforma en los fixtures de la API y en el workflow de ZAP (`dast.yml`, efímera) y en la guía de arranque
+- [x] [manual] Capítulo 6 (la sesión de plataforma frente a la de empresa) y capítulo 8 (eventos, el tercer tipo de declaración y el riesgo del operador comprometido)
 
 ### Bloque 6 — Las operaciones del operador (≈ 6 h)
 - [ ] `ListTenantsQuery`: nombre, alta, nº de miembros y estado, **nada más**; paginado con tope y orden estable; el recuento agrupado con `IgnoreQueryFilters()` **añadido a la lista blanca** con su motivo; el handler entra en la lista de lecturas globales de `Tenants`

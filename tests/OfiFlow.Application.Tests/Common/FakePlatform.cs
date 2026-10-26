@@ -48,3 +48,16 @@ public sealed class FakePlatformAudit : IPlatformAudit
 
     public void Add(Guid operatorUserId, string action, Guid? tenantId, DateTime utcNow) => Entries.Add((operatorUserId, action, tenantId, utcNow));
 }
+
+/// <summary>El servicio que firma la sesión de plataforma, de mentira: apunta para qué cuentas se emitió y devuelve un token reconocible.</summary>
+public sealed class FakePlatformTokenService : IPlatformTokenService
+{
+    public List<Guid> Issued { get; } = [];
+
+    public OfiFlow.Application.Platform.PlatformSessionDto IssuePlatformSession(Guid operatorUserId)
+    {
+        Issued.Add(operatorUserId);
+
+        return new OfiFlow.Application.Platform.PlatformSessionDto($"token-de-plataforma-{operatorUserId:N}", new DateTime(2026, 10, 26, 12, 15, 0, DateTimeKind.Utc));
+    }
+}

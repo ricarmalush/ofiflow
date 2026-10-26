@@ -55,6 +55,7 @@ public class UnhandledExceptionTests : IClassFixture<UnhandledExceptionTests.Thr
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            builder.UseSetting("Jwt:PlatformSecret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.ConfigureLogging(logging => logging.AddProvider(new CapturingLoggerProvider(Logs)));
             builder.ConfigureTestServices(services => services.AddSingleton<ISender, ThrowingSender>());

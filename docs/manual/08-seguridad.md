@@ -285,7 +285,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **veinticuatro eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **veintinueve eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -313,8 +313,11 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **veinticuatro evento
 | `1505` | **Código de recuperación usado** | Con cuántos quedan. Suele significar que se perdió el móvil; conviene mirarlo |
 | `1506` | Códigos de recuperación regenerados | Los anteriores dejan de valer |
 | `1507` | **MFA reiniciado por un gestor** | Quién lo hizo y a quién (solo Ids). Un `1507` inesperado seguido de un login desde una IP nueva es lo que querría ver un analista |
+| `1601` | **Sesión de operador emitida** | Un operador completó contraseña y código y recibió una sesión de plataforma (solo el `UserId`). Cada una debe corresponder a alguien que conozcas; una a deshoras o desde una IP nueva es lo que hay que mirar |
+| `1602` | **Inicio de sesión de plataforma rechazado** | Con el **motivo real** en el log (contraseña errónea, cuenta que no es de operador, sin segundo factor...); quien lo intenta recibe siempre el mismo `401`. Una ráfaga de `1602` con el motivo «cuenta que no es de operador» y una contraseña **correcta** es alguien con credenciales de empresa probando la puerta de la plataforma |
 | `1606` | **Operador de la plataforma creado** | Alguien con acceso al servidor creó una cuenta con acceso a todas las empresas (solo el `UserId`, nunca el email). Debe coincidir con una intervención que conozcas: un `1606` inesperado es el evento más grave de la lista |
 | `1607` | **Operador de la plataforma dado de baja** | Se desactivó a un operador (solo el `UserId`) |
+| `1608` | **Sesión de operador revocada** | Un token de plataforma todavía válido de una cuenta que ya no es un operador activo (con la operación y el `UserId`). Es la baja surtiendo efecto en la siguiente petición; un `1608` sin una baja reciente que lo explique es una anomalía |
 
 Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones, 15xx segundo factor, 16xx panel de la plataforma), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
 
@@ -335,6 +338,23 @@ Una cuenta de operador ve los metadatos de **todas** las empresas y puede suspen
 | Un alta sin rastro | Auditoría persistente (`platform.operator_created`, `platform.operator_disabled`) y los eventos `1606` y `1607` |
 
 **Un matiz honesto.** La auditoría de estas dos acciones guarda como `OperatorUserId` el **operador afectado**, no quien ejecutó el programa: el actor es «alguien con acceso al servidor», que no tiene cuenta en OfiFlow. Quién fue exactamente lo dirá el registro del servidor (sesión, historial), no OfiFlow. Y el programa en sí no tiene autenticación: **quien pueda ejecutarlo con la cadena de conexión y la clave del segundo factor puede crear un operador**. Esa frontera es el acceso al servidor, y por eso el programa no debe estar en el equipo que atiende la web pública.
+
+### La sesión del operador: lo que impide confundir los dos mundos
+
+La sesión de plataforma (capítulo 6) es el otro lado de la misma moneda: una vez dentro, un operador ve todas las empresas, así que lo importante es que **nada de una empresa valga allí ni al revés**. Las defensas, de fuera adentro:
+
+| Qué se evita | Cómo |
+|---|---|
+| Que un token de empresa sirva en una ruta de plataforma (o al revés) | Dos esquemas de autenticación, con **clave y audiencia distintas**; la política de las rutas de plataforma fija su esquema. El token de empresa falla en la firma y el de plataforma, en la audiencia |
+| Que una mala configuración las junte | La API **no arranca** si `Jwt:PlatformSecret` falta, no es Base64, no mide 32 bytes o es igual que `Jwt:Secret`, ni si la audiencia coincide; el mensaje nunca reproduce una clave |
+| Que la contraseña dé una sesión | El primer paso devuelve siempre un desafío (o un `401`); solo hay **tres** sitios que emiten sesiones y el de plataforma es uno solo; un test de arquitectura fija la lista |
+| Que un desafío de empresa se canjee en plataforma (o al revés) | El desafío nace con una audiencia; el canje de otro mundo se trata como un desafío inventado, antes de mirar el código y sin gastar ningún intento |
+| Que saber si un email es de operador sea posible | Un único `401`, con el mismo coste de contraseña, para seis causas distintas; el motivo real solo va al log (`1602`) |
+| Que un operador dado de baja siga mandando 15 minutos | La operación consulta la base de datos en **cada** petición (una consulta); la baja surte efecto en la siguiente y deja el `1608` |
+| Que una operación de plataforma se declare mal | Tercer tipo de declaración, excluyente con los otros dos, *fail-closed*, y solo permitido dentro de `OfiFlow.Application.Platform` |
+| Que una sesión robada dure | 15 minutos, sin *refresh token*; renovarla exige repetir contraseña y código |
+
+**Riesgo aceptado: un operador comprometido.** Con una sesión robada, el atacante hace lo que el rol permite hasta que alguien lo note y dé de baja la cuenta (o pasen los 15 minutos). Los controles buscan que se note —`1601`, `1602`, `1608` y una fila de auditoría por sesión y por acción— y que el daño máximo esté acotado: un operador solo ve metadatos de las empresas y solo puede suspender o reactivar, nunca leer sus clientes o trabajos (bloque 6).
 
 ### Dónde se guardan los logs
 
@@ -452,6 +472,9 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | Bajar la conexión a HTTP | HTTPS y HSTS (365 días) | `Program.cs:82-87` | **Sin test propio** |
 | **I** · Otra web lee, desde el navegador de un usuario, las respuestas de la API | CORS: lista cerrada de orígenes, sin comodín ni credenciales de navegador | `Program.cs:33-64`, `:91` | `CorsTests` |
 | **E** · Crear una cuenta con acceso global desde fuera, o sin segundo factor | El alta solo existe como programa del servidor (sin ruta HTTP), con el primer código TOTP comprobado antes de guardar nada y todo en un único guardado | `OfiFlow.Admin`, `PlatformOperatorAdministration.cs:89`, `:116` | `PlatformOperatorToolTests`, `PlatformOperatorAdministrationTests` |
+| **E** · Un token de empresa vale en las rutas de plataforma (o al revés) | Esquemas separados con clave y audiencia propias; la API no arranca si se parecen | `DependencyInjection.cs`, `PlatformAuthentication.cs` | `PlatformSessionEndToEndTests`, `PlatformStartupTests` |
+| **E** · Un operador dado de baja sigue operando con su sesión | Revalidación en la base de datos en cada petición; evento `1608` | `CurrentUser.cs`, `AuthorizationBehavior.cs` | `ADisabledOperator_LosesTheSessionOnTheNextRequest_AndTheEventIsLogged`, `CurrentUserPlatformTests` |
+| **S** · Entrar en la plataforma solo con la contraseña, o saber qué emails son de operador | Siempre desafío o un único `401` con el mismo coste; desafío con audiencia | `PlatformLoginCommandHandler.cs`, `VerifyPlatformChallengeCommandHandler.cs` | `EveryLoginFailure_IsTheSameResponse_WithTheSameCost`, `ACompanyChallenge_IsNotRedeemableOnThePlatform_...` |
 | Dependencia con vulnerabilidad conocida | NuGetAudit como error y Dependabot | `Directory.Build.props`, `dependabot.yml` | El propio build y el pipeline |
 | Vulnerabilidad en el código | Analizadores de seguridad como error y CodeQL | `.editorconfig`, `codeql.yml` | El propio build y el pipeline |
 | Vulnerabilidad en la API en ejecución | Escaneo ZAP en cada cambio | `dast.yml` | El propio job `zap-scan` |

@@ -69,6 +69,7 @@ public class MfaOptionsTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Jwt:Secret"] = Convert.ToBase64String(new byte[32]),
+            ["Jwt:PlatformSecret"] = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray()),
             ["Jwt:Issuer"] = "OfiFlow.Tests",
             ["Jwt:Audience"] = "OfiFlow.Tests",
             ["ConnectionStrings:Default"] = "Server=no-se-usa;Database=no-se-usa"
@@ -87,6 +88,7 @@ public class MfaOptionsTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Jwt:Secret"] = Convert.ToBase64String(new byte[32]),
+            ["Jwt:PlatformSecret"] = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray()),
             ["Jwt:Issuer"] = "OfiFlow.Tests",
             ["Jwt:Audience"] = "OfiFlow.Tests",
             ["ConnectionStrings:Default"] = "Server=no-se-usa;Database=no-se-usa"

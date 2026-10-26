@@ -69,6 +69,14 @@ dotnet user-secrets set "Mfa:EncryptionKey" "$(openssl rand -base64 32)" --proje
 
 En PowerShell, el mismo fragmento de arriba cambiando el nombre de la clave. Esta clave **no se puede perder**: sin ella, los secretos ya guardados no se pueden descifrar y esas cuentas tendrían que reiniciar su segundo factor. Desde la spec 010 hay rutas para activar el segundo factor, así que la clave de producción habrá que guardarla con copia de seguridad (y rotarla cuando exista el procedimiento).
 
+**El tercer secreto (spec 011): `Jwt:PlatformSecret`.** Las sesiones de los operadores de la plataforma (capítulo 6) se firman con **otra clave**, distinta de `Jwt:Secret`, y con otra audiencia (`Jwt:PlatformAudience`, por defecto `OfiFlow.Platform`). Es a propósito: la plataforma y las empresas son dos mundos, y con claves distintas un fallo de validación en uno no deja pasar un token del otro. La API **no arranca sin ella**, ni si no mide 32 bytes, ni si es igual que `Jwt:Secret`, ni si la audiencia coincide con la de las empresas:
+
+```bash
+dotnet user-secrets set "Jwt:PlatformSecret" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
+```
+
+> **Si ya tenías la API funcionando antes de la spec 011, ahora no arrancará hasta que hagas esto.** Es lo esperado (arrancar sin la clave sería arrancar sin poder firmar ni validar las sesiones de plataforma). El mensaje de error te dice el comando. En PowerShell, igual que los otros dos: genera 32 bytes aleatorios y cámbiale el nombre de la clave.
+
 En producción no existirá ese fichero: el secreto llegará por la variable de entorno `Jwt__Secret` (el doble guion bajo equivale a los dos puntos) o desde un gestor de secretos. Esa decisión es la R8 del ADR-009.
 
 ### Paso 2 — La base de datos
@@ -236,6 +244,7 @@ Te pide que escribas `SI`. La baja deja una fila en la auditoría y surtirá efe
 | Lo que ves | Qué significa | Qué hacer |
 |---|---|---|
 | La API se detiene al arrancar con **"Falta 'Mfa:EncryptionKey'..."** (o dice que no es Base64 o que mide otra cosa que 32 bytes) | Falta la segunda clave del paso 1, o tiene otro formato | Pon la clave con el comando del paso 1. El mensaje cuenta qué le pasa (falta, no es Base64, mide N bytes) pero nunca reproduce su valor |
+| La API se detiene al arrancar con **"Falta 'Jwt:PlatformSecret'..."** (o dice que no es Base64, que mide otra cosa que 32 bytes, que es igual que `Jwt:Secret` o que la audiencia coincide con la de las empresas) | Falta la tercera clave del paso 1, o se parece demasiado a la de las empresas. Si tu API funcionaba antes de la spec 011, te pasará una vez | Pon una clave **distinta** con el comando del paso 1. El mensaje cuenta qué le pasa, pero nunca reproduce una clave |
 | La API se detiene al arrancar con **"Falta 'Jwt:Secret'..."** | El paso 1 no está hecho (o lo hiciste para otro `UserSecretsId`) | Repite el paso 1. El mensaje es largo a propósito: lista **cada fuente de configuración que consultó** y qué longitud tiene el valor en cada una (nunca el valor), y la ruta exacta donde buscó `secrets.json` |
 | `dotnet ef` no se reconoce | No está instalada la herramienta | `dotnet tool install --global dotnet-ef` |
 | El paso 2 no encuentra el servidor | LocalDB no existe o no está iniciada | `sqllocaldb info` y `sqllocaldb start MSSQLLocalDB`; o usa el contenedor Docker de arriba |
