@@ -14,3 +14,9 @@
 # ejecución, como en el resto de tests), pero el commit queda en el historial: por eso se registra aquí
 # en vez de reescribir una rama ya publicada.
 a813dceacda1f78f3de0b3dd1a80cf6898e6e576:tests/OfiFlow.Api.Tests/Security/RbacEndToEndTests.cs:generic-api-key:166
+
+# Marcador de posición de la variable operatorPassword de la colección OfiFlow.Api.http (spec 011, sección 8); el texto del marcador no se repite aquí.
+# NO es una contraseña real: la persona que prueba la colección escribe ahí la del operador que dio de alta con OfiFlow.Admin.
+# Gitleaks lo confunde con una clave por su forma (regla generic-api-key); el commit ya está publicado en el PR #46, así que se
+# registra aquí en vez de reescribir una rama publicada. Si algún día se sustituyera por un valor real, ESE valor sí sería un hallazgo.
+299a8661160dbf963a1923dab9e15b9f5fb8c946:src/OfiFlow.Api/OfiFlow.Api.http:generic-api-key:572
