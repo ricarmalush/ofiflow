@@ -20,6 +20,12 @@ public static class TenancyErrors
     /// <summary>Se intentó reactivar una empresa que no estaba suspendida (spec 011 R12).</summary>
     public const string TenantNotSuspended = "tenant.not_suspended";
 
+    /// <summary>
+    /// La empresa que un operador quiere suspender o reactivar no existe (spec 011 R13). La API responde 404. Es el único sitio donde
+    /// un <c>Id</c> de empresa llega por la petición, y solo en el panel de la plataforma.
+    /// </summary>
+    public const string TenantNotFound = "tenant.not_found";
+
     /// <summary>El TenantUser no existe en el tenant activo (o pertenece a otro: indistinguible a propósito).</summary>
     public const string TenantUserNotFound = "tenant_user.not_found";
 

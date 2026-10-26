@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-016-panel-de-operador-de-la-plataforma.md](../../adr/ADR-016-panel-de-operador-de-la-plataforma.md)
-**Estado general:** Aprobada (2026-10-22); bloques 1 a 4 implementados, verificados y commiteados (2026-10-23 y 2026-10-25); bloque 5 implementado y verificado (2026-10-26), pendiente de commit
+**Estado general:** Aprobada (2026-10-22); bloques 1 a 5 implementados, verificados y commiteados (2026-10-23, 2026-10-25 y 2026-10-26); bloque 6 implementado y verificado (2026-10-26), pendiente de commit
 
 ---
 
@@ -87,15 +87,18 @@ Se empieza por lo que **ya se puede probar sin operador**: que la suspensión se
 - [x] [manual] Capítulo 6 (la sesión de plataforma frente a la de empresa) y capítulo 8 (eventos, el tercer tipo de declaración y el riesgo del operador comprometido)
 
 ### Bloque 6 — Las operaciones del operador (≈ 6 h)
-- [ ] `ListTenantsQuery`: nombre, alta, nº de miembros y estado, **nada más**; paginado con tope y orden estable; el recuento agrupado con `IgnoreQueryFilters()` **añadido a la lista blanca** con su motivo; el handler entra en la lista de lecturas globales de `Tenants`
-- [ ] `SuspendTenantCommand` y `ReactivateTenantCommand`: suspender o reactivar y escribir la **fila de auditoría en la misma transacción**; `TenantId` como objetivo, **declarado como excepción nombrada** en el test «ningún comando acepta `TenantId`»
-- [ ] Eventos `1603`, `1604` y `1605`, solo Ids
-- [ ] Validators (`pageSize` ≤ 100, página ≥ 1), códigos de error y mensajes en el diccionario
-- [ ] Endpoints `/api/v1/platform/tenants` (listar, suspender, reactivar) con su política de rate limiting nueva (30 por minuto y por IP) y los del login y el canje (5 y 10); OpenAPI con su etiqueta
-- [ ] Sección nueva en la colección `OfiFlow.Api.http` (el alta del operador se explica allí, pero no se puede hacer por HTTP)
-- [ ] Tests con dobles y **contra SQL Server real**: suspender es todo o nada con la fila de auditoría; la lista **no contiene** ningún dato personal (se inspecciona el cuerpo entero)
-- [ ] Mutaciones: la lista con una columna de más; suspender sin escribir la auditoría; la auditoría fuera de la transacción; el `pageSize` sin tope; quitar la entrada de la lista blanca
-- [ ] [manual] Capítulo 4 (una petición de plataforma de principio a fin), capítulo 8 (mapa de amenazas y límites) y capítulo 3 (carpetas nuevas)
+
+> **Estado (2026-10-26): implementado y verificado.** `GET /api/v1/platform/tenants` (paginado, `pageSize` ≤ 100, alta descendente y Id, filtro por suspendida), `POST .../{id}/suspend` y `.../reactivate`, con la política de plataforma, 30 peticiones por minuto y por IP, eventos `1603`–`1605` y la fila de auditoría en el mismo `SaveChanges`. **Decisiones tomadas aquí:** (1) la empresa gana una **versión de fila** (migración `AddTenantRowVersion`) para que dos suspensiones simultáneas dejen una sola fila de auditoría; el perdedor recibe el mismo error de negocio que si hubiera llegado un instante después; (2) el recuento de miembros es una subconsulta por empresa **de la página** (no un agrupado de todas), con `IgnoreQueryFilters()` en la lista blanca; (3) `tenant.not_found` es un código nuevo (404); (4) `TenantId` entra por la ruta como **excepción nombrada** de dos operaciones; (5) la página tiene un tope (10 millones) para que (página − 1) × tamaño no desborde. 24 mutaciones, todas detectadas (N9, el desempate por Id, sobrevivió la primera vez y obligó a añadir el test del `ORDER BY`). Suite, proyecto a proyecto: Domain 206, Application 558, Infrastructure 309, Api 438 (1511 casos).
+
+- [x] `ListTenantsQuery`: nombre, alta, nº de miembros y estado, **nada más**; paginado con tope y orden estable; el recuento agrupado con `IgnoreQueryFilters()` **añadido a la lista blanca** con su motivo; el handler entra en la lista de lecturas globales de `Tenants`
+- [x] `SuspendTenantCommand` y `ReactivateTenantCommand`: suspender o reactivar y escribir la **fila de auditoría en la misma transacción**; `TenantId` como objetivo, **declarado como excepción nombrada** en el test «ningún comando acepta `TenantId`»
+- [x] Eventos `1603`, `1604` y `1605`, solo Ids
+- [x] Validators (`pageSize` ≤ 100, página ≥ 1), códigos de error y mensajes en el diccionario
+- [x] Endpoints `/api/v1/platform/tenants` (listar, suspender, reactivar) con su política de rate limiting nueva (30 por minuto y por IP) y los del login y el canje (5 y 10); OpenAPI con su etiqueta
+- [x] Sección nueva en la colección `OfiFlow.Api.http` (el alta del operador se explica allí, pero no se puede hacer por HTTP)
+- [x] Tests con dobles y **contra SQL Server real**: suspender es todo o nada con la fila de auditoría; la lista **no contiene** ningún dato personal (se inspecciona el cuerpo entero)
+- [x] Mutaciones: la lista con una columna de más; suspender sin escribir la auditoría; la auditoría fuera de la transacción; el `pageSize` sin tope; quitar la entrada de la lista blanca
+- [x] [manual] Capítulo 4 (una petición de plataforma de principio a fin), capítulo 8 (mapa de amenazas y límites) y capítulo 3 (carpetas nuevas)
 
 ### Bloque 7 — Extremo a extremo y ataques (≈ 5 h)
 - [ ] Ciclo completo por HTTP con el reloj controlado (`ControlledClock`): alta del operador, login, desafío, listar, suspender, el miembro bloqueado, reactivar

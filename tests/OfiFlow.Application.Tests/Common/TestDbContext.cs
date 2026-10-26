@@ -32,6 +32,9 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
     /// <summary>Cuántas veces se ha pedido guardar, para comprobar que una operación «todo o nada» confirma una sola vez (o ninguna).</summary>
     public int SaveCount { get; private set; }
 
+    /// <summary>Pone el contador a cero: la preparación del test (sembrar datos) no cuenta como lo que hace la operación probada.</summary>
+    public void ResetSaveCount() => SaveCount = 0;
+
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         SaveCount++;

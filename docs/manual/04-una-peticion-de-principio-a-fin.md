@@ -326,6 +326,24 @@ Para los **500**, el cliente solo recibe un mensaje genérico. La excepción com
 
 ---
 
+## Anexo — La misma travesía en el mundo de la plataforma (spec 011)
+
+Todo lo anterior es el viaje de una persona **de una empresa**. Un operador de la plataforma hace uno parecido, pero por otra puerta, y las diferencias son justo lo que importa. Ejemplo: `POST /api/v1/platform/tenants/{id}/suspend`.
+
+| Paso | En el viaje de empresa | En el de plataforma |
+|---|---|---|
+| Autenticación (7) | Esquema `Bearer`: clave `Jwt:Secret`, audiencia de empresa | Esquema `PlatformBearer`, fijado por la política de la ruta: **otra clave y otra audiencia**. Un token de empresa muere aquí con un 401, antes de llegar a ninguna operación |
+| Autorización (8) | `RequireAuthorization()` | La política `PlatformOperator`: sesión del esquema de plataforma **y** el claim `realm = platform` |
+| Límite de peticiones | Según la ruta | 30 por minuto y por IP para las tres rutas del panel |
+| Permisos (10a) | `[RequiresPermission]`: se mira el **rol** de la pertenencia en la base de datos | `[RequiresPlatformOperator]`: se mira en la base de datos que la cuenta **sigue siendo un operador activo**. Un operador no tiene empresa, ni rol, ni pertenencia |
+| Validación (10b) | Validadores del comando | Los de `ListTenantsQuery` (página ≥ 1, `pageSize` de 1 a 100); suspender y reactivar solo reciben un `Guid` |
+| Handler (11) | El filtro por empresa limita todo a la del token | **No hay empresa activa**: la empresa objetivo viene en la ruta, y es el único caso del sistema donde un Id de empresa entra por la petición (una excepción **con nombre** en el test de arquitectura) |
+| Dominio (12) | `Job.Create`, etc. | `Tenant.Suspend(hora)`: si ya estaba suspendida, `tenant.already_suspended` |
+| Guardar (13) | Un `SaveChanges` | Un `SaveChanges` con **dos** cosas: la empresa suspendida y la **fila de auditoría** (quién, qué, cuándo). O se confirman las dos o ninguna. La versión de fila de la empresa evita que dos peticiones simultáneas dejen dos filas |
+| Respuesta (14) | `201 Created` | `204 No Content`, y un evento `1604` en el registro con solo los dos Ids |
+
+**Qué se ve después.** Los miembros de esa empresa reciben un `403 tenant.suspended` en su **siguiente** petición, aunque su token siga válido, porque la comprobación de pertenencia del paso 10a incluye ahora el estado de la empresa. Y el operador, con la misma sesión, no puede pedir ni un cliente ni un trabajo de nadie: la ruta de empresa rechaza su token con un 401.
+
 ## Qué hace esta petición y qué no
 
 Para no llevarte una idea más optimista de la real:

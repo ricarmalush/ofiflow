@@ -1,5 +1,6 @@
 using MediatR;
 using OfiFlow.Application;
+using OfiFlow.Application.Common.Authorization;
 
 namespace OfiFlow.Api.Tests.Architecture;
 
@@ -24,7 +25,9 @@ public class SecurityArchitectureTests
         // el refresh relee el rol del usuario en su tenant
         "src/OfiFlow.Infrastructure/Identity/TokenService.cs",
         // dar de alta a un operador de la plataforma (spec 011 R1): hay que saber si la cuenta tiene ALGUNA pertenencia, en cualquier empresa, y no hay empresa activa; solo mira si existe una fila (AnyAsync), no la lee
-        "src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs"
+        "src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs",
+        // listar las empresas (spec 011 R11): hay que contar los miembros de CADA empresa y el operador no tiene ninguna activa; es un recuento por empresa de la página, sin proyectar ninguna columna de personas
+        "src/OfiFlow.Application/Platform/Queries/ListTenants/ListTenantsQueryHandler.cs"
     ];
 
     /// <summary>
@@ -48,7 +51,15 @@ public class SecurityArchitectureTests
         // el estado de suspensión de la empresa (spec 011): UNA sola lectura, reutilizada por el login, el canje del segundo
         // factor, el refresh, aceptar una invitación y la comprobación de pertenencia de cada petición. Un sitio nuevo que
         // necesite saber si una empresa está suspendida llama a TenantStatus; no lee la tabla por su cuenta.
-        ["Tenants"] = ["src/OfiFlow.Application/Tenancy/TenantStatus.cs"],
+        // Además, los tres handlers del panel de la plataforma (spec 011 R11 y R12): listar las empresas, suspender una y reactivarla.
+        // Son las únicas operaciones que ven una empresa que no es la suya, y las tres exigen ser un operador activo.
+        ["Tenants"] =
+        [
+            "src/OfiFlow.Application/Tenancy/TenantStatus.cs",
+            "src/OfiFlow.Application/Platform/Queries/ListTenants/ListTenantsQueryHandler.cs",
+            "src/OfiFlow.Application/Platform/Commands/SuspendTenant/SuspendTenantCommandHandler.cs",
+            "src/OfiFlow.Application/Platform/Commands/ReactivateTenant/ReactivateTenantCommandHandler.cs"
+        ],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
         ["ApplicationUsers"] = [
             "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
@@ -326,18 +337,39 @@ public class SecurityArchitectureTests
             $"para añadir uno, justifícalo ahí. Accesos no permitidos: {string.Join("; ", offenders)}");
     }
 
+    /// <summary>
+    /// Las dos únicas operaciones que reciben un <c>TenantId</c> por la petición (spec 011): el panel de la plataforma suspende o
+    /// reactiva la empresa que el operador elige. Ahí el Id es el OBJETIVO de la acción, no el contexto de quien la pide (un operador no
+    /// tiene empresa). Es una lista cerrada y con nombre: cualquier otra operación sigue sin poder recibirlo.
+    /// </summary>
+    private static readonly string[] OperationsThatTargetATenant =
+    [
+        "OfiFlow.Application.Platform.Commands.SuspendTenant.SuspendTenantCommand",
+        "OfiFlow.Application.Platform.Commands.ReactivateTenant.ReactivateTenantCommand"
+    ];
+
     [Fact]
-    public void NoCommandOrQuery_AcceptsTenantIdFromTheClient()
+    public void NoCommandOrQuery_AcceptsTenantIdFromTheClient_ExceptTheTwoNamedPlatformOperations()
     {
-        var offenders = typeof(DependencyInjection).Assembly.GetTypes()
+        var withTenantId = typeof(DependencyInjection).Assembly.GetTypes()
             .Where(type => type.GetInterfaces().Any(IsMediatRRequest))
             .Where(type => type.GetProperty("TenantId") is not null)
+            .ToList();
+
+        var offenders = withTenantId
             .Select(type => type.FullName)
+            .Where(name => !OperationsThatTargetATenant.Contains(name))
             .ToList();
 
         Assert.True(offenders.Count == 0,
             "Un Command/Query no puede recibir TenantId: se toma siempre del JWT vía ITenantContext " +
             $"(ADR-002, ADR-009 R2, protección contra mass assignment). Lo tienen: {string.Join(", ", offenders)}");
+
+        // Control positivo: las dos excepciones existen de verdad y son operaciones de plataforma. Si una dejara de tener TenantId, la
+        // lista estaría describiendo un código que ya no existe; si una excepción se colara en una operación de empresa, no pasaría de aquí.
+        Assert.Equal(OperationsThatTargetATenant.Order(), withTenantId.Select(type => type.FullName!).Order());
+        Assert.All(withTenantId, type => Assert.True(type.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true),
+            $"{type.Name}: solo una operación de plataforma puede recibir el Id de la empresa objetivo."));
     }
 
     private static bool IsMediatRRequest(Type type) =>

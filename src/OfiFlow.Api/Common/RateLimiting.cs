@@ -32,6 +32,9 @@ public static partial class RateLimiting
     /// <summary>Canjear el desafío de plataforma: 10 por minuto y por IP, como el de empresa (spec 011).</summary>
     public const string PlatformVerify = "platform-verify";
 
+    /// <summary>Las operaciones del panel con sesión de plataforma (listar, suspender, reactivar): 30 por minuto y por IP (spec 011, valor inicial).</summary>
+    public const string PlatformOperations = "platform-operations";
+
     public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services)
     {
         services.AddRateLimiter(options =>
@@ -51,6 +54,8 @@ public static partial class RateLimiting
             // La plataforma es la cuenta más valiosa: mismos límites que el login y el canje de empresa, con contador propio (spec 011, valores iniciales).
             options.AddPolicy(PlatformLogin, context => PerIp(context, permitLimit: 5, TimeSpan.FromMinutes(1)));
             options.AddPolicy(PlatformVerify, context => PerIp(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
+            // Ya autenticadas, pero cada una toca la base de datos de todas las empresas: un tope por IP frena una sesión robada usada como mangueras.
+            options.AddPolicy(PlatformOperations, context => PerIp(context, permitLimit: 30, TimeSpan.FromMinutes(1)));
 
             options.OnRejected = async (rejected, cancellationToken) =>
             {

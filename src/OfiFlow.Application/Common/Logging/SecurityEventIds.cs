@@ -86,7 +86,6 @@ public static class SecurityEventIds
     public const int MfaResetByManager = 1507;
 
     // 1600-1699: panel de la plataforma (spec 011). Solo Ids y el motivo: ni emails, ni contraseñas, ni códigos.
-    // 1603-1605 (listar, suspender y reactivar) llegan en el bloque 6.
 
     /// <summary>Un operador superó la contraseña y el segundo factor y recibió una sesión de plataforma (15 minutos, sin refresh token).</summary>
     public const int PlatformSessionIssued = 1601;
@@ -96,6 +95,15 @@ public static class SecurityEventIds
     /// baja, sin segundo factor, desafío o código inválido...). Quien lo intenta recibe siempre el mismo 401 (R6).
     /// </summary>
     public const int PlatformLoginRejected = 1602;
+
+    /// <summary>Un operador listó las empresas (con la página y cuántas vio). Es una lectura: no deja fila de auditoría, solo este evento.</summary>
+    public const int PlatformTenantsListed = 1603;
+
+    /// <summary>Un operador suspendió una empresa (solo los Ids del operador y de la empresa). Deja también una fila de auditoría.</summary>
+    public const int PlatformTenantSuspended = 1604;
+
+    /// <summary>Un operador reactivó una empresa (solo los Ids). Deja también una fila de auditoría.</summary>
+    public const int PlatformTenantReactivated = 1605;
 
     /// <summary>Se creó un operador de la plataforma con el comando del servidor (con su segundo factor ya confirmado).</summary>
     public const int PlatformOperatorCreated = 1606;

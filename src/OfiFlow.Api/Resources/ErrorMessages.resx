@@ -115,6 +115,9 @@
   <data name="tenant.suspended" xml:space="preserve">
     <value>La empresa está suspendida. Ponte en contacto con el soporte de OfiFlow.</value>
   </data>
+  <data name="tenant.not_found" xml:space="preserve">
+    <value>No se ha encontrado la empresa.</value>
+  </data>
   <data name="tenant.already_suspended" xml:space="preserve">
     <value>La empresa ya está suspendida.</value>
   </data>

@@ -26,7 +26,7 @@ public class AuthorizationArchitectureTests
         Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
 
         // Salvaguarda contra un fallo silencioso: si el escaneo no encontrara operaciones, el test pasaría sin comprobar nada.
-        Assert.True(operations.Count >= 32, $"Se esperaban al menos las 32 operaciones actuales y se encontraron {operations.Count}.");
+        Assert.True(operations.Count >= 35, $"Se esperaban al menos las 35 operaciones actuales y se encontraron {operations.Count}.");
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public class AuthorizationArchitectureTests
             .ToList();
         var inThePlatformNamespace = operations.Where(type => type.Namespace!.StartsWith("OfiFlow.Application.Platform", StringComparison.Ordinal)).ToList();
 
-        Assert.True(inThePlatformNamespace.Count >= 2, "Control positivo: el inicio de sesión de plataforma debería estar ahí.");
+        Assert.True(inThePlatformNamespace.Count >= 5, "Control positivo: el inicio de sesión y las tres operaciones del panel de plataforma deberían estar ahí.");
 
         foreach (var platformOperation in operations.Where(type => type.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true)))
         {

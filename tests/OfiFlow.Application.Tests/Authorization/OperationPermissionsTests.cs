@@ -24,7 +24,10 @@ using OfiFlow.Application.Jobs.Commands.UpdateJob;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
 using OfiFlow.Application.Platform.Commands.PlatformLogin;
+using OfiFlow.Application.Platform.Commands.ReactivateTenant;
+using OfiFlow.Application.Platform.Commands.SuspendTenant;
 using OfiFlow.Application.Platform.Commands.VerifyPlatformChallenge;
+using OfiFlow.Application.Platform.Queries.ListTenants;
 using OfiFlow.Application.Tenancy.Commands.ChangeUserRole;
 using OfiFlow.Application.Tenancy.Commands.InviteUser;
 using OfiFlow.Application.Tenancy.Commands.RemoveUser;
@@ -38,7 +41,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 32 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y las dos del inicio de sesión de plataforma de la spec 011) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 35 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -83,6 +86,28 @@ public class OperationPermissionsTests
         typeof(PlatformLoginCommand), // spec 011: anónima, la contraseña del operador es la credencial (y solo da un desafío)
         typeof(VerifyPlatformChallengeCommand) // spec 011: anónima, el desafío de plataforma es la credencial
     ];
+
+    // Spec 011: las operaciones del panel no piden un permiso de empresa (un operador no tiene ninguna): piden ser un operador activo.
+    private static readonly Type[] PlatformTable =
+    [
+        typeof(ListTenantsQuery),
+        typeof(SuspendTenantCommand),
+        typeof(ReactivateTenantCommand)
+    ];
+
+    public static TheoryData<Type> Platform
+    {
+        get
+        {
+            var data = new TheoryData<Type>();
+            foreach (var operation in PlatformTable)
+            {
+                data.Add(operation);
+            }
+
+            return data;
+        }
+    }
 
     public static TheoryData<Type, Permission> Authenticated
     {
@@ -135,18 +160,27 @@ public class OperationPermissionsTests
         Assert.False(operation.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true));
     }
 
+    [Theory]
+    [MemberData(nameof(Platform))]
+    public void APlatformOperation_DemandsAnActiveOperator_AndNoCompanyPermissionNorAnonymousAccess(Type operation)
+    {
+        Assert.True(operation.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true));
+        Assert.False(operation.IsDefined(typeof(RequiresPermissionAttribute), inherit: true));
+        Assert.False(operation.IsDefined(typeof(AllowAnonymousRequestAttribute), inherit: true));
+    }
+
     [Fact]
     public void TheTableCoversEveryOperationOfTheApplication()
     {
         // Si se añade una operación y no se añade aquí, este test falla: la tabla aprobada no queda incompleta.
-        var inTheTable = AuthenticatedTable.Select(row => row.Operation).Concat(AnonymousTable).ToHashSet();
+        var inTheTable = AuthenticatedTable.Select(row => row.Operation).Concat(AnonymousTable).Concat(PlatformTable).ToHashSet();
 
         var inTheApplication = typeof(OfiFlow.Application.DependencyInjection).Assembly.GetTypes()
             .Where(type => type is { IsClass: true, IsAbstract: false } && type.GetInterfaces().Any(IsMediatRRequest))
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(32, inTheTable.Count);
+        Assert.Equal(35, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

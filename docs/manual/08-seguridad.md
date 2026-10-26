@@ -285,7 +285,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **veintinueve eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **treinta y dos eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -315,6 +315,9 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **veintinueve eventos
 | `1507` | **MFA reiniciado por un gestor** | Quién lo hizo y a quién (solo Ids). Un `1507` inesperado seguido de un login desde una IP nueva es lo que querría ver un analista |
 | `1601` | **Sesión de operador emitida** | Un operador completó contraseña y código y recibió una sesión de plataforma (solo el `UserId`). Cada una debe corresponder a alguien que conozcas; una a deshoras o desde una IP nueva es lo que hay que mirar |
 | `1602` | **Inicio de sesión de plataforma rechazado** | Con el **motivo real** en el log (contraseña errónea, cuenta que no es de operador, sin segundo factor...); quien lo intenta recibe siempre el mismo `401`. Una ráfaga de `1602` con el motivo «cuenta que no es de operador» y una contraseña **correcta** es alguien con credenciales de empresa probando la puerta de la plataforma |
+| `1603` | Empresas listadas | Un operador listó las empresas (su `UserId`, la página y cuántas vio; nunca un nombre de empresa). Es una **lectura**: no deja fila de auditoría, solo este evento |
+| `1604` | **Empresa suspendida** | Un operador suspendió una empresa (solo el `UserId` y el `TenantId`). Deja además una fila de auditoría que no caduca. Un `1604` sin un `1601` reciente del mismo operador es lo primero que mira un analista |
+| `1605` | **Empresa reactivada** | Un operador reactivó una empresa (solo los dos Ids), con su fila de auditoría |
 | `1606` | **Operador de la plataforma creado** | Alguien con acceso al servidor creó una cuenta con acceso a todas las empresas (solo el `UserId`, nunca el email). Debe coincidir con una intervención que conozcas: un `1606` inesperado es el evento más grave de la lista |
 | `1607` | **Operador de la plataforma dado de baja** | Se desactivó a un operador (solo el `UserId`) |
 | `1608` | **Sesión de operador revocada** | Un token de plataforma todavía válido de una cuenta que ya no es un operador activo (con la operación y el `UserId`). Es la baja surtiendo efecto en la siguiente petición; un `1608` sin una baja reciente que lo explique es una anomalía |
@@ -474,6 +477,11 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Crear una cuenta con acceso global desde fuera, o sin segundo factor | El alta solo existe como programa del servidor (sin ruta HTTP), con el primer código TOTP comprobado antes de guardar nada y todo en un único guardado | `OfiFlow.Admin`, `PlatformOperatorAdministration.cs:89`, `:116` | `PlatformOperatorToolTests`, `PlatformOperatorAdministrationTests` |
 | **E** · Un token de empresa vale en las rutas de plataforma (o al revés) | Esquemas separados con clave y audiencia propias; la API no arranca si se parecen | `DependencyInjection.cs`, `PlatformAuthentication.cs` | `PlatformSessionEndToEndTests`, `PlatformStartupTests` |
 | **E** · Un operador dado de baja sigue operando con su sesión | Revalidación en la base de datos en cada petición; evento `1608` | `CurrentUser.cs`, `AuthorizationBehavior.cs` | `ADisabledOperator_LosesTheSessionOnTheNextRequest_AndTheEventIsLogged`, `CurrentUserPlatformTests` |
+| **I** · El operador ve datos de las empresas (personas, clientes, trabajos) | El listado devuelve exactamente cinco campos (un test fija la forma del registro y otro inspecciona el cuerpo entero buscando emails, nombres y datos de un cliente); el recuento de miembros es el único sitio que se salta el filtro de empresa y está en la lista blanca | `PlatformTenantDto.cs`, `ListTenantsQueryHandler.cs` | `TheList_HasOnlyTheFiveMetadataFields_AndNoPersonalDataAnywhereInTheBody`, `TheTenantShape_IsExactlyFiveFields_...` |
+| **D** · Una sesión robada vuelca todas las empresas de golpe, o fuerza la API | Páginas de 100 como máximo (un tope mayor es un `400`, no una página recortada), página acotada para que no desborde, y 30 peticiones por minuto y por IP | `ListTenantsQueryValidator.cs`, `RateLimiting.cs` | `APageSizeOutOfRange_IsRejected_NotSilentlyTruncated`, `ThePanelRoutes_AreLimitedToThirtyPerMinutePerIp` |
+| **R** · «Yo no suspendí esa empresa» | Suspender y reactivar escriben una fila de auditoría **en la misma transacción** (o las dos o ninguna) con el operador, la empresa, la acción y la hora; y los eventos `1604` y `1605` | `SuspendTenantCommandHandler.cs`, `PlatformAudit.cs` | `WhenTheAuditRowCannotBeWritten_TheTenantIsNotSuspended`, `EachChange_LeavesOneAuditRowWithTheOperator_...` |
+| **T** · Dos peticiones suspenden la misma empresa a la vez y dejan dos filas de auditoría | Versión de fila en la empresa: gana una y la otra recibe el error de siempre (`tenant.already_suspended`) | `TenantConfiguration.cs` | `TwoRequestsHoldingTheSameTenant_OnlyOneCanCommit_SoThereIsOneAuditRow`, `ManySimultaneousSuspensions_...` |
+| **E** · Un `Id` de empresa llega por la petición (mass assignment) | Solo dos operaciones, con nombre y de plataforma, pueden recibirlo; cualquier otra con `TenantId` rompe el test | `SuspendTenantCommand.cs`, `ReactivateTenantCommand.cs` | `NoCommandOrQuery_AcceptsTenantIdFromTheClient_ExceptTheTwoNamedPlatformOperations` |
 | **S** · Entrar en la plataforma solo con la contraseña, o saber qué emails son de operador | Siempre desafío o un único `401` con el mismo coste; desafío con audiencia | `PlatformLoginCommandHandler.cs`, `VerifyPlatformChallengeCommandHandler.cs` | `EveryLoginFailure_IsTheSameResponse_WithTheSameCost`, `ACompanyChallenge_IsNotRedeemableOnThePlatform_...` |
 | Dependencia con vulnerabilidad conocida | NuGetAudit como error y Dependabot | `Directory.Build.props`, `dependabot.yml` | El propio build y el pipeline |
 | Vulnerabilidad en el código | Analizadores de seguridad como error y CodeQL | `.editorconfig`, `codeql.yml` | El propio build y el pipeline |
@@ -529,6 +537,13 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 
 **El programa de administración**
 18. **No tiene autenticación propia.** Quien pueda ejecutar `OfiFlow.Admin` con la cadena de conexión y la clave del segundo factor puede crear o dar de baja a un operador; la frontera es el acceso al servidor. Además la auditoría guarda al operador afectado, no a quien ejecutó el programa (no tiene cuenta en OfiFlow). Y el tramo interactivo (teclear la contraseña sin eco, reintentar el código) no tiene test automático: lo que invoca sí, y se comprueba a mano al instalar.
+
+**El panel de la plataforma (spec 011, bloque 6)**
+19. **La suspensión no dice por qué ni avisa.** Los miembros ven un mensaje genérico y el operador no deja un motivo. Un texto libre es un dato nuevo que validar y proteger, y el aviso por email espera a que exista el servicio de correo (NEXT en la spec).
+20. **Un operador comprometido puede suspender cualquier empresa**, es decir, dejar sin servicio a todos los clientes. Es el riesgo aceptado del ADR-016: se mitiga (segundo factor, bloqueo, sesión de 15 minutos, baja inmediata, límite de 30 peticiones por minuto, auditoría que no caduca) pero no se elimina. Con clientes de pago convendrá la aprobación entre dos operadores.
+21. **La auditoría no tiene ruta de consulta.** Las filas se escriben, nunca se modifican ni se borran desde la aplicación, y hoy solo se leen entrando en la base de datos. Alguien con acceso directo a ella sí podría alterarlas (una garantía a nivel de base de datos queda como mejora).
+22. **El listado no se puede buscar ni ordenar de otra forma**: alta descendente, paginado y el filtro por suspendida. Buscar por nombre y las estadísticas son NEXT.
+23. **El recuento de miembros hace una subconsulta por empresa de la página** (100 como máximo). Está medido por un test (dos consultas por listado, no una por empresa), pero no se ha probado con miles de empresas.
 
 Los cuatro últimos son los candidatos más baratos para una próxima ronda de endurecimiento, con el mismo método de siempre: escribir el test y verlo fallar rompiendo el código a propósito.
 
