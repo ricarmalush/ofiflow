@@ -136,4 +136,4 @@ Implementada por la spec 010 (bloques 1 a 7), con 1192 tests en verde. Lo que la
 - Amplía: ADR-007 (más credenciales, sin `UserManager`), ADR-012 (permiso `Mfa.Manage`) y ADR-013 (el reinicio de MFA usa `ManageableRoles`; quitar a un miembro borra también su MFA).
 - Cierra, al aceptarse: los NEXT de ADR-009 "Lockout por cuenta" y "Enumeración de usuarios: igualar el tiempo del login".
 - Afecta a: ADR-009 (eventos `1005`, `1006` y `1501`–`1507` en el catálogo de R5; `Mfa:EncryptionKey` entre los secretos de R8).
-- Es requisito de: la spec 011 (panel de operador de la plataforma).
+- Es requisito de, y lo reutiliza: la spec 011 (ADR-016, panel de operador de la plataforma). El segundo factor es ahí **obligatorio sin excepción**: el alta lo enrola y lo confirma en el mismo acto, el login de plataforma siempre devuelve un desafío, y el desafío lleva una audiencia para que no cruce de mundo. El bloqueo de cuenta protege también al operador.

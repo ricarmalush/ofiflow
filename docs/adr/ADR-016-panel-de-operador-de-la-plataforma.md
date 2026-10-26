@@ -1,6 +1,6 @@
 # ADR-016 — Panel de operador de la plataforma
 
-**Estado:** Propuesto (2026-10-22)
+**Estado:** Aceptado (2026-10-26)
 **Fecha:** 2026-10-22
 **Proyecto:** OfiFlow
 
@@ -114,6 +114,22 @@ Se decide:
 - Varios operadores con permisos distintos y aprobación entre dos para suspender.
 - Refresh token de operador, si el uso lo justifica.
 - Passkeys para el operador.
+
+---
+
+## Nota de estado (2026-10-26)
+
+Implementada por la spec 011 (bloques 1 a 7). Lo que la implementación aclaró y que conviene tener presente:
+
+- **El alta y la baja viven en un proyecto de consola aparte (`OfiFlow.Admin`)**, no en un modo de arranque de la API: la API no lo referencia, así que no hace falta acordarse de excluir nada para que no sea alcanzable por HTTP. No recibe `Jwt:Secret`. Su lógica está en `Application` (`PlatformOperatorAdministration`), que a propósito **no** es una petición de MediatR.
+- **Tres sitios emiten sesiones** (el login sin segundo factor y los dos canjes de desafío) y un test de arquitectura lo fija. Los desafíos llevan una **audiencia** (empresa o plataforma) y uno de otro mundo se trata como inventado, antes de mirar el código y sin gastar intentos.
+- **`Tenant` gana una versión de fila** (migración `AddTenantRowVersion`), no prevista en la spec: sin ella, dos suspensiones simultáneas de la misma empresa dejaban dos filas de auditoría. El perdedor recibe el error de negocio de siempre.
+- **`TenantId` entra por la ruta** en suspender y reactivar (es el objetivo, un operador no tiene empresa): el test que prohíbe `TenantId` en las peticiones lo declara como excepción **nombrada** de esas dos operaciones y comprueba que son de plataforma.
+- **El recuento de miembros es una subconsulta por empresa de la página** (hasta 100), con `IgnoreQueryFilters()` en la lista blanca; es el único sitio que cuenta miembros ajenos.
+- **El mismo bloqueo de cuenta** protege al operador (50 intentos simultáneos hacen cinco comprobaciones reales de contraseña) y todos los fallos del login son el mismo 401 con el mismo coste.
+- **Verificado contra la API publicada** (Kestrel, SQL Server en Docker, TOTP real calculado fuera de la aplicación): 77 comprobaciones, incluida la suspensión con el 403 del miembro, la auditoría consultada en la base de datos y la API negándose a arrancar sin `Jwt:PlatformSecret`.
+- **Mutaciones sobre el código real** en todos los bloques (121 entre los bloques 2 y 7); las que sobrevivieron la primera vez (el desempate por `Id` del listado) obligaron a escribir el test que faltaba.
+- **Riesgos aceptados que se mantienen:** un operador comprometido puede suspender cualquier empresa durante la vida de su sesión; el TOTP no resiste al *phishing*; quien controle el servidor o la base de datos puede crear un operador; la auditoría no tiene ruta de consulta y solo la protege la aplicación, no la base de datos.
 
 ---
 

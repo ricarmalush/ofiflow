@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-016-panel-de-operador-de-la-plataforma.md](../../adr/ADR-016-panel-de-operador-de-la-plataforma.md)
-**Estado general:** Aprobada (2026-10-22); bloques 1 a 5 implementados, verificados y commiteados (2026-10-23, 2026-10-25 y 2026-10-26); bloque 6 implementado y verificado (2026-10-26), pendiente de commit
+**Estado general:** Aprobada (2026-10-22); bloques 1 a 6 implementados, verificados y commiteados (2026-10-23 a 2026-10-26); bloque 7 y cierre implementados y verificados (2026-10-26), pendientes de commit; push, PR y merge, a la espera de una orden explícita
 
 ---
 
@@ -101,15 +101,18 @@ Se empieza por lo que **ya se puede probar sin operador**: que la suspensión se
 - [x] [manual] Capítulo 4 (una petición de plataforma de principio a fin), capítulo 8 (mapa de amenazas y límites) y capítulo 3 (carpetas nuevas)
 
 ### Bloque 7 — Extremo a extremo y ataques (≈ 5 h)
-- [ ] Ciclo completo por HTTP con el reloj controlado (`ControlledClock`): alta del operador, login, desafío, listar, suspender, el miembro bloqueado, reactivar
-- [ ] Cada ataque de la spec como test: un `Owner` en `/platform`, el operador en `/customers`, un desafío que cruza de mundo, un operador dado de baja con un token vivo, 50 logins de plataforma simultáneos contra el bloqueo
-- [ ] Dos empresas: suspender A no afecta a B en ninguna operación
-- [ ] Mutaciones sobre el código real (se anotan todas en este fichero, como en la spec 010)
-- [ ] Verificación contra la **API publicada de verdad** (como el `verify.sh` de la 010): login de plataforma con TOTP real, suspender y comprobar el 403 del miembro
-- [ ] [manual] Capítulo 9 (cifras y nuevos tests) y anexo de preguntas del tribunal
+
+> **Estado (2026-10-26): implementado y verificado.** `PlatformPanelAttacksEndToEndTests` (10 tests, API entera, SQL Server real, reloj controlado): el recorrido completo y cada ataque de la spec, incluidos los 50 inicios de sesión de plataforma simultáneos (cinco comprobaciones reales y cuenta bloqueada). **12 mutaciones** sobre el código compartido probadas solo contra esa clase, todas detectadas (bloqueo por cuenta, revalidación del operador, la suspensión en login, refresh, invitación y pertenencia, el canje, la auditoría y los eventos). **Verificación contra la API publicada** (`verify011.sh`, fuera del repositorio): 77 comprobaciones, todas correctas; el primer intento falló siete por un fallo del propio script (Git Bash reescribe la ruta de `sqlcmd` dentro de `docker exec`), ninguna por la API. **Para hacerla** hizo falta un programa de apoyo que da de alta al operador sin terminal (`OfiFlow.Admin` exige una interactiva): vive fuera del repositorio. Suite, proyecto a proyecto: Domain 206, Application 558, Infrastructure 309, Api 448 (1521 casos).
+
+- [x] Ciclo completo por HTTP con el reloj controlado (`ControlledClock`): alta del operador, login, desafío, listar, suspender, el miembro bloqueado, reactivar
+- [x] Cada ataque de la spec como test: un `Owner` en `/platform`, el operador en `/customers`, un desafío que cruza de mundo, un operador dado de baja con un token vivo, 50 logins de plataforma simultáneos contra el bloqueo
+- [x] Dos empresas: suspender A no afecta a B en ninguna operación
+- [x] Mutaciones sobre el código real (se anotan todas en este fichero, como en la spec 010)
+- [x] Verificación contra la **API publicada de verdad** (como el `verify.sh` de la 010): login de plataforma con TOTP real, suspender y comprobar el 403 del miembro
+- [x] [manual] Capítulo 9 (cifras y nuevos tests) y anexo de preguntas del tribunal
 
 ### Cierre
-- [ ] ADR-016 pasa a **Aceptado** con su nota de estado; ADR-009 (catálogo de eventos: 23 → 32, identidad con acceso global) y ADR-012 (tercer tipo de declaración) anotados; ADR-014 enlaza el uso del MFA obligatorio
-- [ ] Revisión final del manual **buscando también** frases de «obra en curso» y referencias de línea (lo que se escapó en la 010); `docs/README.md`, README raíz y cifras al día
-- [ ] Memoria del proyecto al día
+- [x] ADR-016 pasa a **Aceptado** con su nota de estado; ADR-009 (catálogo de eventos: 23 → 32, identidad con acceso global) y ADR-012 (tercer tipo de declaración) anotados; ADR-014 enlaza el uso del MFA obligatorio
+- [x] Revisión final del manual **buscando también** frases de «obra en curso» y referencias de línea (lo que se escapó en la 010); `docs/README.md`, README raíz y cifras al día
+- [x] Memoria del proyecto al día
 - [ ] [externo] Push de la rama, PR y merge, cada uno con confirmación explícita

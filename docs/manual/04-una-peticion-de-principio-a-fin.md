@@ -105,7 +105,7 @@ Aquí se responde "¿**quién eres**?". El middleware de JWT mira la cabecera `A
 | El **emisor** y el **destinatario** | Un token emitido para otra aplicación |
 | La **caducidad**, sin margen de tolerancia | Un token viejo reutilizado |
 
-(Configurado en [`DependencyInjection.cs:62-81`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs) de Infrastructure.)
+(Configurado en [`DependencyInjection.cs:90-109`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs) de Infrastructure.)
 
 Si todo es correcto, el servidor construye un objeto de usuario con los datos del token (sus *claims*): quién es y, **lo importante, en qué empresa está operando** (`tenant_id`).
 

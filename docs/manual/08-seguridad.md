@@ -439,8 +439,8 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP, y bloqueo por cuenta (5 fallos / 15 min) | `RateLimiting.cs:35`, `AccountLockout.cs` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
-| **S** · Suplantar con un token falso | Firma HMAC-SHA256 | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP, y bloqueo por cuenta (5 fallos / 15 min) | `RateLimiting.cs:44`, `AccountLockout.cs` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
+| **S** · Suplantar con un token falso | Firma HMAC-SHA256 | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **S** · Robar un refresh token | Rotación y detección de reutilización | `TokenService.cs:47-64` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | **S** · Adivinar o reutilizar un token de invitación | 256 bits aleatorios, un solo uso, misma respuesta para los cuatro fallos, evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | **E** · Escalada de privilegios invitando a un `Admin` o a un `Owner` | Jerarquía de roles (`ManageableRoles`) comprobada al invitar y al revocar | `InviteUserCommandHandler.cs`, `ManageableRoles.cs` | `WhenTheHierarchyForbidsIt_ItIsRefused_AndNothingIsCreated` |
@@ -457,7 +457,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Presentar el desafío como token de acceso | No es un JWT: es un valor opaco que el middleware de tokens no acepta | `OpaqueToken.cs` | `ATokenIsNotAJwt_SoItCanNeverBePresentedAsAnAccessToken` |
 | **I** · Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token | `OpaqueToken.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | **S** · Usar la API sin sesión | `RequireAuthorization()` en cada grupo | `JobEndpoints.cs:21` | `WithoutAToken_EveryRoute_Returns401` |
-| **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **T** · Datos mal formados o enormes | Validadores y longitudes máximas | `*CommandValidator.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | **R** · Negar una acción | Eventos de seguridad con usuario y empresa | `SecurityEventIds.cs` | `ADenial_IsLoggedAsASecurityEvent_...`, `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` |
 | **I** · Ver datos de otra empresa | Filtro global por empresa | `ApplicationDbContext.cs:72` | `TenantIsolationEndToEndTests`, `CrossTenantWriteIsolationTests` |
@@ -466,7 +466,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword`, `ADenial_IsLogged...` |
 | **I** · Contenido leído o incrustado por otra web | Cabeceras de seguridad | `SecurityHeadersMiddleware.cs:28-39` | `EveryResponse_IncludesSecurityHeaders` |
 | **I** · Secretos en el repositorio | gitleaks y *push protection* | `ci.yml`, `.gitleaksignore` | El propio job `gitleaks` en cada PR |
-| **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:35-44` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
+| **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:44-46` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
 | **D** · Contraseñas o textos gigantes | Máximos de longitud | `PasswordRules.cs`, validadores | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | **E** · Un rol hace lo que no le toca | Permisos por rol, antes de la validación | `AuthorizationBehavior.cs` | `EachRole_CanOrCannotPerformEachOperation` (65 casos) |
 | **E** · Una operación sin permiso declarado | *Fail-closed* y test de arquitectura | `AuthorizationBehavior.cs` | `EveryOperationOfTheApplication_DeclaresItsAuthorization` |

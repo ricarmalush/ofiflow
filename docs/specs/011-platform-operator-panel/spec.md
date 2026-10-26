@@ -1,6 +1,6 @@
 # Spec — 011-platform-operator-panel
 
-**Estado:** Aprobada (2026-10-22), con las decisiones D1-D11 tal como se recomendaron
+**Estado:** Implementada (2026-10-26), con las decisiones D1-D11 tal como se recomendaron
 **Fecha:** 2026-10-22
 **Bounded Context:** Tenancy (la suspensión vive en `Tenant`) e Identity (el operador es una identidad aparte); transversal a Application, Infrastructure y Api
 **Depende de:** ADR-016 (panel de operador, redactada junto a esta spec), ADR-002 (multi-tenancy: es su única excepción deliberada), ADR-007 (credenciales y refresh tokens), ADR-009 (seguridad base), ADR-011 (errores con código), ADR-012 (permisos), ADR-013 (revalidación por petición), ADR-014 (MFA y bloqueo de cuenta: **requisito previo, ya implementado**), ADR-015 (logs a fichero)

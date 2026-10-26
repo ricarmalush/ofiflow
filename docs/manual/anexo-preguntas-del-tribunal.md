@@ -116,6 +116,29 @@ El `Owner` o un `Admin` invita con un email y un rol. Se genera un token de **25
 **¿Qué riesgo tiene devolver el token al invitante?**
 Que el invitante lo ve y podría aceptarlo él mismo. Es una decisión consciente (sin servicio de email todavía); lo que **nunca** pasa es que conozca la contraseña de la otra persona. Cuando haya email, el token dejará de devolverse. *(ADR-013)*
 
+### El operador de la plataforma (spec 011)
+
+**¿Cómo puede un operador ver todas las empresas si el aislamiento lo impide?**
+Es la **única excepción deliberada** al aislamiento (ADR-002), y por eso se hizo lo más estrecha posible: ve **cinco campos** de cada empresa (Id, nombre, alta, número de miembros y estado), nunca una persona, un cliente ni un trabajo; es una cuenta **sin ninguna empresa**; entra con **segundo factor obligatorio**; y todo lo que cambia deja una fila de auditoría que no caduca. El recuento de miembros es el único sitio que se salta el filtro de empresa, y está en una lista blanca vigilada por un test. *(Cap. 5, 6, 8)*
+
+**¿Por qué no es un rol más?**
+Un rol vive **dentro** de una empresa y el operador no tiene ninguna; además, un solo bit mal cambiado en una cuenta daría acceso global. Es una cuenta normal más una fila en una tabla aparte, que se puede auditar y proteger por separado. Y una cuenta es de empresa o de plataforma, **nunca de las dos**. *(Cap. 6)*
+
+**¿Cómo se evita que un token de empresa valga en la plataforma, o al revés?**
+Son **dos mundos**: otro esquema de autenticación, **otra clave y otra audiencia**, y la API no arranca si se parecen. Un token de empresa falla en la firma y uno de plataforma, en la audiencia, aunque sean correctos en su propio mundo. Se prueba con tokens fabricados con la clave de uno y la audiencia del otro. *(Cap. 6, 8)*
+
+**¿Cómo se crea el primer operador, si no hay una ruta para hacerlo?**
+Con un **programa del servidor** (`OfiFlow.Admin`) que la API ni referencia: la cuenta más poderosa no se crea por una API. Alta todo o nada: el primer código TOTP se comprueba en memoria **antes** de guardar nada, así que nunca existe un operador sin segundo factor. **Límite honesto:** quien controle el servidor o la base de datos puede crear uno. *(Cap. 1, 8)*
+
+**Das de baja a un operador y su token sigue vivo 15 minutos, ¿no?**
+No: cada petición vuelve a comprobar **en la base de datos** que la cuenta sigue siendo un operador activo. La baja surte efecto en su **siguiente petición**, que recibe un 403 y deja el evento `1608`. La sesión dura 15 minutos y no tiene *refresh token*. *(Cap. 6, 8)*
+
+**¿Qué pasa si roban la sesión de un operador?**
+Es el riesgo aceptado: con ella se puede suspender cualquier empresa durante 15 minutos o hasta que se dé de baja. Se mitiga (segundo factor, bloqueo de cuenta, sesión corta, baja inmediata, 30 peticiones por minuto, auditoría que no caduca) pero no se elimina; con clientes de pago, convendría que suspender exigiera la aprobación de dos operadores. *(Cap. 8, ADR-016)*
+
+**¿Cómo sabes que suspender es todo o nada?**
+La suspensión y su fila de auditoría se confirman en el mismo guardado. Un test hace que la base de datos **rechace** una de las dos sentencias y comprueba que la otra se deshace, en los dos sentidos. Y una versión de fila en la empresa impide que dos suspensiones simultáneas dejen dos filas de auditoría. *(Cap. 9)*
+
 ## 5. Seguridad general
 
 **¿Cómo piensas la seguridad del proyecto?**
@@ -128,7 +151,7 @@ EF Core parametriza las consultas; los analizadores de seguridad del compilador 
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, una `Content-Security-Policy` muy restrictiva y `Cross-Origin-Resource-Policy`; y HSTS fuera de desarrollo. La única excepción es la pantalla de Swagger, solo en desarrollo y solo en su ruta, con tests que impiden que se extienda. *(Cap. 8)*
 
 **¿Qué se registra y qué no?**
-Hay 14 eventos de seguridad con identificador estable (`1001`...`1406`). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
+Hay 32 eventos de seguridad con identificador estable (`1001`...`1608`). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
 
 **¿Cómo se manejan los secretos?**
 Fuera del repositorio. gitleaks escanea **todo el historial** en cada PR, GitHub bloquea el `push` si detecta uno conocido, y la aplicación **no arranca** si falta el secreto del token. *(Cap. 6, 10)*

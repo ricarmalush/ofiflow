@@ -385,7 +385,6 @@ Se detallan en el capítulo 9.
 ## Cosas que verás en el repositorio y que conviene saber
 
 - **Ficheros `.gitkeep`** dentro de carpetas que ya tienen contenido (por ejemplo, `Domain/Jobs/.gitkeep`). Son restos de cuando las carpetas se crearon vacías; no hacen nada y son inofensivos.
-- **`Application/Tenancy/`** ya tiene casos de uso (las invitaciones, spec 009), pero ninguno tiene todavía endpoint en la API: llegan en un bloque posterior de esa spec.
 - **`Domain/Common/IAuditable`** declara sus fechas con `set` público, porque quien las rellena (el interceptor) está en otra capa y necesita poder escribirlas. Es una concesión pragmática: a diferencia del resto de propiedades de `Job`, estas dos no están protegidas con `private set`.
 
 ## Para comprobar que lo has entendido
