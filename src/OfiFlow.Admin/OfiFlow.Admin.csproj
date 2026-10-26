@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Programa de administración del servidor (spec 011, ADR-016): crea y da de baja a los operadores de la plataforma.
+    No es una API ni la referencia la API: no hay ninguna ruta HTTP que llegue hasta aquí. Se ejecuta a mano en el
+    servidor (o en una sesión con acceso a la base de datos), y por eso no se despliega junto a la API pública.
+    No añade ningún paquete NuGet propio.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- La misma que la API en local: la clave del segundo factor (Mfa:EncryptionKey) es la misma en las dos, o la API no podría descifrar el secreto del operador. -->
+    <UserSecretsId>950a2b04-890b-4264-b9a2-806caef42f16</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OfiFlow.Application\OfiFlow.Application.csproj" />
+    <ProjectReference Include="..\OfiFlow.Infrastructure\OfiFlow.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- La cadena de conexión de desarrollo es una sola, la de la API: aquí se enlaza el mismo fichero en vez de copiarla. -->
+    <None Include="..\OfiFlow.Api\appsettings.Development.json" Link="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

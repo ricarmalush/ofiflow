@@ -51,6 +51,17 @@ public sealed partial class IdentityService(
         return dbContext.ApplicationUsers.AnyAsync(u => u.NormalizedEmail == normalizedEmail, cancellationToken);
     }
 
+    public async Task<Guid?> FindUserIdAsync(string email, CancellationToken cancellationToken)
+    {
+        var normalizedEmail = email.ToUpperInvariant();
+
+        return await dbContext.ApplicationUsers
+            .AsNoTracking()
+            .Where(u => u.NormalizedEmail == normalizedEmail)
+            .Select(u => (Guid?)u.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public async Task DeleteUserAsync(Guid id, CancellationToken cancellationToken)
     {
         var user = await dbContext.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);

@@ -313,10 +313,28 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **veinticuatro evento
 | `1505` | **Código de recuperación usado** | Con cuántos quedan. Suele significar que se perdió el móvil; conviene mirarlo |
 | `1506` | Códigos de recuperación regenerados | Los anteriores dejan de valer |
 | `1507` | **MFA reiniciado por un gestor** | Quién lo hizo y a quién (solo Ids). Un `1507` inesperado seguido de un login desde una IP nueva es lo que querría ver un analista |
+| `1606` | **Operador de la plataforma creado** | Alguien con acceso al servidor creó una cuenta con acceso a todas las empresas (solo el `UserId`, nunca el email). Debe coincidir con una intervención que conozcas: un `1606` inesperado es el evento más grave de la lista |
+| `1607` | **Operador de la plataforma dado de baja** | Se desactivó a un operador (solo el `UserId`) |
 
-Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones, 15xx segundo factor), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
+Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones, 15xx segundo factor, 16xx panel de la plataforma), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
 
 Además, un pequeño middleware ([`RequestLogScopeMiddleware`](../../src/OfiFlow.Api/Common/RequestLogScopeMiddleware.cs)) apunta la **IP de origen** en cada petición, de modo que todos los eventos la incluyan sin que cada pieza del código tenga que pasarla de mano en mano. Y el `traceId` de los errores une la respuesta con la entrada exacta del registro.
+
+### El alta del operador: lo más delicado, fuera de la API
+
+Una cuenta de operador ve los metadatos de **todas** las empresas y puede suspenderlas, así que su creación es lo más peligroso que puede hacer alguien con acceso. Por eso **no existe ninguna ruta HTTP** que la cree: se hace con el programa [`OfiFlow.Admin`](../../src/OfiFlow.Admin/Program.cs) (capítulo 1 explica el procedimiento y el 3, por qué es un proyecto aparte). La seguridad está en capas:
+
+| Qué se evita | Cómo |
+|---|---|
+| Que alguien lo alcance por HTTP | La API no referencia el programa ni registra el servicio; tests de arquitectura fijan que ningún otro fichero nombra [`PlatformOperatorAdministration`](../../src/OfiFlow.Application/Platform/PlatformOperatorAdministration.cs) y que no es una petición de MediatR |
+| Un operador sin segundo factor | El primer código TOTP se comprueba **en memoria, antes de tocar la base de datos** (`PlatformOperatorAdministration.cs:89`). Sin código válido no se guarda ni la cuenta |
+| Filas a medias si algo falla | La cuenta, el segundo factor ya confirmado, los 10 códigos, el operador y la auditoría se guardan en **un único `SaveChanges`** (`:116`). Si falla, no queda nada; lo prueba una carrera de dos altas con el mismo email contra SQL Server real |
+| Que el primer código se reutilice | Se anota como último paso aceptado; el mismo código no vale en el primer inicio de sesión |
+| Una contraseña a la vista | Se pide por la terminal sin eco, nunca por argumento, y el programa se niega a funcionar con la entrada redirigida |
+| Una clave de más en el servidor de administración | El programa no recibe `Jwt:Secret` (`AddAdminInfrastructure`); un test lo comprueba |
+| Un alta sin rastro | Auditoría persistente (`platform.operator_created`, `platform.operator_disabled`) y los eventos `1606` y `1607` |
+
+**Un matiz honesto.** La auditoría de estas dos acciones guarda como `OperatorUserId` el **operador afectado**, no quien ejecutó el programa: el actor es «alguien con acceso al servidor», que no tiene cuenta en OfiFlow. Quién fue exactamente lo dirá el registro del servidor (sesión, historial), no OfiFlow. Y el programa en sí no tiene autenticación: **quien pueda ejecutarlo con la cadena de conexión y la clave del segundo factor puede crear un operador**. Esa frontera es el acceso al servidor, y por eso el programa no debe estar en el equipo que atiende la web pública.
 
 ### Dónde se guardan los logs
 
@@ -433,6 +451,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Inyección SQL | EF Core parametrizado y SQL a mano prohibido, salvo una sentencia parametrizada en `AccountLockout.cs` | `Directory.Build.props:17`, `AccountLockout.cs` | `SourceCode_DoesNotUseRawSqlApis`, `ParameterizedRawSql_IsOnlyUsedInTheLockout` |
 | Bajar la conexión a HTTP | HTTPS y HSTS (365 días) | `Program.cs:82-87` | **Sin test propio** |
 | **I** · Otra web lee, desde el navegador de un usuario, las respuestas de la API | CORS: lista cerrada de orígenes, sin comodín ni credenciales de navegador | `Program.cs:33-64`, `:91` | `CorsTests` |
+| **E** · Crear una cuenta con acceso global desde fuera, o sin segundo factor | El alta solo existe como programa del servidor (sin ruta HTTP), con el primer código TOTP comprobado antes de guardar nada y todo en un único guardado | `OfiFlow.Admin`, `PlatformOperatorAdministration.cs:89`, `:116` | `PlatformOperatorToolTests`, `PlatformOperatorAdministrationTests` |
 | Dependencia con vulnerabilidad conocida | NuGetAudit como error y Dependabot | `Directory.Build.props`, `dependabot.yml` | El propio build y el pipeline |
 | Vulnerabilidad en el código | Analizadores de seguridad como error y CodeQL | `.editorconfig`, `codeql.yml` | El propio build y el pipeline |
 | Vulnerabilidad en la API en ejecución | Escaneo ZAP en cada cambio | `dast.yml` | El propio job `zap-scan` |
@@ -469,7 +488,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 9. **El `CORS` depende de que la lista de orígenes de producción esté bien puesta.** En el repositorio solo está el origen de desarrollo; si falta el de producción, el frontend no podrá leer la API (falla cerrado, que es lo seguro), y si se pone uno de más, esa web podrá leer las respuestas de sus usuarios. Además, CORS solo frena a los navegadores: no limita a quien llama sin navegador.
 
 **Observabilidad**
-10. **Hay registro, pero no vigilancia**: nadie recibe alertas, ni hay un registro de auditoría persistente.
+10. **Hay registro, pero no vigilancia**: nadie recibe alertas, ni hay un registro de auditoría persistente de lo que hacen las empresas (el de las acciones de la plataforma, spec 011, sí existe y no se borra).
 
 **El propio pipeline**
 11. **El escaneo ZAP no está autenticado.** Ataca la API por su descripción OpenAPI sin enviar un token, así que prueba lo anónimo (registro, login, renovar) y comprueba que lo demás responde 401, pero **no recorre las operaciones protegidas**. Se compensa con los tests de extremo a extremo, que sí lo hacen.
@@ -478,11 +497,15 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Herramientas de desarrollo**
 13. **Swagger UI relaja la política CSP** en su ruta (solo en `Development`, con tests que impiden que se extienda). Si algún día se registrara por error en producción, esa ruta expondría una pantalla para probar la API; lo impide la condición de entorno y un test, pero es una excepción a la regla general.
 
+
 **Controles sin test propio** (existen, pero ningún test los comprueba directamente)
 14. La aplicación **no arranca sin el secreto** del token.
 15. El token **caduca** a los 30 minutos.
 16. El hash guardado **no es la contraseña** en claro.
 17. **HSTS** se envía fuera de desarrollo.
+
+**El programa de administración**
+18. **No tiene autenticación propia.** Quien pueda ejecutar `OfiFlow.Admin` con la cadena de conexión y la clave del segundo factor puede crear o dar de baja a un operador; la frontera es el acceso al servidor. Además la auditoría guarda al operador afectado, no a quien ejecutó el programa (no tiene cuenta en OfiFlow). Y el tramo interactivo (teclear la contraseña sin eco, reintentar el código) no tiene test automático: lo que invoca sí, y se comprueba a mano al instalar.
 
 Los cuatro últimos son los candidatos más baratos para una próxima ronda de endurecimiento, con el mismo método de siempre: escribir el test y verlo fallar rompiendo el código a propósito.
 

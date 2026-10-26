@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/OfiFlow.Admin/OfiFlow.Admin.csproj" />
     <Project Path="src/OfiFlow.Api/OfiFlow.Api.csproj" />
     <Project Path="src/OfiFlow.Application/OfiFlow.Application.csproj" />
     <Project Path="src/OfiFlow.Domain/OfiFlow.Domain.csproj" />

@@ -51,6 +51,8 @@ Cada decisión tiene una opción cómoda que es peligrosa:
 
 **D. Un comando del servidor** que crea la cuenta, enrola el TOTP y **exige un primer código válido**, todo o nada. Elegida: nunca existe un operador sin segundo factor y no hay ninguna ruta HTTP que lo cree.
 
+**Dónde vive ese comando (decidido en el bloque 4, 2026-10-25).** Había dos formas: un modo de arranque de la propia API (`OfiFlow.Api --crear-operador`) o un programa de consola aparte. Se eligió el **proyecto aparte, `OfiFlow.Admin`**: la API no lo referencia, así que el alta es inalcanzable por HTTP sin depender de que nadie recuerde excluirla, y puede ejecutarse en un sitio distinto del que atiende peticiones públicas. Un modo de arranque habría dejado el código del alta en el mismo ejecutable que escucha en internet. La lógica vive en `Application` (`PlatformOperatorAdministration`, que no es una petición de MediatR) para probarla como el resto; el programa solo lee la terminal. Recibe la clave del segundo factor pero **no** la que firma las sesiones. Para hacer cierto el «todo o nada» sin transacciones manuales, el primer código TOTP se comprueba en memoria antes de guardar nada y todo se confirma en un único `SaveChanges`.
+
 ### 3. La sesión
 
 **A. El mismo token con un claim `platform`.** Descartada: si la clave o la validación fallan, un token de empresa podría valer en plataforma.
@@ -80,7 +82,7 @@ Cada decisión tiene una opción cómoda que es peligrosa:
 Se decide:
 
 - Un **operador** es una cuenta más una fila en `PlatformOperator`, **sin** pertenencia a ninguna empresa.
-- Se crea y se da de baja con **comandos del servidor**, nunca por la API. El alta enrola y confirma el segundo factor en el mismo acto.
+- Se crea y se da de baja con un **programa del servidor aparte (`OfiFlow.Admin`)**, nunca por la API. El alta enrola y confirma el segundo factor en el mismo acto.
 - Su sesión usa **esquema, audiencia y clave propios**, dura **15 minutos** y **no tiene refresh token**. El **segundo factor es obligatorio sin excepción**: el login de plataforma siempre devuelve un desafío.
 - La autorización gana un **tercer tipo de declaración**, `[RequiresPlatformOperator]`, excluyente con permiso y con anónima y fail-closed como hoy, con **revalidación en la base de datos en cada petición**: dar de baja a un operador surte efecto en su siguiente petición.
 - Ve **solo metadatos de empresa** y puede **suspender y reactivar**. La suspensión es un estado de la empresa que se comprueba en cada petición, en el login, en el refresh y al aceptar invitaciones.

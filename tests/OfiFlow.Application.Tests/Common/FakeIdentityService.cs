@@ -38,6 +38,13 @@ public sealed class FakeIdentityService : IIdentityService
     public Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken) =>
         Task.FromResult(_users.Keys.Any(registered => string.Equals(registered, email, StringComparison.OrdinalIgnoreCase)));
 
+    public Task<Guid?> FindUserIdAsync(string email, CancellationToken cancellationToken)
+    {
+        var found = _users.FirstOrDefault(pair => string.Equals(pair.Key, email, StringComparison.OrdinalIgnoreCase));
+
+        return Task.FromResult<Guid?>(found.Key is null ? null : found.Value.Id);
+    }
+
     /// <summary>Registra un email como ya ocupado, sin pasar por CreateUserAsync.</summary>
     public void AddExistingAccount(string email) => _users[email] = (Guid.NewGuid(), "irrelevante");
 

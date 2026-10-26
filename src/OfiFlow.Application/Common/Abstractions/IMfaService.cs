@@ -44,6 +44,16 @@ public interface IMfaService
     Task<string> BeginSetupAsync(Guid userId, byte[] secret, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Crea el segundo factor de una cuenta <b>nueva</b> ya confirmado, con sus códigos de recuperación, sin pasar por el
+    /// estado «pendiente». Es para el alta de un operador de la plataforma (spec 011 R2): quien llama ya comprobó el primer
+    /// código con <see cref="Identity.Mfa.Totp"/> <i>antes</i> de guardar nada, y pasa el paso al que correspondía para que
+    /// ese mismo código no valga otra vez en el primer inicio de sesión. No confirma: lo hace quien llama en su único
+    /// SaveChanges, junto con la cuenta, así que o existe todo o no existe nada. <b>Solo la usa el alta del operador</b>
+    /// (lo fija un test de arquitectura): no comprueba ningún código por sí misma.
+    /// </summary>
+    Task EnrollConfirmedAsync(Guid userId, byte[] secret, long acceptedStep, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Comprueba el código contra el secreto pendiente. Si vale, lo confirma y guarda los hashes de los códigos de
     /// recuperación. Los fallos <b>no</b> cuentan para el bloqueo de cuenta (se limitan por IP).
     /// </summary>

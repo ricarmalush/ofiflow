@@ -29,8 +29,15 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
     /// <summary>Si tiene valor, el siguiente SaveChanges lanza esta excepción (para simular, por ejemplo, un conflicto de concurrencia).</summary>
     public Exception? ExceptionOnSave { get; set; }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
-        ExceptionOnSave is { } exception ? Task.FromException<int>(exception) : base.SaveChangesAsync(cancellationToken);
+    /// <summary>Cuántas veces se ha pedido guardar, para comprobar que una operación «todo o nada» confirma una sola vez (o ninguna).</summary>
+    public int SaveCount { get; private set; }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        SaveCount++;
+
+        return ExceptionOnSave is { } exception ? Task.FromException<int>(exception) : base.SaveChangesAsync(cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

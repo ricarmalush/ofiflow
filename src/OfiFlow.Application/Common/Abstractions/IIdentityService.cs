@@ -16,6 +16,12 @@ public interface IIdentityService
     Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken);
 
     /// <summary>
+    /// El Id de la cuenta con este email, o <c>null</c>. <b>Solo para herramientas del servidor</b> (dar de baja a un
+    /// operador de la plataforma, spec 011 R4): decir a quien llama por HTTP si un email existe sería enumerar usuarios.
+    /// </summary>
+    Task<Guid?> FindUserIdAsync(string email, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Autentica con email y contraseña, <b>con bloqueo de cuenta</b> (ADR-014, spec 010). Cuenta cada intento,
     /// bloquea tras demasiados fallos y registra los eventos de seguridad. No hay otra forma de comprobar una
     /// contraseña desde Application: así no se puede olvidar el bloqueo.

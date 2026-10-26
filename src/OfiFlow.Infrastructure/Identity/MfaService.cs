@@ -79,6 +79,25 @@ public sealed partial class MfaService(
             ?? throw new InvalidOperationException("La cuenta no existe.");
     }
 
+    public async Task EnrollConfirmedAsync(
+        Guid userId, byte[] secret, long acceptedStep, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken)
+    {
+        if (await dbContext.MfaCredentials.AnyAsync(c => c.UserId == userId, cancellationToken))
+        {
+            // Última barrera: este camino es para cuentas recién creadas. Nunca se pisa un segundo factor existente.
+            throw new InvalidOperationException("La cuenta ya tiene un segundo factor.");
+        }
+
+        var cipher = protector.Protect(secret, userId.ToByteArray());
+
+        dbContext.MfaCredentials.Add(MfaCredential.CreateConfirmed(userId, cipher, acceptedStep, time.GetUtcNow().UtcDateTime));
+
+        foreach (var hash in recoveryCodeHashes)
+        {
+            dbContext.RecoveryCodes.Add(RecoveryCode.Create(userId, hash));
+        }
+    }
+
     public async Task<SetupOutcome> ConfirmSetupAsync(
         Guid userId, string code, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken)
     {

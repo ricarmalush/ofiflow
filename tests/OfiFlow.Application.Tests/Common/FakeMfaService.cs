@@ -59,6 +59,18 @@ public sealed class FakeMfaService : IMfaService
         return Task.FromResult(AccountEmail);
     }
 
+    /// <summary>Los segundos factores creados ya confirmados (alta de un operador de la plataforma, spec 011 R2).</summary>
+    public List<(Guid UserId, byte[] Secret, long AcceptedStep, IReadOnlyCollection<string> Hashes)> Enrollments { get; } = [];
+
+    public Task EnrollConfirmedAsync(
+        Guid userId, byte[] secret, long acceptedStep, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken)
+    {
+        Enrollments.Add((userId, secret, acceptedStep, recoveryCodeHashes));
+        _status[userId] = new MfaStatus(IsEnabled: true, SetupPending: false, recoveryCodeHashes.Count);
+
+        return Task.CompletedTask;
+    }
+
     public Task<SetupOutcome> ConfirmSetupAsync(
         Guid userId, string code, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken)
     {

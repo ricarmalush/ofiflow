@@ -84,4 +84,13 @@ public static class SecurityEventIds
 
     /// <summary>Un gestor reinició el segundo factor de otro miembro (con quién lo hizo y a quién).</summary>
     public const int MfaResetByManager = 1507;
+
+    // 1600-1699: panel de la plataforma (spec 011). Solo Ids y el motivo: ni emails, ni contraseñas, ni códigos.
+    // 1603-1605 (suspender y reactivar) y 1601, 1602 y 1608 (la sesión de plataforma) llegan en los bloques 5 y 6.
+
+    /// <summary>Se creó un operador de la plataforma con el comando del servidor (con su segundo factor ya confirmado).</summary>
+    public const int PlatformOperatorCreated = 1606;
+
+    /// <summary>Se dio de baja a un operador de la plataforma con el comando del servidor.</summary>
+    public const int PlatformOperatorDisabled = 1607;
 }

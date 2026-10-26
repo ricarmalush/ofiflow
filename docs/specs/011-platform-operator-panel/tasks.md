@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [../../adr/ADR-016-panel-de-operador-de-la-plataforma.md](../../adr/ADR-016-panel-de-operador-de-la-plataforma.md)
-**Estado general:** Aprobada (2026-10-22); bloques 1 y 2 implementados y verificados (2026-10-23); bloque 3 implementado y verificado (2026-10-25), pendiente de commit
+**Estado general:** Aprobada (2026-10-22); bloques 1 a 3 implementados, verificados y commiteados (2026-10-23 y 2026-10-25); bloque 4 implementado y verificado (2026-10-25), pendiente de commit
 
 ---
 
@@ -59,14 +59,15 @@ Se empieza por lo que **ya se puede probar sin operador**: que la suspensión se
 - [x] [manual] Capítulo 6 (qué es un operador y por qué no es un rol) y capítulo 5 (las dos entidades globales nuevas)
 
 ### Bloque 4 — Alta y baja del operador, fuera de la API (≈ 5 h)
-- [ ] **Decidir y documentar dónde vive el comando del servidor** (modo de arranque del propio host o proyecto de consola aparte) y cómo se lee la contraseña (por consola, sin eco, nunca por argumento)
-- [ ] Alta (R2): crea la cuenta, genera el secreto TOTP, **exige un primer código válido** y muestra los códigos de recuperación una vez; **todo o nada**: si no se confirma, no queda ninguna fila
-- [ ] Baja (R4): rellena `DisabledAt`; escribe la auditoría y el evento
-- [ ] Eventos `1606` (operador creado) y `1607` (operador dado de baja)
-- [ ] Tests: alta correcta; alta sin confirmar → nada creado; email ya registrado → falla sin modificar nada; baja de un operador inexistente
-- [ ] **Test de arquitectura:** ningún endpoint ni petición MediatR expuesta alcanza el alta ni la baja
-- [ ] Mutaciones: el alta que no exige el código; el alta que deja la cuenta si falla la confirmación; la baja sin auditoría
-- [ ] [manual] Capítulo 1 (cómo se crea el primer operador, con el procedimiento paso a paso) y capítulo 8 (eventos `1606`, `1607`)
+> **Estado (2026-10-25): implementado y verificado.** Proyecto de consola aparte `OfiFlow.Admin` (la API no lo referencia; recibe `Mfa:EncryptionKey` pero no `Jwt:Secret`), con la lógica en `Application` (`PlatformOperatorAdministration`, no es una petición de MediatR). El primer código TOTP se comprueba en memoria antes de guardar nada y todo se confirma en un único `SaveChanges`. 25 mutaciones sobre el código real, todas detectadas (una, M20, hubo que repetirla: el test nuevo estaba mal escrito y la «detectaba» por el motivo equivocado). Suite: Domain 206, Application 488, Infrastructure 261, Api 369 (1324 casos), proyecto a proyecto; una pasada conjunta falló por contención de Docker (contenedor de SQL Server con código 191), no por el código. **Sin ejecutar por mí:** el tramo interactivo del programa (contraseña sin eco, reintentos del código) necesita una terminal real; se comprueba a mano al instalar y en el bloque 7. **Pendiente:** el commit.
+- [x] **Decidir y documentar dónde vive el comando del servidor** (modo de arranque del propio host o proyecto de consola aparte) y cómo se lee la contraseña (por consola, sin eco, nunca por argumento)
+- [x] Alta (R2): crea la cuenta, genera el secreto TOTP, **exige un primer código válido** y muestra los códigos de recuperación una vez; **todo o nada**: si no se confirma, no queda ninguna fila
+- [x] Baja (R4): rellena `DisabledAt`; escribe la auditoría y el evento
+- [x] Eventos `1606` (operador creado) y `1607` (operador dado de baja)
+- [x] Tests: alta correcta; alta sin confirmar → nada creado; email ya registrado → falla sin modificar nada; baja de un operador inexistente
+- [x] **Test de arquitectura:** ningún endpoint ni petición MediatR expuesta alcanza el alta ni la baja
+- [x] Mutaciones: el alta que no exige el código; el alta que deja la cuenta si falla la confirmación; la baja sin auditoría
+- [x] [manual] Capítulo 1 (cómo se crea el primer operador, con el procedimiento paso a paso) y capítulo 8 (eventos `1606`, `1607`)
 
 ### Bloque 5 — La sesión de plataforma (≈ 7 h) — el bloque más delicado para la seguridad
 - [ ] `Jwt:PlatformSecret` y audiencia propia: **sin valor por defecto**, la API no arranca si falta o no mide 32 bytes, con el mismo trato que `Jwt:Secret` (y el mismo mensaje útil)

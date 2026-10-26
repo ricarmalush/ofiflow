@@ -16,7 +16,30 @@ namespace OfiFlow.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>Todo lo que necesita la API: el almacén de cuentas y, además, las sesiones (JWT).</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        // La clave JWT se valida primero, como siempre: si faltan las dos, el mensaje es el de Jwt:Secret.
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        AddJwtAuthentication(services, configuration);
+        services.AddScoped<ITokenService, TokenService>();
+
+        return services.AddAccountStore(configuration);
+    }
+
+    /// <summary>
+    /// Lo que necesita el programa de administración del servidor (spec 011 R2): el almacén de cuentas, el segundo factor y
+    /// la plataforma, <b>sin</b> la autenticación JWT. A propósito: la clave que firma las sesiones (<c>Jwt:Secret</c>) es el
+    /// secreto más delicado y esa herramienta no emite sesiones, así que no debe recibirla ni poder arrancar con ella. Sí
+    /// necesita <c>Mfa:EncryptionKey</c>, y debe ser <b>la misma que usa la API</b>: con otra, la API no podría descifrar
+    /// el secreto del operador y no podría iniciar sesión.
+    /// </summary>
+    public static IServiceCollection AddAdminInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        return services.AddAccountStore(configuration);
+    }
+
+    private static IServiceCollection AddAccountStore(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<ApplicationDbContext>(options =>
         {
@@ -37,10 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IMfaService, MfaService>();
         services.AddScoped<IPlatformOperators, PlatformOperators>();
         services.AddScoped<IPlatformAudit, PlatformAudit>();
-        services.AddScoped<ITokenService, TokenService>();
 
-        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
-        AddJwtAuthentication(services, configuration);
         AddMfaEncryption(services, configuration);
 
         return services;

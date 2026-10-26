@@ -16,7 +16,8 @@ src/
 ├── OfiFlow.Domain            ← LAS REGLAS: qué es un trabajo, qué puede hacerse con él
 ├── OfiFlow.Application       ← LAS OPERACIONES: qué puede hacer el sistema
 ├── OfiFlow.Infrastructure    ← LO TÉCNICO: base de datos, tokens, contraseñas
-└── OfiFlow.Api               ← LA PUERTA: HTTP, rutas, errores, seguridad de entrada
+├── OfiFlow.Api               ← LA PUERTA: HTTP, rutas, errores, seguridad de entrada
+└── OfiFlow.Admin             ← NO ES UNA CAPA: la herramienta del servidor (ver «Fuera de las capas»)
 
 tests/                        ← Un proyecto de test por cada capa
 ```
@@ -326,6 +327,16 @@ Es la **primera línea de defensa**: cabeceras de seguridad, HSTS, rate limiting
 *¿Por qué un endpoint no contiene lógica?* → Porque la Api solo traduce entre HTTP y Application; si la lógica estuviese aquí, no se podría reutilizar desde otro tipo de cliente ni probar sin levantar un servidor web.
 
 ---
+
+## Fuera de las capas — `OfiFlow.Admin`
+
+Hay un quinto proyecto en `src/` que **no es una capa**: [`OfiFlow.Admin`](../../src/OfiFlow.Admin/Program.cs), un programa de consola que el administrador ejecuta a mano en el servidor para **crear y dar de baja operadores de la plataforma** (spec 011, ADR-016). Es el «proceso por línea de comandos» que la capa Api menciona más arriba como posibilidad futura: reutiliza `Application` e `Infrastructure` igual que la API, sin cambiar ninguna de las dos.
+
+**Por qué un proyecto aparte y no un modo de arranque de la API.** La spec exigía que el alta de un operador fuera inalcanzable por HTTP. Con un proyecto aparte esa garantía no depende de que alguien recuerde algo: la API **no lo referencia**, así que no puede llamarlo ni por error de configuración. Y el programa se despliega, si hace falta, en un sitio distinto del que atiende peticiones públicas. Un modo de arranque dentro de la propia API habría dejado el código en el mismo ejecutable que escucha en internet.
+
+**Qué contiene** (muy poco, a propósito): `Program.cs` (lee los argumentos, comprueba la configuración y pide los datos por la terminal), `Prompt.cs` (leer la contraseña sin eco) y dos ficheros de configuración. **La lógica no está aquí**: está en [`PlatformOperatorAdministration`](../../src/OfiFlow.Application/Platform/PlatformOperatorAdministration.cs), en `Application`, para poder probarla como el resto. No es una petición de MediatR (no pasaría por el pipeline de autorización, y cualquier endpoint podría enviarla): es un servicio normal que solo registra este programa. Tests de arquitectura fijan que ningún otro fichero lo nombra.
+
+**Qué no recibe.** Usa [`AddAdminInfrastructure`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs), que registra la cuenta, el segundo factor y la plataforma **sin la autenticación JWT**. La clave que firma las sesiones es el secreto más delicado y esta herramienta no emite sesiones, así que no debe poder arrancar con ella. Sí necesita `Mfa:EncryptionKey` (la misma que la API). No añade ningún paquete NuGet propio.
 
 ## Cómo se conecta todo
 

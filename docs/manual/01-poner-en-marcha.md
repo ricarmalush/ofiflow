@@ -185,6 +185,52 @@ dotnet test tests/OfiFlow.Domain.Tests
 dotnet test tests/OfiFlow.Application.Tests
 ```
 
+## Crear un operador de la plataforma
+
+Un **operador de la plataforma** es la cuenta de quien administra OfiFlow entero (suspender una empresa, por ejemplo), no la de una empresa cliente. Es la cuenta más poderosa del sistema, y por eso **no se crea por la API**: no hay ninguna ruta HTTP para hacerlo. Se crea con un programa que se ejecuta a mano en el servidor, [`OfiFlow.Admin`](../../src/OfiFlow.Admin/Program.cs) (capítulo 3 explica por qué es un proyecto aparte y el capítulo 8, la seguridad que lo rodea).
+
+> **Qué puedes hacer hoy y qué no.** Hoy puedes **crear** y **dar de baja** a un operador. Iniciar sesión como operador y usar el panel llegan en los bloques 5 y 6 de la spec 011: de momento es una cuenta que existe, con su segundo factor ya activo, pero sin ninguna ruta donde entrar.
+
+**Antes de empezar** necesitas lo del paso 1 y el paso 2: la base de datos migrada y la clave del segundo factor (`Mfa:EncryptionKey`). **Esa clave debe ser exactamente la misma que usa la API.** Si fuera otra, el programa cifraría el secreto del operador con una clave que la API no tiene y, cuando exista el inicio de sesión de plataforma, no podría descifrarlo. En local no tienes que hacer nada: los dos proyectos comparten los mismos *user-secrets* y la misma cadena de conexión de desarrollo.
+
+**El procedimiento, paso a paso** (en una terminal de verdad: el programa se niega a funcionar con la entrada redirigida, a propósito):
+
+```bash
+# bash
+DOTNET_ENVIRONMENT=Development dotnet run --project src/OfiFlow.Admin -- create-platform-operator --email operadora@tu-dominio.com
+```
+
+```powershell
+# PowerShell
+$env:DOTNET_ENVIRONMENT = "Development"
+dotnet run --project src/OfiFlow.Admin -- create-platform-operator --email operadora@tu-dominio.com
+```
+
+1. **Te pide la contraseña dos veces**, sin mostrar lo que tecleas (8 a 128 caracteres). Nunca se pasa como argumento: quedaría en el historial de la terminal y en la lista de procesos del servidor.
+2. **Te muestra una clave y una dirección `otpauth://`.** Añádelas a tu app de autenticación (Google Authenticator, Microsoft Authenticator, Aegis...): escribiendo la clave a mano, o pegando la dirección si tu app lo permite. El programa no dibuja un QR a propósito: así el secreto no pasa por ningún servicio de terceros.
+3. **Te pide un código de 6 dígitos** de esa app. Mientras no escribas uno válido **no se guarda nada**: ni cuenta, ni secreto, ni operador. Tienes 5 intentos; si los agotas, el programa termina sin haber creado nada y repites desde el principio.
+4. Con un código válido se crea todo a la vez y se te muestran **10 códigos de recuperación**. Guárdalos ahora (un gestor de contraseñas): no se vuelven a mostrar y es la única forma de entrar si pierdes el móvil. Si los pierdes a ellos y al móvil, la única salida es dar de baja a ese operador y crear otro.
+
+**Dar de baja a un operador:**
+
+```bash
+DOTNET_ENVIRONMENT=Development dotnet run --project src/OfiFlow.Admin -- disable-platform-operator --email operadora@tu-dominio.com
+```
+
+Te pide que escribas `SI`. La baja deja una fila en la auditoría y surtirá efecto en la **siguiente petición** del operador, no cuando caduque su sesión.
+
+**Si algo falla**, el programa dice qué y qué no ha hecho (siempre «no se ha creado nada» o «no se ha modificado nada»):
+
+| Mensaje | Qué pasa | Qué hacer |
+|---|---|---|
+| `Falta 'ConnectionStrings:Default'` | No encuentra la cadena de conexión | En producción, variable `ConnectionStrings__Default`; en local, `DOTNET_ENVIRONMENT=Development` |
+| `Falta 'Mfa:EncryptionKey'` | No tiene la clave del segundo factor | La misma que la API (variable `Mfa__EncryptionKey` o *user-secrets*) |
+| `Este programa pide la contraseña por la terminal...` | Entrada redirigida (una tubería, un script) | Ejecútalo en una terminal interactiva |
+| `Ese email ya está registrado` | Lo usa una empresa u otro operador | Usa otro email (un email ocupado no se reutiliza) |
+| `Código no válido` | Reloj del móvil desfasado, o código de otro minuto | Espera al siguiente código; la app y el servidor aceptan ±30 s |
+
+**En producción** el programa se ejecuta desde el servidor (o desde una sesión con acceso a la base de datos), con las variables de entorno `ConnectionStrings__Default` y `Mfa__EncryptionKey`. **No recibe `Jwt:Secret`**, la clave que firma las sesiones: no la necesita y no debe poder arrancar con ella.
+
 ## Errores frecuentes
 
 | Lo que ves | Qué significa | Qué hacer |
