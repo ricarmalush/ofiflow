@@ -184,6 +184,9 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Gestionar el segundo factor **de la propia cuenta** (`Mfa.Manage`; spec 010) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Ver los datos de la **propia** cuenta, su empresa y su rol (`Account.Read`; spec 012) | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**«Quién soy» (spec 012).** `GET /api/v1/account/me` responde a la persona con su nombre y email, su empresa, el Id de su pertenencia, su rol **efectivo** y los permisos de ese rol (`Customers.Read`, `Jobs.Assign`...). Es una lectura de **uno mismo**, y tiene tres rasgos que conviene saber defender: **(1)** no lleva ningún parámetro: la cuenta sale del token, así que nadie puede preguntar por otra persona (un `userId` o un `tenantId` en la consulta se ignora y hay un test que lo prueba); **(2)** el rol sale de la **base de datos**, no del token, como el resto de decisiones de la API: tras un cambio de rol, el mismo token ya recibe el rol nuevo; **(3)** la persona y la empresa se leen **a través de la pertenencia filtrada por empresa** (una sola sentencia), de modo que nada de otra empresa puede salir por aquí. La respuesta lleva `Cache-Control: no-store` y un test comprueba que tiene exactamente ocho campos y que ningún secreto (hash, secreto del segundo factor, códigos de recuperación, tokens) puede colarse. **Límite honesto:** los permisos que devuelve son **informativos, para pintar la interfaz**; quien decide es siempre la API en cada operación, así que un cliente que los falsifique solo consigue botones que dan 403.
 
 **Las rutas (spec 009).** Cada una exige sesión (salvo aceptar), y quién puede lo decide el permiso más la jerarquía, no el endpoint:
 

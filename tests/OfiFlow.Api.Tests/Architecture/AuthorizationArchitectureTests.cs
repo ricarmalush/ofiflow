@@ -26,7 +26,7 @@ public class AuthorizationArchitectureTests
         Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
 
         // Salvaguarda contra un fallo silencioso: si el escaneo no encontrara operaciones, el test pasaría sin comprobar nada.
-        Assert.True(operations.Count >= 35, $"Se esperaban al menos las 35 operaciones actuales y se encontraron {operations.Count}.");
+        Assert.True(operations.Count >= 36, $"Se esperaban al menos las 36 operaciones actuales y se encontraron {operations.Count}.");
     }
 
     [Fact]

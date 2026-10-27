@@ -83,6 +83,7 @@ OfiFlow, por ahora, es **solo una API** (un servidor al que se le hacen peticion
 | | Renovar la sesión | `POST /api/v1/auth/refresh` |
 | | Aceptar una invitación (elige nombre y contraseña) | `POST /api/v1/auth/accept-invitation` |
 | | Segundo paso del login (cuentas con segundo factor) | `POST /api/v1/auth/mfa/verify` |
+| **Mi cuenta** (requiere sesión; spec 012) | Quién soy: mis datos, mi empresa, mi rol **efectivo** y mis permisos | `GET /api/v1/account/me` |
 | **Clientes** (requiere sesión) | Crear / ver uno / listar / modificar / eliminar | `POST`, `GET`, `GET`, `PUT`, `DELETE` en `/api/v1/customers` |
 | **Equipo** (requiere sesión; spec 009) | Invitar / ver pendientes / revocar | `POST`, `GET`, `DELETE` en `/api/v1/invitations` |
 | | Ver miembros / cambiar el rol / quitar a uno | `GET /api/v1/users`, `PUT /api/v1/users/{id}/role`, `DELETE /api/v1/users/{id}` |
