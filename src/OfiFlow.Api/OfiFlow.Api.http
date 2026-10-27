@@ -62,6 +62,13 @@ Content-Type: application/json
   "refreshToken": "{{refreshA}}"
 }
 
+### Quién soy (spec 012): tu nombre y email, tu empresa, el Id de tu pertenencia, tu rol EFECTIVO y tus permisos.
+### El rol sale de la base de datos, no del token: si un gestor te lo cambia, esta petición ya dice el nuevo con el mismo token.
+### Los permisos (Customers.Read...) sirven para pintar la interfaz; quien decide es siempre la API. No lleva parámetros:
+### siempre habla de quien la pide. La respuesta no se guarda en cachés (Cache-Control: no-store).
+GET {{host}}/api/v1/account/me
+Authorization: Bearer {{tokenA}}
+
 ###############################################################################
 # 2. CLIENTES (con el token de A)
 ###############################################################################

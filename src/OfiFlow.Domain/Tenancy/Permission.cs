@@ -43,5 +43,12 @@ public enum Permission
     /// regenerar los códigos de recuperación). Lo tienen los cinco roles: no toca datos de la empresa y nadie debe
     /// depender de otro para proteger su cuenta (spec 010). Reiniciar el de otro miembro es <see cref="UsersManage"/>.
     /// </summary>
-    MfaManage
+    MfaManage,
+
+    /// <summary>
+    /// Account.Read: ver los datos de la <b>propia</b> cuenta, su empresa y su rol (<c>GET /account/me</c>, spec 012). Lo tienen los
+    /// cinco roles: solo cuenta a cada persona lo que ya es suyo. No es <see cref="MfaManage"/> aunque lo tengan los mismos roles: un
+    /// permiso dice <i>qué se hace</i>, y ver quién soy no es gestionar el segundo factor.
+    /// </summary>
+    AccountRead
 }

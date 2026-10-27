@@ -46,6 +46,8 @@ public class SecurityArchitectureTests
         ["Users"] =
         [
             "src/OfiFlow.Application/Tenancy/Queries/GetUsers/GetUsersQueryHandler.cs",
+            // quién soy (spec 012): la ficha de la PROPIA persona, solo desde su pertenencia (filtrada por empresa)
+            "src/OfiFlow.Application/Identity/Queries/GetCurrentAccount/GetCurrentAccountQueryHandler.cs",
             "src/OfiFlow.Application/Tenancy/Commands/RemoveUser/RemoveUserCommandHandler.cs"
         ],
         // el estado de suspensión de la empresa (spec 011): UNA sola lectura, reutilizada por el login, el canje del segundo
@@ -58,7 +60,9 @@ public class SecurityArchitectureTests
             "src/OfiFlow.Application/Tenancy/TenantStatus.cs",
             "src/OfiFlow.Application/Platform/Queries/ListTenants/ListTenantsQueryHandler.cs",
             "src/OfiFlow.Application/Platform/Commands/SuspendTenant/SuspendTenantCommandHandler.cs",
-            "src/OfiFlow.Application/Platform/Commands/ReactivateTenant/ReactivateTenantCommandHandler.cs"
+            "src/OfiFlow.Application/Platform/Commands/ReactivateTenant/ReactivateTenantCommandHandler.cs",
+            // quién soy (spec 012): el nombre de la PROPIA empresa, solo desde la pertenencia de quien pregunta (filtrada por empresa)
+            "src/OfiFlow.Application/Identity/Queries/GetCurrentAccount/GetCurrentAccountQueryHandler.cs"
         ],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
         ["ApplicationUsers"] = [

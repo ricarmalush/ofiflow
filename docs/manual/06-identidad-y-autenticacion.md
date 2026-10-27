@@ -464,6 +464,21 @@ Con el segundo factor activo, la contraseña **ya no da sesión**. El recorrido:
 
 **Un fallo que solo cazó la prueba de extremo a extremo.** El diseño inicial tenía un agujero sutil. Con **4 fallos previos**, el quinto intento *reserva*, el contador llega a 5 y la cuenta se bloquea **antes de saber si la contraseña era buena**. Si era buena (cuenta con MFA), devolver la reserva bajaba el contador a 4 pero **dejaba el bloqueo puesto**: una persona legítima que por fin acertaba con su contraseña quedaba fuera 15 minutos por un intento que no fue un fallo. Los tests de cada pieza por separado pasaban, porque cada uno probaba una parte; lo cazó el test que hace el recorrido entero (4 fallos, login con MFA completo, 4 fallos más). La corrección está en `ReleaseAsync`: si al devolver el intento el contador baja del umbral, **levanta también el bloqueo que esa misma reserva provocó**; un bloqueo de verdad (5 fallos reales) no se toca, porque el contador sigue en el umbral o por encima. Hay un test en cada nivel (el servicio, el login y el recorrido HTTP).
 
+## Parte 8 — Quién soy: `GET /account/me` (spec 012)
+
+Hasta aquí el cliente sabía quién es por lo que **decía el token** al emitirse. Eso tiene un problema que ya conoces: el rol del token puede estar desfasado hasta 30 minutos (la API lo revalida en la base de datos en cada petición, el frontend no). `GET /api/v1/account/me` es la forma de preguntarle **a la API, ahora**: devuelve tu nombre y email, tu empresa (Id y nombre), el Id de tu pertenencia, tu **rol efectivo** y los permisos de ese rol, con nombres estables (`Customers.Read`, `Jobs.Assign`...).
+
+**Por qué es así:**
+
+- **Sin parámetros, solo habla de ti.** La cuenta sale del token validado. No hay un Id que cambiar para ver a otra persona, y un `userId` o `tenantId` en la consulta se ignora (un test lo prueba).
+- **El rol sale de la base de datos**, la misma verificación que ya hace el `AuthorizationBehavior` antes de cada operación. Así `/me` y un 403 no pueden contradecirse: tras un cambio de rol, el mismo token recibe el rol nuevo (un test cambia el rol con el token ya emitido y lo comprueba).
+- **Un permiso propio, `Account.Read`**, que tienen los cinco roles. No se reutilizó `Mfa.Manage` aunque lo tengan los mismos: un permiso dice *qué se hace*, y «ver quién soy» no es «gestionar mi segundo factor». Cuesta una fila más en la tabla de `RolePermissions` y en su test; evita que alguien, dentro de un año, entienda mal por qué una cosa depende de la otra.
+- **Los nombres de los permisos se derivan del enum** (`CustomersRead` → `Customers.Read`) en [`PermissionNames`](../../src/OfiFlow.Domain/Tenancy/PermissionNames.cs), en vez de escribir una tabla de textos a mano. Un permiso nuevo no puede quedarse sin nombre ni con otro formato, y los doce textos exactos están fijados a mano en un test (son un contrato con el frontend).
+- **El Id de la pertenencia** (`membershipId`). El `sub` del token es el Id de tu *cuenta*, pero un trabajo se asigna a una *pertenencia* (`TenantUser`). Un técnico no puede listar el equipo (no tiene `Users.Read`), así que hasta ahora no tenía forma de saber cuáles eran «sus» trabajos. Con `/me` lo sabe: un test asigna un trabajo a un técnico y comprueba que su `membershipId` coincide con el `assignedTenantUserId` del trabajo.
+- **Una sola sentencia que parte de la pertenencia filtrada por empresa.** La ficha de la persona y el nombre de la empresa se leen **a través** de esa fila (`TenantUsers` ⋈ `Users` ⋈ `Tenants`), así que ninguna de las dos tablas globales se consulta suelta. El handler entra con su motivo en las dos listas blancas de lectura (capítulo 5) y un test contra SQL Server real comprueba que es **una** sentencia y que una pertenencia de otra empresa es invisible incluso si el token la reclamara.
+- **Quién no llega:** sin token, con basura o con una sesión de **plataforma**, un `401` (el operador no es una persona de empresa); con la empresa suspendida, el `403 tenant.suspended` de siempre; con la pertenencia ya borrada, un `403`.
+
+**Un límite que hay que decir.** Los permisos de la respuesta sirven para **pintar la interfaz**, no para protegerla: quien decide es la API en cada operación. Un cliente que los falsifique solo consigue botones que dan 403.
 
 ---
 

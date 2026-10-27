@@ -49,6 +49,7 @@
 | [009-user-management](./specs/009-user-management/spec.md) | Invitar y gestionar usuarios de una empresa: invitaciones, cambio de rol y baja con efecto inmediato (implementa ADR-013) | Implementada |
 | [010-mfa-and-account-lockout](./specs/010-mfa-and-account-lockout/spec.md) | Segundo factor (TOTP), login en dos pasos y bloqueo de cuenta por intentos (implementa ADR-014) | Implementada |
 | [011-platform-operator-panel](./specs/011-platform-operator-panel/spec.md) | Panel de operador de la plataforma: listar, suspender y reactivar empresas con una identidad aparte y segundo factor obligatorio (implementa ADR-016) | Implementada |
+| [012-account-me](./specs/012-account-me/spec.md) | «Quién soy»: `GET /account/me` con los datos de la propia cuenta, su empresa, su rol efectivo y sus permisos (amplía ADR-012) | Implementada |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

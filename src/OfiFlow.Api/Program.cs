@@ -112,6 +112,7 @@ try
     app.MapCustomerEndpoints();
     app.MapInvitationEndpoints();
     app.MapUserEndpoints();
+    app.MapAccountEndpoints();
     app.MapMfaEndpoints();
     app.MapJobEndpoints();
 
