@@ -79,6 +79,25 @@ public sealed partial class MfaService(
             ?? throw new InvalidOperationException("La cuenta no existe.");
     }
 
+    public async Task EnrollConfirmedAsync(
+        Guid userId, byte[] secret, long acceptedStep, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken)
+    {
+        if (await dbContext.MfaCredentials.AnyAsync(c => c.UserId == userId, cancellationToken))
+        {
+            // Última barrera: este camino es para cuentas recién creadas. Nunca se pisa un segundo factor existente.
+            throw new InvalidOperationException("La cuenta ya tiene un segundo factor.");
+        }
+
+        var cipher = protector.Protect(secret, userId.ToByteArray());
+
+        dbContext.MfaCredentials.Add(MfaCredential.CreateConfirmed(userId, cipher, acceptedStep, time.GetUtcNow().UtcDateTime));
+
+        foreach (var hash in recoveryCodeHashes)
+        {
+            dbContext.RecoveryCodes.Add(RecoveryCode.Create(userId, hash));
+        }
+    }
+
     public async Task<SetupOutcome> ConfirmSetupAsync(
         Guid userId, string code, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken)
     {
@@ -164,7 +183,7 @@ public sealed partial class MfaService(
         return SecondFactorResult.Rejected;
     }
 
-    public async Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, CancellationToken cancellationToken)
+    public async Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, ChallengeAudience audience, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow().UtcDateTime;
 
@@ -175,10 +194,10 @@ public sealed partial class MfaService(
                         && (c.ExpiresAt <= now || c.ConsumedAt != null || c.FailedAttempts >= AuthenticationPolicy.ChallengeMaxFailedAttempts))
             .ToListAsync(cancellationToken));
 
-        dbContext.MfaChallenges.Add(MfaChallenge.Create(userId, tokenHash, expiresAt));
+        dbContext.MfaChallenges.Add(MfaChallenge.Create(userId, tokenHash, expiresAt, audience));
     }
 
-    public async Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, CancellationToken cancellationToken)
+    public async Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, ChallengeAudience audience, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow().UtcDateTime;
         var challenge = await dbContext.MfaChallenges.AsNoTracking().FirstOrDefaultAsync(c => c.TokenHash == tokenHash, cancellationToken);
@@ -188,6 +207,9 @@ public sealed partial class MfaService(
         var invalidReason = challenge switch
         {
             null => Reasons.ChallengeUnknown,
+            // De otro mundo (spec 011 R9): se trata como uno desconocido, ANTES de comprobar el código, para no gastar ni un
+            // intento de la cuenta ni un código de recuperación con un desafío que no puede canjearse aquí.
+            _ when challenge.Audience != audience => Reasons.ChallengeWrongAudience,
             { ConsumedAt: not null } => Reasons.ChallengeUsed,
             _ when challenge.ExpiresAt <= now => Reasons.ChallengeExpired,
             _ when challenge.FailedAttempts >= AuthenticationPolicy.ChallengeMaxFailedAttempts => Reasons.ChallengeExhausted,
@@ -311,6 +333,7 @@ public sealed partial class MfaService(
         public const string AccountLocked = "AccountLocked";
         public const string NoSecondFactor = "NoSecondFactor";
         public const string ChallengeUnknown = "ChallengeUnknown";
+        public const string ChallengeWrongAudience = "ChallengeWrongAudience";
         public const string ChallengeUsed = "ChallengeUsed";
         public const string ChallengeExpired = "ChallengeExpired";
         public const string ChallengeExhausted = "ChallengeExhausted";

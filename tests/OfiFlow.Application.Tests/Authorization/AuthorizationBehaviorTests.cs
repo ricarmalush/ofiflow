@@ -257,4 +257,61 @@ public class AuthorizationBehaviorTests
 
         Assert.Single(outcome.Log.Entries);
     }
+
+    // ===== Empresa suspendida (spec 011 R15d) =====
+
+    [Fact]
+    public async Task AMemberOfASuspendedCompany_IsDenied_WithTheSuspendedCode_AndTheSuspensionEvent()
+    {
+        // Sigue siendo miembro (y su token, válido), pero la empresa está suspendida: no hay rol efectivo.
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var user = new FakeCurrentUser(role: null, userId, tenantId, tokenRole: TenantRole.Owner, tenantSuspended: true);
+
+        var outcome = await Run(new NeedsAssign(), user);
+
+        Assert.Equal(TenancyErrors.TenantSuspended, outcome.Denied?.Code); // el código propio, no el genérico auth.forbidden
+        Assert.False(outcome.NextCalled);
+        var entry = outcome.Log.Entries.Single();
+        Assert.Equal(SecurityEventIds.TenantSuspendedAccessDenied, entry.EventId.Id); // 1303, no el 1302 de "ya no pertenece"
+        Assert.Contains(userId.ToString(), entry.Message);
+        Assert.Contains(tenantId.ToString(), entry.Message);
+        Assert.Contains(nameof(NeedsAssign), entry.Message);
+    }
+
+    [Fact]
+    public async Task ASuspendedCompany_DeniesEvenTheOwner_ForAnyOperation()
+    {
+        // Nadie queda exento por tener un rol alto: la suspensión corta a todos los miembros de la empresa.
+        var user = new FakeCurrentUser(role: null, Guid.NewGuid(), Guid.NewGuid(), tokenRole: TenantRole.Owner, tenantSuspended: true);
+
+        var outcome = await Run(new NeedsReadAndDelete(), user);
+
+        Assert.Equal(TenancyErrors.TenantSuspended, outcome.Denied?.Code);
+        Assert.False(outcome.NextCalled);
+    }
+
+    [Fact]
+    public async Task ASuspendedCompany_DoesNotBlockAnAnonymousOperation()
+    {
+        // Registrarse, entrar o aceptar una invitación no pasan por la pertenencia: no se ven afectadas aquí.
+        var user = new FakeCurrentUser(role: null, Guid.NewGuid(), Guid.NewGuid(), tenantSuspended: true);
+
+        var outcome = await Run(new Anonymous(), user);
+
+        Assert.Equal("ejecutada", outcome.Result);
+        Assert.Equal(0, user.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task APersonWhoLeftTheCompany_StillGetsTheGenericDenial_NotTheSuspendedOne()
+    {
+        // Control: «ya no pertenece» y «empresa suspendida» no se confunden (códigos y eventos distintos).
+        var user = new FakeCurrentUser(role: null, Guid.NewGuid(), Guid.NewGuid(), tenantSuspended: false);
+
+        var outcome = await Run(new NeedsAssign(), user);
+
+        Assert.Equal(TenancyErrors.Forbidden, outcome.Denied?.Code);
+        Assert.Equal(SecurityEventIds.MembershipRevoked, outcome.Log.Entries.Single().EventId.Id);
+    }
 }

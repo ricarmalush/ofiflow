@@ -148,7 +148,7 @@ Te vas a olvidar de cosas. Para eso están los guardarraíles: un test en rojo *
 
 | Si te olvidas de... | Falla | Qué hacer |
 |---|---|---|
-| Declarar el permiso de una operación | `EveryOperationOfTheApplication_DeclaresItsAuthorization` | Añade `[RequiresPermission(...)]` (o `[AllowAnonymousRequest]` si de verdad es pública) |
+| Declarar el permiso de una operación | `EveryOperationOfTheApplication_DeclaresItsAuthorization` | Añade `[RequiresPermission(...)]` (o `[AllowAnonymousRequest]` si de verdad es pública, o `[RequiresPlatformOperator]` si es del panel de la plataforma: solo dentro de `OfiFlow.Application.Platform`). Solo uno de los tres |
 | Poner la operación en la tabla de permisos | `TheTableCoversEveryOperationOfTheApplication` | Añádela con su permiso |
 | El mensaje de un código de error | `EveryErrorCode_HasAMessageInTheDictionary` | Añade la entrada a `ErrorMessages.resx` |
 | Que un código siga el formato `entidad.error` | `EveryErrorCode_FollowsTheNamingConvention` | Renómbralo en minúsculas y `snake_case` |

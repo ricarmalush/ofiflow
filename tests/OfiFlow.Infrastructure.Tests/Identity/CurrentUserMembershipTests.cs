@@ -259,4 +259,108 @@ public class CurrentUserMembershipTests(SqlServerContainerFixture fixture) : ICl
             Assert.Equal(1, queries.Count);
         }
     }
+
+    // ===== Empresa suspendida (spec 011 R15d) =====
+
+    /// <summary>Un miembro cuya empresa tiene su fila en <c>Tenants</c> (la suspensión se lee de ahí), suspendida o no.</summary>
+    private async Task<(Guid TenantId, Guid UserId)> SeedMemberOfARealCompanyAsync(TenantRole role, bool suspended)
+    {
+        var tenant = Tenant.Create("Fontanería Pérez");
+        if (suspended)
+        {
+            tenant.Suspend(new DateTime(2026, 10, 22, 10, 0, 0, DateTimeKind.Utc));
+        }
+
+        var userId = Guid.NewGuid();
+
+        await using var db = _fixture.CreateDbContext(tenant.Id);
+        db.Tenants.Add(tenant);
+        db.TenantUsers.Add(TenantUser.Create(tenant.Id, userId, role));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        return (tenant.Id, userId);
+    }
+
+    [Fact]
+    public async Task AMemberOfASuspendedCompany_IsNotVerified_HasNoRole_AndIsToldTheCompanyIsSuspended()
+    {
+        var member = await SeedMemberOfARealCompanyAsync(TenantRole.Owner, suspended: true);
+        var (user, _, db) = Request(member.UserId, member.TenantId, tokenRole: "Owner");
+        await using (db)
+        {
+            Assert.False(await user.VerifyMembershipAsync(CancellationToken.None));
+
+            Assert.Null(user.Role); // fail-closed: ni un Owner conserva el rol en una empresa suspendida
+            Assert.True(user.TenantSuspended); // se distingue de «ya no pertenece»
+        }
+    }
+
+    [Fact]
+    public async Task AMemberOfAnActiveCompany_IsVerified_AndTheCompanyIsNotReportedAsSuspended()
+    {
+        // Control positivo: con la fila de la empresa presente y activa, todo sigue como antes.
+        var member = await SeedMemberOfARealCompanyAsync(TenantRole.Manager, suspended: false);
+        var (user, _, db) = Request(member.UserId, member.TenantId);
+        await using (db)
+        {
+            Assert.True(await user.VerifyMembershipAsync(CancellationToken.None));
+
+            Assert.Equal(TenantRole.Manager, user.Role);
+            Assert.False(user.TenantSuspended);
+        }
+    }
+
+    [Fact]
+    public async Task APersonWhoLeftTheCompany_IsNotReportedAsSuspended()
+    {
+        // «Ya no pertenece» y «empresa suspendida» no se confunden, ni siquiera con la empresa suspendida.
+        var member = await SeedMemberOfARealCompanyAsync(TenantRole.Technician, suspended: true);
+        var (user, _, db) = Request(Guid.NewGuid(), member.TenantId); // otra persona, que no es miembro
+        await using (db)
+        {
+            Assert.False(await user.VerifyMembershipAsync(CancellationToken.None));
+
+            Assert.False(user.TenantSuspended);
+        }
+    }
+
+    [Fact]
+    public async Task CheckingTheSuspension_StillCostsExactlyOneQueryPerRequest()
+    {
+        // La spec 011 promete que comprobar la suspensión no añade una ida a la base de datos: la empresa viaja en la
+        // MISMA consulta que la pertenencia. Una consulta por petición, esté la empresa suspendida o no, y no más al repetir.
+        foreach (var suspended in new[] { false, true })
+        {
+            var member = await SeedMemberOfARealCompanyAsync(TenantRole.Manager, suspended);
+            var (user, queries, db) = Request(member.UserId, member.TenantId);
+            await using (db)
+            {
+                await user.VerifyMembershipAsync(CancellationToken.None);
+                await user.VerifyMembershipAsync(CancellationToken.None); // la segunda llamada reutiliza el resultado
+
+                Assert.Equal(1, queries.Count);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ReactivatingTheCompany_GivesTheRoleBackWithoutTouchingTheMembership()
+    {
+        var member = await SeedMemberOfARealCompanyAsync(TenantRole.Admin, suspended: true);
+
+        await using (var operatorDb = _fixture.CreateDbContext(member.TenantId))
+        {
+            var tenant = await operatorDb.Tenants.SingleAsync(t => t.Id == member.TenantId);
+            tenant.Reactivate();
+            await operatorDb.SaveChangesAsync(CancellationToken.None);
+        }
+
+        var (user, _, db) = Request(member.UserId, member.TenantId);
+        await using (db)
+        {
+            Assert.True(await user.VerifyMembershipAsync(CancellationToken.None));
+
+            Assert.Equal(TenantRole.Admin, user.Role); // el mismo rol que tenía: la pertenencia no se tocó
+        }
+    }
 }

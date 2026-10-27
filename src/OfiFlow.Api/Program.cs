@@ -108,6 +108,7 @@ try
     app.UseAuthorization();
 
     app.MapAuthEndpoints();
+    app.MapPlatformEndpoints();
     app.MapCustomerEndpoints();
     app.MapInvitationEndpoints();
     app.MapUserEndpoints();

@@ -16,7 +16,8 @@ src/
 ├── OfiFlow.Domain            ← LAS REGLAS: qué es un trabajo, qué puede hacerse con él
 ├── OfiFlow.Application       ← LAS OPERACIONES: qué puede hacer el sistema
 ├── OfiFlow.Infrastructure    ← LO TÉCNICO: base de datos, tokens, contraseñas
-└── OfiFlow.Api               ← LA PUERTA: HTTP, rutas, errores, seguridad de entrada
+├── OfiFlow.Api               ← LA PUERTA: HTTP, rutas, errores, seguridad de entrada
+└── OfiFlow.Admin             ← NO ES UNA CAPA: la herramienta del servidor (ver «Fuera de las capas»)
 
 tests/                        ← Un proyecto de test por cada capa
 ```
@@ -56,7 +57,7 @@ La carpeta de primer nivel es siempre un **contexto de negocio** (capítulo 2, s
 | `Common/` | `Entity`, `AggregateRoot`, `IDomainEvent`, `DomainException`, `Email`, `ITenantOwned`, `IAuditable`, `CommonErrors` | Lo que comparten todos los contextos. `Email` está aquí porque lo usan a la vez Customers e Identity (*shared kernel*) |
 | `Customers/` | `Customer`, `CustomerType`, `PhoneNumber`, `CustomerErrors` | Todo lo que es un cliente |
 | `Jobs/` | `Job`, `JobStatus`, `JobPriority`, `JobErrors` | Todo lo que es un trabajo y sus transiciones de estado |
-| `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `Permission`, `RolePermissions`, `ManageableRoles`, `Invitation`, `InvitationStatus`, `TenancyErrors`, `InvitationErrors` | La empresa, la pertenencia de una persona a ella con un rol, y **qué puede hacer cada rol**: `Permission` son los permisos (`Customers.Write`, `Jobs.Assign`, `Users.Manage`...), `RolePermissions` es la tabla única rol → permisos y `ManageableRoles` la tabla única "a qué roles puede gestionar cada rol". `Invitation` es la invitación para que una persona entre en la empresa (spec 009) |
+| `Tenancy/` | `Tenant`, `TenantUser`, `TenantRole`, `Permission`, `RolePermissions`, `ManageableRoles`, `Invitation`, `InvitationStatus`, `TenancyErrors`, `InvitationErrors` | La empresa (que se puede **suspender y reactivar**: `SuspendedAt`, spec 011), la pertenencia de una persona a ella con un rol, y **qué puede hacer cada rol**: `Permission` son los permisos (`Customers.Write`, `Jobs.Assign`, `Users.Manage`...), `RolePermissions` es la tabla única rol → permisos y `ManageableRoles` la tabla única "a qué roles puede gestionar cada rol". `Invitation` es la invitación para que una persona entre en la empresa (spec 009) |
 | `Identity/` | `User`, `IdentityErrors`, `MfaErrors` | Los **datos de negocio** de la persona (y los códigos de error del segundo factor, spec 010). Las credenciales (contraseña) no están aquí: viven en Infrastructure |
 
 Dos interfaces de `Common/` merecen atención, porque son "etiquetas" que activan comportamientos automáticos en otras capas:
@@ -129,13 +130,15 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 | `Jobs/` | Crear, ver, listar, modificar, empezar, completar, cancelar y asignar trabajos |
 | `Identity/` | Registro, login y renovación de token. Incluye `AuthResultDto`, `PasswordRules` (longitud mínima y máxima) y `OfiFlowClaimTypes` (el nombre del *claim* del tenant en el token). Además, `AuthenticationPolicy` (los números de la política de bloqueo y de segundo factor, en un único sitio) y la subcarpeta **`Mfa/`** (spec 010): `Totp` (el código de 6 dígitos, RFC 6238), `TotpSecret` (generar el secreto y la URI para el QR), `Base32` y `RecoveryCodes`. Son funciones puras, sin base de datos ni reloj propio. Y las **seis operaciones del segundo factor** (spec 010): `GetMfaStatus`, `StartMfaSetup`, `EnableMfa`, `DisableMfa` y `RegenerateRecoveryCodes` (de la propia cuenta, en `Mfa/Commands` y `Mfa/Queries`), con su puerto `IMfaService` y `MfaDtos`; el reinicio por un gestor, `ResetUserMfa`, está en `Tenancy` junto a `RemoveUser` |
 | `Tenancy/` | Las **invitaciones y los miembros** (spec 009): `InviteUser`, `RevokeInvitation`, `GetInvitations`, `GetUsers`, `ChangeUserRole`, `RemoveUser` y `ResetUserMfa` (reiniciar el segundo factor de un miembro, con la misma jerarquía). El generador del token y su hash, `OpaqueToken`, ya no vive aquí sino en `Common/Security/`, porque lo comparten las invitaciones y el desafío del login. El registro, que crea la empresa, y la aceptación de una invitación, que crea una cuenta, están en `Identity` |
+| `Platform/` | El **panel del operador** (spec 011): `Commands/PlatformLogin` y `VerifyPlatformChallenge` (el inicio de sesión en dos pasos), `Queries/ListTenants` (listar), `Commands/SuspendTenant` y `ReactivateTenant`, el `PlatformTenantDto` (exactamente cinco campos) y, aparte, `PlatformOperatorAdministration` (alta y baja del operador, que **no** es una petición de MediatR). Es la única carpeta cuyas operaciones llevan `[RequiresPlatformOperator]`, y solo caben operaciones de plataforma o anónimas: un test lo fija |
 
 **La carpeta `Common/`**, lo transversal:
 
 | Subcarpeta | Qué contiene | Por qué |
 |---|---|---|
 | `Abstractions/` | `ITenantContext`, `ICurrentUser`, `IIdentityService`, `ITokenService` | Los **contratos** que Application necesita y que `Infrastructure` implementa. Aquí se produce la inversión de dependencias del capítulo 2. `ICurrentUser` dice quién hace la petición (usuario, empresa y rol, leídos del token) |
-| `Authorization/` | `RequiresPermissionAttribute`, `AllowAnonymousRequestAttribute` | Las marcas que cada operación lleva encima para declarar qué permiso exige, o que se ejecuta sin sesión (registro, login, renovar) |
+| `Authorization/` | `RequiresPermissionAttribute`, `AllowAnonymousRequestAttribute`, `RequiresPlatformOperatorAttribute` | Las marcas que cada operación lleva encima para declarar qué permiso exige, que se ejecuta sin sesión (registro, login, renovar) o que solo la ejecuta un operador de la plataforma (spec 011). Son excluyentes: una operación lleva exactamente una |
+| `PagedResult.cs` (en `Common/`) | `PagedResult<T>` | Una página de resultados con su paginación; la usa el listado de empresas del panel (spec 011) |
 | `Persistence/` | `IApplicationDbContext` | El contrato para acceder a los datos, sin atarse a SQL Server |
 | `Behaviors/` | `AuthorizationBehavior`, `ValidationBehavior` | Código que se ejecuta antes de **todos** los handlers, en este orden: primero comprobar que el rol tiene el permiso, después validar los datos |
 | `Exceptions/` | `NotFoundException`, `BusinessRuleException`, `ForbiddenException`, `IdentityOperationException` | Los errores que Application puede lanzar, cada uno con un código estable. `ForbiddenException` es el 403 de "tu rol no puede" |
@@ -214,7 +217,7 @@ Existe para que esos detalles se puedan **cambiar sin tocar las reglas del negoc
 | `Persistence/Interceptors/` | `AuditableEntitySaveChangesInterceptor` | Rellena `CreatedAt` y `UpdatedAt` al guardar, sin que ningún handler lo haga |
 | `Persistence/Migrations/` | Una clase por cambio del esquema | El historial de la base de datos, generado con `dotnet ef`. Es un registro, no se escribe a mano |
 | `Persistence/` (otros) | `ApplicationDbContextFactory`, `ConnectionStringNames` | La fábrica la usa solo `dotnet ef` para generar migraciones; los nombres evitan repetir cadenas mágicas |
-| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` y, del segundo factor (spec 010), `MfaService`, `AesGcmSecretProtector`, `AccountLockout`, `PasswordHasherChecker` y las entidades `MfaCredential`, `RecoveryCode` y `MfaChallenge` | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario y la empresa, y **comprueba en la base de datos** el rol y la pertenencia en cada petición |
+| `Identity/` | `IdentityService`, `TokenService`, `CurrentUser`, `ApplicationUser`, `RefreshToken`, `JwtOptions` y, del segundo factor (spec 010), `MfaService`, `AesGcmSecretProtector`, `AccountLockout`, `PasswordHasherChecker` y las entidades `MfaCredential`, `RecoveryCode` y `MfaChallenge`, y, de la spec 011, `PlatformOperators`, `PlatformAudit` y las entidades `PlatformOperator` y `PlatformAuditEntry` (el operador de la plataforma, que no es de ninguna empresa), más `PlatformAuthentication` y `PlatformTokenService` (el esquema, la política y la firma de su sesión, con otra clave y otra audiencia que las empresas) | Contraseñas, tokens y su configuración (ver más abajo). `CurrentUser` lee del token el usuario y la empresa, y **comprueba en la base de datos** el rol y la pertenencia en cada petición |
 | `Tenancy/` | `TenantContext` | Lee el `tenant_id` del token del usuario autenticado. Implementa `ITenantContext` |
 
 Y en la raíz, [`DependencyInjection.cs`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs): `AddInfrastructure()` conecta el `DbContext`, los servicios y la validación de tokens JWT. **Si falta el secreto `Jwt:Secret`, la aplicación se niega a arrancar** con un mensaje que indica cómo configurarlo, antes que arrancar de forma insegura.
@@ -281,7 +284,7 @@ Existe para que **ninguna otra capa sepa nada de HTTP**. Mañana podría añadir
 | Elemento | Qué contiene | Por qué está ahí |
 |---|---|---|
 | `Program.cs` | El arranque y el **orden** de los middlewares | El orden es una decisión de seguridad (ver capítulo 8) |
-| `Endpoints/` | `AuthEndpoints`, `CustomerEndpoints`, `JobEndpoints`, `InvitationEndpoints`, `UserEndpoints` | Un fichero por contexto. Cada endpoint hace tres cosas: recibir, enviar a MediatR, devolver |
+| `Endpoints/` | `AuthEndpoints`, `CustomerEndpoints`, `JobEndpoints`, `InvitationEndpoints`, `UserEndpoints`, `PlatformEndpoints` | Un fichero por contexto (`PlatformEndpoints` cuelga de `/api/v1/platform`, su propio espacio de rutas). Cada endpoint hace tres cosas: recibir, enviar a MediatR, devolver |
 | `Common/` | `GlobalExceptionHandler`, `RateLimiting`, `SecurityHeadersMiddleware`, `RequestLogScopeMiddleware`, `Localization`, `ApiErrors` | Todo lo transversal de HTTP: errores, límites, cabeceras, idioma |
 | `Resources/` | `ErrorMessages.resx` | El **diccionario** de mensajes de error en español. El código devuelve un código y el texto sale de aquí |
 | `Properties/` | `launchSettings.json` | Cómo arranca en local |
@@ -326,6 +329,16 @@ Es la **primera línea de defensa**: cabeceras de seguridad, HSTS, rate limiting
 *¿Por qué un endpoint no contiene lógica?* → Porque la Api solo traduce entre HTTP y Application; si la lógica estuviese aquí, no se podría reutilizar desde otro tipo de cliente ni probar sin levantar un servidor web.
 
 ---
+
+## Fuera de las capas — `OfiFlow.Admin`
+
+Hay un quinto proyecto en `src/` que **no es una capa**: [`OfiFlow.Admin`](../../src/OfiFlow.Admin/Program.cs), un programa de consola que el administrador ejecuta a mano en el servidor para **crear y dar de baja operadores de la plataforma** (spec 011, ADR-016). Es el «proceso por línea de comandos» que la capa Api menciona más arriba como posibilidad futura: reutiliza `Application` e `Infrastructure` igual que la API, sin cambiar ninguna de las dos.
+
+**Por qué un proyecto aparte y no un modo de arranque de la API.** La spec exigía que el alta de un operador fuera inalcanzable por HTTP. Con un proyecto aparte esa garantía no depende de que alguien recuerde algo: la API **no lo referencia**, así que no puede llamarlo ni por error de configuración. Y el programa se despliega, si hace falta, en un sitio distinto del que atiende peticiones públicas. Un modo de arranque dentro de la propia API habría dejado el código en el mismo ejecutable que escucha en internet.
+
+**Qué contiene** (muy poco, a propósito): `Program.cs` (lee los argumentos, comprueba la configuración y pide los datos por la terminal), `Prompt.cs` (leer la contraseña sin eco) y dos ficheros de configuración. **La lógica no está aquí**: está en [`PlatformOperatorAdministration`](../../src/OfiFlow.Application/Platform/PlatformOperatorAdministration.cs), en `Application`, para poder probarla como el resto. No es una petición de MediatR (no pasaría por el pipeline de autorización, y cualquier endpoint podría enviarla): es un servicio normal que solo registra este programa. Tests de arquitectura fijan que ningún otro fichero lo nombra.
+
+**Qué no recibe.** Usa [`AddAdminInfrastructure`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs), que registra la cuenta, el segundo factor y la plataforma **sin la autenticación JWT**. La clave que firma las sesiones es el secreto más delicado y esta herramienta no emite sesiones, así que no debe poder arrancar con ella. Sí necesita `Mfa:EncryptionKey` (la misma que la API). No añade ningún paquete NuGet propio.
 
 ## Cómo se conecta todo
 
@@ -372,7 +385,6 @@ Se detallan en el capítulo 9.
 ## Cosas que verás en el repositorio y que conviene saber
 
 - **Ficheros `.gitkeep`** dentro de carpetas que ya tienen contenido (por ejemplo, `Domain/Jobs/.gitkeep`). Son restos de cuando las carpetas se crearon vacías; no hacen nada y son inofensivos.
-- **`Application/Tenancy/`** ya tiene casos de uso (las invitaciones, spec 009), pero ninguno tiene todavía endpoint en la API: llegan en un bloque posterior de esa spec.
 - **`Domain/Common/IAuditable`** declara sus fechas con `set` público, porque quien las rellena (el interceptor) está en otra capa y necesita poder escribirlas. Es una concesión pragmática: a diferencia del resto de propiedades de `Job`, estas dos no están protegidas con `private set`.
 
 ## Para comprobar que lo has entendido

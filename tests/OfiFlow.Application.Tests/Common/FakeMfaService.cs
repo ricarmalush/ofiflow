@@ -40,6 +40,11 @@ public sealed class FakeMfaService : IMfaService
 
     public List<(string Hash, string Code)> Redemptions { get; } = [];
 
+    /// <summary>Para qué mundo se creó cada desafío y en qué mundo se intentó canjear cada uno (spec 011 R9).</summary>
+    public List<ChallengeAudience> ChallengeAudiences { get; } = [];
+
+    public List<ChallengeAudience> RedeemedAudiences { get; } = [];
+
     public void Set(Guid userId, MfaStatus status) => _status[userId] = status;
 
     public Task<MfaStatus> GetStatusAsync(Guid userId, CancellationToken cancellationToken) =>
@@ -52,6 +57,18 @@ public sealed class FakeMfaService : IMfaService
         _status[userId] = new MfaStatus(IsEnabled: false, SetupPending: true, RecoveryCodesRemaining: 0);
 
         return Task.FromResult(AccountEmail);
+    }
+
+    /// <summary>Los segundos factores creados ya confirmados (alta de un operador de la plataforma, spec 011 R2).</summary>
+    public List<(Guid UserId, byte[] Secret, long AcceptedStep, IReadOnlyCollection<string> Hashes)> Enrollments { get; } = [];
+
+    public Task EnrollConfirmedAsync(
+        Guid userId, byte[] secret, long acceptedStep, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken)
+    {
+        Enrollments.Add((userId, secret, acceptedStep, recoveryCodeHashes));
+        _status[userId] = new MfaStatus(IsEnabled: true, SetupPending: false, recoveryCodeHashes.Count);
+
+        return Task.CompletedTask;
     }
 
     public Task<SetupOutcome> ConfirmSetupAsync(
@@ -93,15 +110,17 @@ public sealed class FakeMfaService : IMfaService
         return Task.CompletedTask;
     }
 
-    public Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, CancellationToken cancellationToken)
+    public Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, ChallengeAudience audience, CancellationToken cancellationToken)
     {
         CreatedChallenges.Add((userId, tokenHash, expiresAt));
+        ChallengeAudiences.Add(audience);
         return Task.CompletedTask;
     }
 
-    public Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, CancellationToken cancellationToken)
+    public Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, ChallengeAudience audience, CancellationToken cancellationToken)
     {
         Redemptions.Add((tokenHash, code));
+        RedeemedAudiences.Add(audience);
         return Task.FromResult(NextRedemption);
     }
 

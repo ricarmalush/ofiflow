@@ -229,7 +229,7 @@ La misma tabla gobierna **reiniciar el segundo factor de otro miembro** (spec 01
 **El rol sale de la base de datos, no del token.** Un token JWT se firma una vez y vale 30 minutos. Si el rol viajara dentro y se leyera de ahí, quitar a alguien o degradarlo no surtiría efecto hasta que caducara el token: un empleado despedido seguiría con acceso a los datos de los clientes. Por eso el [`AuthorizationBehavior`](../../src/OfiFlow.Application/Common/Behaviors/AuthorizationBehavior.cs) hace esto en **cada** petición autenticada, antes de comprobar el permiso:
 
 1. **Declaración.** Si la operación está mal declarada (sin permiso, o anónima y con permiso a la vez) se deniega **sin consultar nada**.
-2. **Pertenencia.** [`CurrentUser`](../../src/OfiFlow.Infrastructure/Identity/CurrentUser.cs) lee en la base de datos la pertenencia de esa persona a esa empresa (**una sola consulta**, por el índice único `(empresa, usuario)`, usando solo lo que dice el token ya validado, nunca nada que mande el cliente). Si no existe, **403** y un evento `1302`.
+2. **Pertenencia.** [`CurrentUser`](../../src/OfiFlow.Infrastructure/Identity/CurrentUser.cs) lee en la base de datos la pertenencia de esa persona a esa empresa (**una sola consulta**, por el índice único `(empresa, usuario)`, usando solo lo que dice el token ya validado, nunca nada que mande el cliente). Si no existe, **403** y un evento `1302`. En esa **misma consulta** comprueba que la empresa no esté **suspendida** (spec 011): si lo está, **403** con el código `tenant.suspended` y un evento `1303`. Es la empresa del token y no hay ninguna lectura de más: la suspensión viaja en la consulta de la pertenencia (un test cuenta las consultas).
 3. **Permiso.** Se comprueba con el rol **de la base de datos**. El rol del token se sigue leyendo (`TokenRole`) pero es solo informativo: no autoriza nada.
 
 Consecuencias que conviene saber explicar:
@@ -285,7 +285,7 @@ La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni 
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
 
-No se puede reaccionar a lo que no se ve. OfiFlow registra **veintitrés eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
+No se puede reaccionar a lo que no se ve. OfiFlow registra **treinta y dos eventos de seguridad** con un identificador numérico estable ([`SecurityEventIds.cs`](../../src/OfiFlow.Application/Common/Logging/SecurityEventIds.cs)), para que alguien pueda filtrar o crear alertas por número sin depender del texto del mensaje, que puede cambiar:
 
 | Id | Evento | Cuándo ocurre |
 |---|---|---|
@@ -299,6 +299,7 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **veintitrés eventos
 | `1201` | Excepción no controlada | Un 500; se registra con el detalle interno completo |
 | `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso, o intenta gestionar a un rol que no le corresponde (la jerarquía de roles) |
 | `1302` | **Pertenencia revocada** | Un token todavía válido de alguien que ya no pertenece a la empresa (se le quitó mientras el token seguía vivo). La revalidación en cada petición lo detecta |
+| `1303` | **Empresa suspendida** | Alguien de una empresa suspendida intenta entrar, canjear el segundo factor o seguir usando una sesión todavía válida (con la operación, el `UserId` y el `TenantId`). Una ráfaga sobre la misma empresa es normal (su equipo reintentando); lo que merece mirarse es una suspensión que nadie esperaba |
 | `1401` | Invitación creada | Alguien de la empresa invita a una persona (con el rol, sin el email ni el token) |
 | `1402` | Invitación aceptada | Nace una cuenta nueva a partir de una invitación |
 | `1403` | **Invitación rechazada** | Alguien intenta aceptar un token que no sirve (desconocido, caducado, revocado, ya usado o perdido en una carrera). El log guarda el **motivo real**; quien lo intenta recibe siempre la misma respuesta |
@@ -312,10 +313,51 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **veintitrés eventos
 | `1505` | **Código de recuperación usado** | Con cuántos quedan. Suele significar que se perdió el móvil; conviene mirarlo |
 | `1506` | Códigos de recuperación regenerados | Los anteriores dejan de valer |
 | `1507` | **MFA reiniciado por un gestor** | Quién lo hizo y a quién (solo Ids). Un `1507` inesperado seguido de un login desde una IP nueva es lo que querría ver un analista |
+| `1601` | **Sesión de operador emitida** | Un operador completó contraseña y código y recibió una sesión de plataforma (solo el `UserId`). Cada una debe corresponder a alguien que conozcas; una a deshoras o desde una IP nueva es lo que hay que mirar |
+| `1602` | **Inicio de sesión de plataforma rechazado** | Con el **motivo real** en el log (contraseña errónea, cuenta que no es de operador, sin segundo factor...); quien lo intenta recibe siempre el mismo `401`. Una ráfaga de `1602` con el motivo «cuenta que no es de operador» y una contraseña **correcta** es alguien con credenciales de empresa probando la puerta de la plataforma |
+| `1603` | Empresas listadas | Un operador listó las empresas (su `UserId`, la página y cuántas vio; nunca un nombre de empresa). Es una **lectura**: no deja fila de auditoría, solo este evento |
+| `1604` | **Empresa suspendida** | Un operador suspendió una empresa (solo el `UserId` y el `TenantId`). Deja además una fila de auditoría que no caduca. Un `1604` sin un `1601` reciente del mismo operador es lo primero que mira un analista |
+| `1605` | **Empresa reactivada** | Un operador reactivó una empresa (solo los dos Ids), con su fila de auditoría |
+| `1606` | **Operador de la plataforma creado** | Alguien con acceso al servidor creó una cuenta con acceso a todas las empresas (solo el `UserId`, nunca el email). Debe coincidir con una intervención que conozcas: un `1606` inesperado es el evento más grave de la lista |
+| `1607` | **Operador de la plataforma dado de baja** | Se desactivó a un operador (solo el `UserId`) |
+| `1608` | **Sesión de operador revocada** | Un token de plataforma todavía válido de una cuenta que ya no es un operador activo (con la operación y el `UserId`). Es la baja surtiendo efecto en la siguiente petición; un `1608` sin una baja reciente que lo explique es una anomalía |
 
-Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones, 15xx segundo factor), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
+Se agrupan por familia (10xx autenticación y bloqueo, 11xx abuso, 12xx errores, 13xx autorización, 14xx usuarios e invitaciones, 15xx segundo factor, 16xx panel de la plataforma), de modo que un analista puede mirar una familia entera. Una ráfaga de `1403` desde una misma IP es exactamente lo que querría ver alguien que vigile intentos de adivinar tokens, y un `1405` de alguien que se ascendió a sí mismo sería la señal de una escalada (la regla lo impide, pero el intento queda como `1301`).
 
 Además, un pequeño middleware ([`RequestLogScopeMiddleware`](../../src/OfiFlow.Api/Common/RequestLogScopeMiddleware.cs)) apunta la **IP de origen** en cada petición, de modo que todos los eventos la incluyan sin que cada pieza del código tenga que pasarla de mano en mano. Y el `traceId` de los errores une la respuesta con la entrada exacta del registro.
+
+### El alta del operador: lo más delicado, fuera de la API
+
+Una cuenta de operador ve los metadatos de **todas** las empresas y puede suspenderlas, así que su creación es lo más peligroso que puede hacer alguien con acceso. Por eso **no existe ninguna ruta HTTP** que la cree: se hace con el programa [`OfiFlow.Admin`](../../src/OfiFlow.Admin/Program.cs) (capítulo 1 explica el procedimiento y el 3, por qué es un proyecto aparte). La seguridad está en capas:
+
+| Qué se evita | Cómo |
+|---|---|
+| Que alguien lo alcance por HTTP | La API no referencia el programa ni registra el servicio; tests de arquitectura fijan que ningún otro fichero nombra [`PlatformOperatorAdministration`](../../src/OfiFlow.Application/Platform/PlatformOperatorAdministration.cs) y que no es una petición de MediatR |
+| Un operador sin segundo factor | El primer código TOTP se comprueba **en memoria, antes de tocar la base de datos** (`PlatformOperatorAdministration.cs:89`). Sin código válido no se guarda ni la cuenta |
+| Filas a medias si algo falla | La cuenta, el segundo factor ya confirmado, los 10 códigos, el operador y la auditoría se guardan en **un único `SaveChanges`** (`:116`). Si falla, no queda nada; lo prueba una carrera de dos altas con el mismo email contra SQL Server real |
+| Que el primer código se reutilice | Se anota como último paso aceptado; el mismo código no vale en el primer inicio de sesión |
+| Una contraseña a la vista | Se pide por la terminal sin eco, nunca por argumento, y el programa se niega a funcionar con la entrada redirigida |
+| Una clave de más en el servidor de administración | El programa no recibe `Jwt:Secret` (`AddAdminInfrastructure`); un test lo comprueba |
+| Un alta sin rastro | Auditoría persistente (`platform.operator_created`, `platform.operator_disabled`) y los eventos `1606` y `1607` |
+
+**Un matiz honesto.** La auditoría de estas dos acciones guarda como `OperatorUserId` el **operador afectado**, no quien ejecutó el programa: el actor es «alguien con acceso al servidor», que no tiene cuenta en OfiFlow. Quién fue exactamente lo dirá el registro del servidor (sesión, historial), no OfiFlow. Y el programa en sí no tiene autenticación: **quien pueda ejecutarlo con la cadena de conexión y la clave del segundo factor puede crear un operador**. Esa frontera es el acceso al servidor, y por eso el programa no debe estar en el equipo que atiende la web pública.
+
+### La sesión del operador: lo que impide confundir los dos mundos
+
+La sesión de plataforma (capítulo 6) es el otro lado de la misma moneda: una vez dentro, un operador ve todas las empresas, así que lo importante es que **nada de una empresa valga allí ni al revés**. Las defensas, de fuera adentro:
+
+| Qué se evita | Cómo |
+|---|---|
+| Que un token de empresa sirva en una ruta de plataforma (o al revés) | Dos esquemas de autenticación, con **clave y audiencia distintas**; la política de las rutas de plataforma fija su esquema. El token de empresa falla en la firma y el de plataforma, en la audiencia |
+| Que una mala configuración las junte | La API **no arranca** si `Jwt:PlatformSecret` falta, no es Base64, no mide 32 bytes o es igual que `Jwt:Secret`, ni si la audiencia coincide; el mensaje nunca reproduce una clave |
+| Que la contraseña dé una sesión | El primer paso devuelve siempre un desafío (o un `401`); solo hay **tres** sitios que emiten sesiones y el de plataforma es uno solo; un test de arquitectura fija la lista |
+| Que un desafío de empresa se canjee en plataforma (o al revés) | El desafío nace con una audiencia; el canje de otro mundo se trata como un desafío inventado, antes de mirar el código y sin gastar ningún intento |
+| Que saber si un email es de operador sea posible | Un único `401`, con el mismo coste de contraseña, para seis causas distintas; el motivo real solo va al log (`1602`) |
+| Que un operador dado de baja siga mandando 15 minutos | La operación consulta la base de datos en **cada** petición (una consulta); la baja surte efecto en la siguiente y deja el `1608` |
+| Que una operación de plataforma se declare mal | Tercer tipo de declaración, excluyente con los otros dos, *fail-closed*, y solo permitido dentro de `OfiFlow.Application.Platform` |
+| Que una sesión robada dure | 15 minutos, sin *refresh token*; renovarla exige repetir contraseña y código |
+
+**Riesgo aceptado: un operador comprometido.** Con una sesión robada, el atacante hace lo que el rol permite hasta que alguien lo note y dé de baja la cuenta (o pasen los 15 minutos). Los controles buscan que se note —`1601`, `1602`, `1608` y una fila de auditoría por sesión y por acción— y que el daño máximo esté acotado: un operador solo ve metadatos de las empresas y solo puede suspender o reactivar, nunca leer sus clientes o trabajos (bloque 6).
 
 ### Dónde se guardan los logs
 
@@ -361,6 +403,8 @@ Estos tests no prueban una funcionalidad, sino que **la estructura del código r
 | `SourceCode_DoesNotUseRawSqlApis` | Nada de SQL escrito a mano |
 | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` | Solo dos ficheros pueden saltarse el filtro de empresa, por ruta completa |
 | `GlobalEntities_AreOnlyReadInTheAllowList` | Las tablas sin filtro de empresa solo se leen donde está permitido |
+| `TenantMemberships_AreOnlyCreatedForBrandNewAccounts` | Solo el registro y aceptar una invitación crean una pertenencia, y siempre para una cuenta nueva (un operador de la plataforma nunca es miembro de una empresa) |
+| `TheTenantsAllowList_StillCorrespondsToARealRead` | Control positivo de la lista blanca de `Tenants`: avisa si deja de corresponder a un código real |
 | `NoCommandOrQuery_AcceptsTenantIdFromTheClient` | Ninguna operación recibe el `TenantId` del cliente |
 | `EveryMappedEntity_IsTenantOwnedOrDeclaredGlobal` | Toda entidad es de una empresa (con filtro) o está declarada global |
 | `EveryOperationOfTheApplication_DeclaresItsAuthorization` | Toda operación declara su permiso (o que es anónima) |
@@ -395,9 +439,9 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP, y bloqueo por cuenta (5 fallos / 15 min) | `RateLimiting.cs:35`, `AccountLockout.cs` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
-| **S** · Suplantar con un token falso | Firma HMAC-SHA256 | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
-| **S** · Robar un refresh token | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
+| **S** · Fuerza bruta de contraseñas | 5 logins por minuto y por IP, y bloqueo por cuenta (5 fallos / 15 min) | `RateLimiting.cs:44`, `AccountLockout.cs` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
+| **S** · Suplantar con un token falso | Firma HMAC-SHA256 | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| **S** · Robar un refresh token | Rotación y detección de reutilización | `TokenService.cs:47-64` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | **S** · Adivinar o reutilizar un token de invitación | 256 bits aleatorios, un solo uso, misma respuesta para los cuatro fallos, evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | **E** · Escalada de privilegios invitando a un `Admin` o a un `Owner` | Jerarquía de roles (`ManageableRoles`) comprobada al invitar y al revocar | `InviteUserCommandHandler.cs`, `ManageableRoles.cs` | `WhenTheHierarchyForbidsIt_ItIsRefused_AndNothingIsCreated` |
 | **E** · Un empleado despedido (o degradado) sigue usando su token | Se revalida la pertenencia y el rol en la base de datos en cada petición; evento `1302` | `AuthorizationBehavior.cs`, `CurrentUser.cs` | `AMemberWhoIsRemoved_IsDeniedImmediately_WithTheSameStillValidToken`, `ADemotedMember_LosesThePowersOfTheOldRoleImmediately` |
@@ -413,7 +457,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Presentar el desafío como token de acceso | No es un JWT: es un valor opaco que el middleware de tokens no acepta | `OpaqueToken.cs` | `ATokenIsNotAJwt_SoItCanNeverBePresentedAsAnAccessToken` |
 | **I** · Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token | `OpaqueToken.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | **S** · Usar la API sin sesión | `RequireAuthorization()` en cada grupo | `JobEndpoints.cs:21` | `WithoutAToken_EveryRoute_Returns401` |
-| **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **T** · Datos mal formados o enormes | Validadores y longitudes máximas | `*CommandValidator.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | **R** · Negar una acción | Eventos de seguridad con usuario y empresa | `SecurityEventIds.cs` | `ADenial_IsLoggedAsASecurityEvent_...`, `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` |
 | **I** · Ver datos de otra empresa | Filtro global por empresa | `ApplicationDbContext.cs:72` | `TenantIsolationEndToEndTests`, `CrossTenantWriteIsolationTests` |
@@ -422,7 +466,7 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **I** · Datos personales en los logs | El registro solo lleva identificadores | `IdentityService.cs`, `AuthorizationBehavior.cs` | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword`, `ADenial_IsLogged...` |
 | **I** · Contenido leído o incrustado por otra web | Cabeceras de seguridad | `SecurityHeadersMiddleware.cs:28-39` | `EveryResponse_IncludesSecurityHeaders` |
 | **I** · Secretos en el repositorio | gitleaks y *push protection* | `ci.yml`, `.gitleaksignore` | El propio job `gitleaks` en cada PR |
-| **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:35-44` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
+| **D** · Inundar el login o el registro | Límite de peticiones por IP | `RateLimiting.cs:44-46` | `Login_SixthAttemptWithinAMinute_IsRejectedWith429` |
 | **D** · Contraseñas o textos gigantes | Máximos de longitud | `PasswordRules.cs`, validadores | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | **E** · Un rol hace lo que no le toca | Permisos por rol, antes de la validación | `AuthorizationBehavior.cs` | `EachRole_CanOrCannotPerformEachOperation` (65 casos) |
 | **E** · Una operación sin permiso declarado | *Fail-closed* y test de arquitectura | `AuthorizationBehavior.cs` | `EveryOperationOfTheApplication_DeclaresItsAuthorization` |
@@ -430,6 +474,15 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **E** · Inyección SQL | EF Core parametrizado y SQL a mano prohibido, salvo una sentencia parametrizada en `AccountLockout.cs` | `Directory.Build.props:17`, `AccountLockout.cs` | `SourceCode_DoesNotUseRawSqlApis`, `ParameterizedRawSql_IsOnlyUsedInTheLockout` |
 | Bajar la conexión a HTTP | HTTPS y HSTS (365 días) | `Program.cs:82-87` | **Sin test propio** |
 | **I** · Otra web lee, desde el navegador de un usuario, las respuestas de la API | CORS: lista cerrada de orígenes, sin comodín ni credenciales de navegador | `Program.cs:33-64`, `:91` | `CorsTests` |
+| **E** · Crear una cuenta con acceso global desde fuera, o sin segundo factor | El alta solo existe como programa del servidor (sin ruta HTTP), con el primer código TOTP comprobado antes de guardar nada y todo en un único guardado | `OfiFlow.Admin`, `PlatformOperatorAdministration.cs:89`, `:116` | `PlatformOperatorToolTests`, `PlatformOperatorAdministrationTests` |
+| **E** · Un token de empresa vale en las rutas de plataforma (o al revés) | Esquemas separados con clave y audiencia propias; la API no arranca si se parecen | `DependencyInjection.cs`, `PlatformAuthentication.cs` | `PlatformSessionEndToEndTests`, `PlatformStartupTests` |
+| **E** · Un operador dado de baja sigue operando con su sesión | Revalidación en la base de datos en cada petición; evento `1608` | `CurrentUser.cs`, `AuthorizationBehavior.cs` | `ADisabledOperator_LosesTheSessionOnTheNextRequest_AndTheEventIsLogged`, `CurrentUserPlatformTests` |
+| **I** · El operador ve datos de las empresas (personas, clientes, trabajos) | El listado devuelve exactamente cinco campos (un test fija la forma del registro y otro inspecciona el cuerpo entero buscando emails, nombres y datos de un cliente); el recuento de miembros es el único sitio que se salta el filtro de empresa y está en la lista blanca | `PlatformTenantDto.cs`, `ListTenantsQueryHandler.cs` | `TheList_HasOnlyTheFiveMetadataFields_AndNoPersonalDataAnywhereInTheBody`, `TheTenantShape_IsExactlyFiveFields_...` |
+| **D** · Una sesión robada vuelca todas las empresas de golpe, o fuerza la API | Páginas de 100 como máximo (un tope mayor es un `400`, no una página recortada), página acotada para que no desborde, y 30 peticiones por minuto y por IP | `ListTenantsQueryValidator.cs`, `RateLimiting.cs` | `APageSizeOutOfRange_IsRejected_NotSilentlyTruncated`, `ThePanelRoutes_AreLimitedToThirtyPerMinutePerIp` |
+| **R** · «Yo no suspendí esa empresa» | Suspender y reactivar escriben una fila de auditoría **en la misma transacción** (o las dos o ninguna) con el operador, la empresa, la acción y la hora; y los eventos `1604` y `1605` | `SuspendTenantCommandHandler.cs`, `PlatformAudit.cs` | `WhenTheAuditRowCannotBeWritten_TheTenantIsNotSuspended`, `EachChange_LeavesOneAuditRowWithTheOperator_...` |
+| **T** · Dos peticiones suspenden la misma empresa a la vez y dejan dos filas de auditoría | Versión de fila en la empresa: gana una y la otra recibe el error de siempre (`tenant.already_suspended`) | `TenantConfiguration.cs` | `TwoRequestsHoldingTheSameTenant_OnlyOneCanCommit_SoThereIsOneAuditRow`, `ManySimultaneousSuspensions_...` |
+| **E** · Un `Id` de empresa llega por la petición (mass assignment) | Solo dos operaciones, con nombre y de plataforma, pueden recibirlo; cualquier otra con `TenantId` rompe el test | `SuspendTenantCommand.cs`, `ReactivateTenantCommand.cs` | `NoCommandOrQuery_AcceptsTenantIdFromTheClient_ExceptTheTwoNamedPlatformOperations` |
+| **S** · Entrar en la plataforma solo con la contraseña, o saber qué emails son de operador | Siempre desafío o un único `401` con el mismo coste; desafío con audiencia | `PlatformLoginCommandHandler.cs`, `VerifyPlatformChallengeCommandHandler.cs` | `EveryLoginFailure_IsTheSameResponse_WithTheSameCost`, `ACompanyChallenge_IsNotRedeemableOnThePlatform_...` |
 | Dependencia con vulnerabilidad conocida | NuGetAudit como error y Dependabot | `Directory.Build.props`, `dependabot.yml` | El propio build y el pipeline |
 | Vulnerabilidad en el código | Analizadores de seguridad como error y CodeQL | `.editorconfig`, `codeql.yml` | El propio build y el pipeline |
 | Vulnerabilidad en la API en ejecución | Escaneo ZAP en cada cambio | `dast.yml` | El propio job `zap-scan` |
@@ -466,7 +519,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 9. **El `CORS` depende de que la lista de orígenes de producción esté bien puesta.** En el repositorio solo está el origen de desarrollo; si falta el de producción, el frontend no podrá leer la API (falla cerrado, que es lo seguro), y si se pone uno de más, esa web podrá leer las respuestas de sus usuarios. Además, CORS solo frena a los navegadores: no limita a quien llama sin navegador.
 
 **Observabilidad**
-10. **Hay registro, pero no vigilancia**: nadie recibe alertas, ni hay un registro de auditoría persistente.
+10. **Hay registro, pero no vigilancia**: nadie recibe alertas, ni hay un registro de auditoría persistente de lo que hacen las empresas (el de las acciones de la plataforma, spec 011, sí existe y no se borra).
 
 **El propio pipeline**
 11. **El escaneo ZAP no está autenticado.** Ataca la API por su descripción OpenAPI sin enviar un token, así que prueba lo anónimo (registro, login, renovar) y comprueba que lo demás responde 401, pero **no recorre las operaciones protegidas**. Se compensa con los tests de extremo a extremo, que sí lo hacen.
@@ -475,11 +528,22 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Herramientas de desarrollo**
 13. **Swagger UI relaja la política CSP** en su ruta (solo en `Development`, con tests que impiden que se extienda). Si algún día se registrara por error en producción, esa ruta expondría una pantalla para probar la API; lo impide la condición de entorno y un test, pero es una excepción a la regla general.
 
+
 **Controles sin test propio** (existen, pero ningún test los comprueba directamente)
 14. La aplicación **no arranca sin el secreto** del token.
 15. El token **caduca** a los 30 minutos.
 16. El hash guardado **no es la contraseña** en claro.
 17. **HSTS** se envía fuera de desarrollo.
+
+**El programa de administración**
+18. **No tiene autenticación propia.** Quien pueda ejecutar `OfiFlow.Admin` con la cadena de conexión y la clave del segundo factor puede crear o dar de baja a un operador; la frontera es el acceso al servidor. Además la auditoría guarda al operador afectado, no a quien ejecutó el programa (no tiene cuenta en OfiFlow). Y el tramo interactivo (teclear la contraseña sin eco, reintentar el código) no tiene test automático: lo que invoca sí, y se comprueba a mano al instalar.
+
+**El panel de la plataforma (spec 011, bloque 6)**
+19. **La suspensión no dice por qué ni avisa.** Los miembros ven un mensaje genérico y el operador no deja un motivo. Un texto libre es un dato nuevo que validar y proteger, y el aviso por email espera a que exista el servicio de correo (NEXT en la spec).
+20. **Un operador comprometido puede suspender cualquier empresa**, es decir, dejar sin servicio a todos los clientes. Es el riesgo aceptado del ADR-016: se mitiga (segundo factor, bloqueo, sesión de 15 minutos, baja inmediata, límite de 30 peticiones por minuto, auditoría que no caduca) pero no se elimina. Con clientes de pago convendrá la aprobación entre dos operadores.
+21. **La auditoría no tiene ruta de consulta.** Las filas se escriben, nunca se modifican ni se borran desde la aplicación, y hoy solo se leen entrando en la base de datos. Alguien con acceso directo a ella sí podría alterarlas (una garantía a nivel de base de datos queda como mejora).
+22. **El listado no se puede buscar ni ordenar de otra forma**: alta descendente, paginado y el filtro por suspendida. Buscar por nombre y las estadísticas son NEXT.
+23. **El recuento de miembros hace una subconsulta por empresa de la página** (100 como máximo). Está medido por un test (dos consultas por listado, no una por empresa), pero no se ha probado con miles de empresas.
 
 Los cuatro últimos son los candidatos más baratos para una próxima ronda de endurecimiento, con el mismo método de siempre: escribir el test y verlo fallar rompiendo el código a propósito.
 

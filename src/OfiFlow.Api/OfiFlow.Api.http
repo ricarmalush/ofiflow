@@ -1,7 +1,7 @@
 # Colección de peticiones de OfiFlow para Visual Studio (editor de ficheros .http).
 #
 # Cómo usarla
-#   1. Arranca la API (perfil "http", puerto 5279). Hace falta el secreto JWT en tus user-secrets
+#   1. Arranca la API (perfil "http", puerto 5279). Hacen falta los secretos (Jwt:Secret, Mfa:EncryptionKey y, desde la spec 011, Jwt:PlatformSecret) en tus user-secrets
 #      y la base de datos migrada: ver "Arrancar en local" en el README.
 #   2. Ejecuta las peticiones EN ORDEN con el enlace "Enviar solicitud" de cada una. Las de abajo
 #      reutilizan lo que devuelven las de arriba (el token, el Id del cliente, el del trabajo).
@@ -14,7 +14,7 @@
 #     Las respuestas los devuelven como texto.
 #   - Hay límites de peticiones por IP: el registro admite 3 por hora, aceptar una invitación 10 por hora,
 #     el segundo paso del login 10 por minuto, gestionar el segundo factor 10 por hora,
-#     el login 5 por minuto y la renovación 20 por minuto. Si te pasas, la API responde 429 con la
+#     el login 5 por minuto y la renovación 20 por minuto; la plataforma (sección 8) tiene los suyos. Si te pasas, la API responde 429 con la
 #     cabecera Retry-After.
 #   - El token de acceso dura 30 minutos. Pasado ese tiempo, usa la petición "Renovar sesión".
 #   - Quien se registra es Owner de su empresa. Para probar los demás roles (y los 403 por falta de
@@ -545,3 +545,86 @@ Content-Type: application/json
 ### nunca sobre el Owner ni sobre uno mismo (403). Es idempotente (204 aunque no tuviera MFA).
 DELETE {{host}}/api/v1/users/00000000-0000-0000-0000-000000000000/mfa
 Authorization: Bearer {{tokenA}}
+
+
+###############################################################################
+# 8. PLATAFORMA (spec 011): el operador lista, suspende y reactiva empresas
+###############################################################################
+# Un operador NO es un miembro de ninguna empresa y NO se puede crear por HTTP (ninguna ruta lo hace: sería la
+# cuenta más peligrosa de crear por una API). Se da de alta con el programa del servidor, desde la raíz del repo:
+#
+#   dotnet ef database update --project src/OfiFlow.Infrastructure
+#   DOTNET_ENVIRONMENT=Development dotnet run --project src/OfiFlow.Admin -- create-platform-operator --email tu@correo.com
+#
+# El programa pide la contraseña sin eco, te enseña el secreto para tu app de autenticación y no crea nada
+# hasta que le das un primer código válido. Guarda los 10 códigos de recuperación: se muestran UNA vez.
+# Para entrar hace falta además Jwt:PlatformSecret en tus user-secrets (README, "Arrancar en local").
+#
+# Cómo usar esta sección
+#   - Rellena @operatorEmail y @operatorPassword con los del alta, y pega en @platformCode el código de la app.
+#   - Una sesión de plataforma dura 15 MINUTOS y NO tiene refresh token: pasado ese tiempo se repiten los dos pasos.
+#   - Es otro mundo que el de las empresas: el token de la sección 1 NO vale aquí (401) y este NO vale en /customers,
+#     /jobs ni /users (401). Un operador no ve ni un cliente ni un trabajo de nadie.
+#   - Límites por IP: el login 5 por minuto, el segundo paso 10 por minuto y el resto de esta sección 30 por minuto.
+#   - Todos los fallos del inicio de sesión son el MISMO 401: no dice si el email es de un operador.
+
+@operatorEmail = operador@example.com
+@operatorPassword = Cambia-Esta-Contrasena-123
+@platformCode = 000000
+
+### Primer paso: la contraseña NO da sesión, da un desafío (200 { mfaRequired, challenge, expiresAt })
+# @name platformLogin
+POST {{host}}/api/v1/platform/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{operatorEmail}}",
+  "password": "{{operatorPassword}}"
+}
+
+@platformChallenge = {{platformLogin.response.body.$.challenge}}
+
+### Segundo paso: el desafío y un código NUEVO de la app (o uno de recuperación). Devuelve la sesión de plataforma
+### (accessToken y expiresAt a los 15 minutos; sin refreshToken).
+# @name platformVerify
+POST {{host}}/api/v1/platform/auth/verify
+Content-Type: application/json
+
+{
+  "challenge": "{{platformChallenge}}",
+  "code": "{{platformCode}}"
+}
+
+@platformToken = {{platformVerify.response.body.$.accessToken}}
+
+### Listar las empresas: Id, nombre, alta, número de miembros y estado. NADA más (ni emails, ni nombres de
+### personas, ni clientes). Paginada: page desde 1, pageSize de 1 a 100 (por defecto 20), orden alta descendente.
+### Filtro opcional: suspended=true solo las suspendidas, suspended=false solo las activas.
+# @name platformTenants
+GET {{host}}/api/v1/platform/tenants?page=1&pageSize=20
+Authorization: Bearer {{platformToken}}
+
+@platformTenantId = {{platformTenants.response.body.$.items[0].id}}
+
+### Un pageSize por encima de 100 es un error, no una página recortada -> 400 validation.failed
+GET {{host}}/api/v1/platform/tenants?pageSize=101
+Authorization: Bearer {{platformToken}}
+
+### Suspender una empresa -> 204. Sus miembros dejan de poder entrar y su sesión actual deja de valer en la SIGUIENTE
+### petición (403 tenant.suspended). No se borra ni se modifica ningún dato suyo. Deja una fila de auditoría y el evento 1604.
+### Ya suspendida -> 400 tenant.already_suspended. Una empresa que no existe -> 404 tenant.not_found.
+POST {{host}}/api/v1/platform/tenants/{{platformTenantId}}/suspend
+Authorization: Bearer {{platformToken}}
+
+### Reactivar: todo vuelve a como estaba (la sesión anterior de sus miembros, si no ha caducado, vuelve a valer)
+### -> 204. Una empresa que no estaba suspendida -> 400 tenant.not_suspended.
+POST {{host}}/api/v1/platform/tenants/{{platformTenantId}}/reactivate
+Authorization: Bearer {{platformToken}}
+
+### El token de una EMPRESA (sección 1) en la ruta de plataforma -> 401, aunque sea el del Owner
+GET {{host}}/api/v1/platform/tenants
+Authorization: Bearer {{tokenA}}
+
+### El token de PLATAFORMA en una ruta de empresa -> 401: el operador no ve ni un cliente ni un trabajo de nadie
+GET {{host}}/api/v1/customers
+Authorization: Bearer {{platformToken}}

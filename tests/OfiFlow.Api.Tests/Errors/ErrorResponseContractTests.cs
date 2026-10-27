@@ -183,6 +183,7 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            builder.UseSetting("Jwt:PlatformSecret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.ConfigureTestServices(services => services.AddSingleton<ISender>(new ThrowingSender(this)));
         }

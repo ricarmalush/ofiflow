@@ -18,6 +18,7 @@ public class MfaStartupTests
             // Producción: no carga los user-secrets de la máquina, que podrían traer su propia clave y tapar el fallo.
             builder.UseEnvironment("Production");
             builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            builder.UseSetting("Jwt:PlatformSecret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting("Jwt:Issuer", "OfiFlow.Api.Tests");
             builder.UseSetting("Jwt:Audience", "OfiFlow.Api.Tests.Client");
             builder.UseSetting("ConnectionStrings:Default", "Server=no-se-usa;Database=no-se-usa");

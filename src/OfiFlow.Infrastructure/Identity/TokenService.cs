@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Identity;
+using OfiFlow.Application.Tenancy;
 using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Persistence;
 
@@ -76,6 +77,14 @@ public sealed partial class TokenService(
         if (tenantUser is null)
         {
             LogRefreshTokenRejected(logger, "NoTenantMembership", existing.UserId);
+            return null;
+        }
+
+        // Empresa suspendida (spec 011 R15b): no se renueva la sesión, con la misma respuesta que un token caducado. El token
+        // NO se revoca ni se borra: mientras dura la suspensión no sirve, y al reactivar la empresa vuelve a servir si no caducó.
+        if (await dbContext.IsSuspendedAsync(existing.TenantId, cancellationToken))
+        {
+            LogRefreshTokenRejected(logger, "TenantSuspended", existing.UserId);
             return null;
         }
 

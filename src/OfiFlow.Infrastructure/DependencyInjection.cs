@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Persistence;
+using OfiFlow.Application.Identity;
 using OfiFlow.Infrastructure.Identity;
 using OfiFlow.Infrastructure.Persistence;
 using OfiFlow.Infrastructure.Persistence.Interceptors;
@@ -16,7 +17,31 @@ namespace OfiFlow.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>Todo lo que necesita la API: el almacén de cuentas y, además, las sesiones (JWT).</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        // La clave JWT se valida primero, como siempre: si faltan las dos, el mensaje es el de Jwt:Secret.
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        AddJwtAuthentication(services, configuration);
+        services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IPlatformTokenService, PlatformTokenService>();
+
+        return services.AddAccountStore(configuration);
+    }
+
+    /// <summary>
+    /// Lo que necesita el programa de administración del servidor (spec 011 R2): el almacén de cuentas, el segundo factor y
+    /// la plataforma, <b>sin</b> la autenticación JWT. A propósito: la clave que firma las sesiones (<c>Jwt:Secret</c>) es el
+    /// secreto más delicado y esa herramienta no emite sesiones, así que no debe recibirla ni poder arrancar con ella. Sí
+    /// necesita <c>Mfa:EncryptionKey</c>, y debe ser <b>la misma que usa la API</b>: con otra, la API no podría descifrar
+    /// el secreto del operador y no podría iniciar sesión.
+    /// </summary>
+    public static IServiceCollection AddAdminInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        return services.AddAccountStore(configuration);
+    }
+
+    private static IServiceCollection AddAccountStore(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<ApplicationDbContext>(options =>
         {
@@ -35,10 +60,9 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IMfaService, MfaService>();
-        services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IPlatformOperators, PlatformOperators>();
+        services.AddScoped<IPlatformAudit, PlatformAudit>();
 
-        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
-        AddJwtAuthentication(services, configuration);
         AddMfaEncryption(services, configuration);
 
         return services;
@@ -59,6 +83,10 @@ public static class DependencyInjection
                 DescribeSecretSources(configuration));
         }
 
+        // Spec 011 R7: la plataforma es OTRO mundo, con su clave y su audiencia, y tampoco tiene valor por defecto: la API no
+        // arranca si falta, si no mide 32 bytes o si repite la clave o la audiencia de las empresas.
+        var platformKey = PlatformAuthentication.ParseKey(jwtOptions);
+
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
@@ -78,9 +106,32 @@ public static class DependencyInjection
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
                 };
+            })
+            // El esquema de la plataforma: otra clave y otra audiencia. Un token de empresa no pasa aquí y uno de plataforma no
+            // pasa en el esquema por defecto (el de las empresas), aunque la firma sea correcta en su propio mundo.
+            .AddJwtBearer(PlatformAuthentication.Scheme, options =>
+            {
+                options.MapInboundClaims = false;
+
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = jwtOptions.Issuer,
+                    ValidateAudience = true,
+                    ValidAudience = jwtOptions.PlatformAudience,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(platformKey),
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero
+                };
             });
 
-        services.AddAuthorization();
+        // La política de las rutas de /api/v1/platform: solo vale una sesión del esquema de plataforma, y además con el claim del
+        // mundo de plataforma (defensa en profundidad: un token firmado con la clave de plataforma pero sin él tampoco sirve).
+        services.AddAuthorization(options => options.AddPolicy(PlatformAuthentication.Policy, policy => policy
+            .AddAuthenticationSchemes(PlatformAuthentication.Scheme)
+            .RequireAuthenticatedUser()
+            .RequireClaim(OfiFlowClaimTypes.Realm, OfiFlowClaimTypes.PlatformRealm)));
     }
 
     private static void AddMfaEncryption(IServiceCollection services, IConfiguration configuration)

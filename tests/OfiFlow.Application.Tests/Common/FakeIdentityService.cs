@@ -9,15 +9,23 @@ public sealed class FakeIdentityService : IIdentityService
 
     public bool ShouldFailCreation { get; set; }
 
-    public Task<IdentityCreationResult> CreateUserAsync(Guid id, string email, string password, CancellationToken cancellationToken)
+    /// <summary>Algo que ocurre justo antes de crear la cuenta (por ejemplo, otra petición que confirma a la vez), para simular una carrera.</summary>
+    public Func<Task>? BeforeCreate { get; set; }
+
+    public async Task<IdentityCreationResult> CreateUserAsync(Guid id, string email, string password, CancellationToken cancellationToken)
     {
+        if (BeforeCreate is not null)
+        {
+            await BeforeCreate();
+        }
+
         if (ShouldFailCreation || _users.ContainsKey(email))
         {
-            return Task.FromResult(IdentityCreationResult.Failure([IdentityErrors.EmailAlreadyRegistered]));
+            return IdentityCreationResult.Failure([IdentityErrors.EmailAlreadyRegistered]);
         }
 
         _users[email] = (id, password);
-        return Task.FromResult(IdentityCreationResult.Success());
+        return IdentityCreationResult.Success();
     }
 
     /// <summary>Ids de los usuarios cuyas credenciales se han borrado, para que los tests lo comprueben.</summary>
@@ -37,6 +45,13 @@ public sealed class FakeIdentityService : IIdentityService
 
     public Task<bool> IsEmailRegisteredAsync(string email, CancellationToken cancellationToken) =>
         Task.FromResult(_users.Keys.Any(registered => string.Equals(registered, email, StringComparison.OrdinalIgnoreCase)));
+
+    public Task<Guid?> FindUserIdAsync(string email, CancellationToken cancellationToken)
+    {
+        var found = _users.FirstOrDefault(pair => string.Equals(pair.Key, email, StringComparison.OrdinalIgnoreCase));
+
+        return Task.FromResult<Guid?>(found.Key is null ? null : found.Value.Id);
+    }
 
     /// <summary>Registra un email como ya ocupado, sin pasar por CreateUserAsync.</summary>
     public void AddExistingAccount(string email) => _users[email] = (Guid.NewGuid(), "irrelevante");

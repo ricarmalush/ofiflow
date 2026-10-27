@@ -109,6 +109,9 @@ dotnet user-secrets set "Jwt:Secret" "$(openssl rand -base64 32)" --project src/
 # 1b. Clave que cifra los secretos del segundo factor (spec 010). Sin ella la API no arranca.
 dotnet user-secrets set "Mfa:EncryptionKey" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
 
+# 1c. Clave que firma las sesiones de los operadores de la plataforma (spec 011): distinta de Jwt:Secret. Sin ella la API no arranca.
+dotnet user-secrets set "Jwt:PlatformSecret" "$(openssl rand -base64 32)" --project src/OfiFlow.Api
+
 # 2. Base de datos
 dotnet ef database update --project src/OfiFlow.Infrastructure
 
@@ -121,7 +124,7 @@ Sin `openssl`, en PowerShell (funciona también en Windows PowerShell 5.1):
 ```powershell
 $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
 dotnet user-secrets set "Jwt:Secret" ([Convert]::ToBase64String($b)) --project src/OfiFlow.Api
-# (para la clave del segundo factor, lo mismo con "Mfa:EncryptionKey")
+# (para la clave del segundo factor y la de la plataforma, lo mismo con "Mfa:EncryptionKey" y "Jwt:PlatformSecret")
 ```
 
 Para probar la API a mano, abre [`src/OfiFlow.Api/OfiFlow.Api.http`](./src/OfiFlow.Api/OfiFlow.Api.http) en Visual Studio: es una colección de peticiones en orden (cuenta, clientes, trabajos, errores a propósito y aislamiento entre empresas), con instrucciones al principio.
@@ -159,4 +162,4 @@ OFIFLOW/
 
 ## Estado actual
 
-Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT, aislamiento de tenant, permisos por rol y gestión del equipo: invitar, aceptar, cambiar roles y quitar miembros; segundo factor opcional con login en dos pasos y bloqueo de cuenta). ADR-001 a ADR-015 aceptadas (la 015: logs a fichero con Serilog). Implementadas las specs 001 a 004 y 006 a 010 (línea base de seguridad, diccionario de errores, aislamiento endurecido, RBAC, gestión de usuarios y segundo factor con bloqueo de cuenta incluidos); la 005 (pipeline DevSecOps) funciona y tiene pendientes dos pruebas manuales. Siguiente: panel de operador de la plataforma (spec 011) y la Fase 2 (agenda y asignación de técnicos). Detalle en [`docs/README.md`](./docs/README.md).
+Fases 0 y 1 (MVP) completas: Tenant, User, TenantUser, Customer y Job funcionan de extremo a extremo (JWT, aislamiento de tenant, permisos por rol y gestión del equipo: invitar, aceptar, cambiar roles y quitar miembros; segundo factor opcional con login en dos pasos y bloqueo de cuenta). ADR-001 a ADR-016 aceptadas (la 015: logs a fichero con Serilog; la 016: panel de operador de la plataforma). Implementadas las specs 001 a 004 y 006 a 011 (línea base de seguridad, diccionario de errores, aislamiento endurecido, RBAC, gestión de usuarios, segundo factor con bloqueo de cuenta y panel de operador con identidad aparte, sesión propia y segundo factor obligatorio incluidos); la 005 (pipeline DevSecOps) funciona y tiene pendientes dos pruebas manuales. Siguiente: el frontend web y la Fase 2 (agenda y asignación de técnicos). Detalle en [`docs/README.md`](./docs/README.md).

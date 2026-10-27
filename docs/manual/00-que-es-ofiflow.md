@@ -91,6 +91,8 @@ OfiFlow, por ahora, es **solo una API** (un servidor al que se le hacen peticion
 | **Trabajos** (requiere sesión) | Crear / ver uno / listar / modificar | `POST`, `GET`, `GET`, `PUT` en `/api/v1/jobs` |
 | | Empezar / completar / cancelar | `POST /api/v1/jobs/{id}/start`, `/complete`, `/cancel` |
 | | Asignar a un técnico | `POST /api/v1/jobs/{id}/assign` |
+| **Plataforma** (solo operadores, otra sesión; spec 011) | Iniciar sesión en dos pasos (pública) | `POST /api/v1/platform/auth/login`, `POST /api/v1/platform/auth/verify` |
+| | Listar / suspender / reactivar empresas (requiere sesión de plataforma) | `GET /api/v1/platform/tenants`, `POST /api/v1/platform/tenants/{id}/suspend`, `/reactivate` |
 
 Una cosa que sorprende al principio: **registrarse crea una empresa nueva**. Al registrarte indicas el nombre de la empresa, tu nombre, tu email y tu contraseña, y el sistema crea de una vez el `Tenant` (tu empresa), el `User` (tú) y el `TenantUser` que te convierte en `Owner` de esa empresa.
 
@@ -126,7 +128,7 @@ Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 - **Agenda, presupuestos, facturas y pagos:** son las fases 2 a 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
 - **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009), pero el token se le entrega a quien invita en vez de enviarse por correo, y cada cuenta pertenece a una sola empresa.
-- **El panel de operador de la plataforma** (ver todas las empresas, como en IrrigationMaster): previsto como spec propia, solo con metadatos de empresa.
+- **Del panel de operador de la plataforma** (spec 011) falta lo que la propia spec dejó fuera: plan o tarifa, el motivo y el aviso de una suspensión, buscar por nombre, varios operadores con permisos distintos y la aprobación entre dos. Lo que existe (listar, suspender y reactivar con segundo factor obligatorio) está en los capítulos 6 y 8.
 - **Que un técnico solo vea los trabajos que tiene asignados:** hoy un `Technician` puede ver y ejecutar cualquier trabajo de su empresa, no solo los suyos.
 - **Segundo factor obligatorio, *passkeys* y recuperar o cambiar la contraseña:** el segundo factor (TOTP) existe y es opcional (spec 010), junto con el bloqueo de cuenta por intentos fallidos; obligarlo para `Owner` y `Admin` exige pantallas, y el TOTP no resiste al *phishing* (las *passkeys* sí). Todavía no se puede cambiar ni recuperar la contraseña.
 

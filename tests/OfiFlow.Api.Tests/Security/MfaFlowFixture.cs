@@ -27,7 +27,7 @@ public sealed class ControlledClock(DateTimeOffset start) : TimeProvider
 /// desafío o 15 para terminar un bloqueo, sin esperar. El reloj solo gobierna el segundo factor y el bloqueo; los tokens de
 /// acceso siguen caducando con el reloj real. Cada petición declara una IP distinta (los límites por IP son otra defensa).
 /// </summary>
-public sealed class MfaFlowFixture : IAsyncLifetime
+public class MfaFlowFixture : IAsyncLifetime
 {
     public const string RecoveryCodePattern = @"^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$";
 
@@ -41,6 +41,9 @@ public sealed class MfaFlowFixture : IAsyncLifetime
 
     public CapturingLoggerProvider Logs => _database.Logs;
 
+    /// <summary>La factoría con SQL Server: de ella salen las claves y la audiencia con las que un test fabrica tokens.</summary>
+    public SqlServerApiFactory Database => _database;
+
     public IServiceProvider Services => Factory.Services;
 
     public async Task InitializeAsync()
@@ -48,8 +51,16 @@ public sealed class MfaFlowFixture : IAsyncLifetime
         await _database.StartAsync();
 
         Factory = _database.WithWebHostBuilder(builder =>
-            builder.ConfigureServices(services => services.AddSingleton<TimeProvider>(Clock)));
+        {
+            builder.ConfigureServices(services => services.AddSingleton<TimeProvider>(Clock));
+            ConfigureHost(builder);
+        });
         Http = Factory.CreateClient();
+    }
+
+    /// <summary>Un gancho para que un fixture derivado (la plataforma, spec 011) añada sus propios servicios a la misma API.</summary>
+    protected virtual void ConfigureHost(IWebHostBuilder builder)
+    {
     }
 
     public async Task DisposeAsync()

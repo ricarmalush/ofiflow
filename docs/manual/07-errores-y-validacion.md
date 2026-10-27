@@ -70,13 +70,13 @@ Cada contexto tiene una clase de constantes con sus códigos:
 | [`CommonErrors`](../../src/OfiFlow.Domain/Common/CommonErrors.cs) | 2 | `common.email_invalid` |
 | [`CustomerErrors`](../../src/OfiFlow.Domain/Customers/CustomerErrors.cs) | 5 | `customer.not_found`, `customer.has_active_jobs` |
 | [`JobErrors`](../../src/OfiFlow.Domain/Jobs/JobErrors.cs) | 5 | `job.cannot_complete`, `job.not_found` |
-| [`TenancyErrors`](../../src/OfiFlow.Domain/Tenancy/TenancyErrors.cs) | 5 | `tenant_user.not_found`, `tenant_user.role_not_manageable`, `auth.forbidden` |
+| [`TenancyErrors`](../../src/OfiFlow.Domain/Tenancy/TenancyErrors.cs) | 9 | `tenant_user.not_found`, `tenant_user.role_not_manageable`, `auth.forbidden`, `tenant.not_found` (spec 011: la empresa que un operador quiere suspender o reactivar no existe; 404), `tenant.suspended`, `tenant.already_suspended`, `tenant.not_suspended` (spec 011: los dos últimos los lanza el propio `Tenant` al suspender o reactivar; el primero es el 403 que reciben los miembros de una empresa suspendida) |
 | [`InvitationErrors`](../../src/OfiFlow.Domain/Tenancy/InvitationErrors.cs) | 4 | `invitation.invalid`, `invitation.already_pending` |
 | [`IdentityErrors`](../../src/OfiFlow.Domain/Identity/IdentityErrors.cs) | 2 | `user.email_already_registered` |
 | [`MfaErrors`](../../src/OfiFlow.Domain/Identity/MfaErrors.cs) | 5 | `mfa.already_enabled`, `mfa.invalid_code` (spec 010: los lanzan las operaciones de activar, desactivar y regenerar el segundo factor) |
 | [`ApiErrors`](../../src/OfiFlow.Api/Common/ApiErrors.cs) (en la API) | 4 | `validation.failed`, `request.invalid_body`, `rate_limit.exceeded`, `server.unexpected` |
 
-En total **32 códigos**. Los de la API están aparte porque no pertenecen a ningún contexto de negocio: son de la propia petición HTTP.
+En total **36 códigos**. Los de la API están aparte porque no pertenecen a ningún contexto de negocio: son de la propia petición HTTP.
 
 ```csharp
 // Domain/Jobs/JobErrors.cs
@@ -219,7 +219,7 @@ Los textos para las personas **no están en el código**: están en un fichero, 
 </data>
 ```
 
-Hoy tiene **40 entradas**: los 32 códigos más los 8 títulos de las respuestas. El `GlobalExceptionHandler` busca el mensaje con `IStringLocalizer`, el mecanismo estándar de .NET. Si por algún motivo faltase una entrada, devuelve el propio código en vez de lanzar una excepción (un error al explicar otro error sería peor); y un test impide que eso llegue a producción.
+Hoy tiene **43 entradas**: los 35 códigos más los 8 títulos de las respuestas. El `GlobalExceptionHandler` busca el mensaje con `IStringLocalizer`, el mecanismo estándar de .NET. Si por algún motivo faltase una entrada, devuelve el propio código en vez de lanzar una excepción (un error al explicar otro error sería peor); y un test impide que eso llegue a producción.
 
 ### El idioma
 

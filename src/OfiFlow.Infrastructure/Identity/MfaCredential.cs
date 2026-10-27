@@ -62,4 +62,18 @@ public sealed class MfaCredential
 
         return new MfaCredential { UserId = userId, SecretCipher = secretCipher };
     }
+
+    /// <summary>
+    /// Un secreto que nace ya <b>confirmado</b>, para una cuenta nueva cuyo primer código se comprobó antes de guardar nada
+    /// (el alta de un operador de la plataforma, spec 011 R2). <paramref name="acceptedStep"/> es el paso de ese primer código:
+    /// se anota como último aceptado para que el mismo código no sirva también en el primer inicio de sesión (R4).
+    /// </summary>
+    public static MfaCredential CreateConfirmed(Guid userId, string secretCipher, long acceptedStep, DateTime utcNow)
+    {
+        var credential = CreatePending(userId, secretCipher);
+        credential.LastUsedTimeStep = acceptedStep;
+        credential.Confirm(utcNow);
+
+        return credential;
+    }
 }

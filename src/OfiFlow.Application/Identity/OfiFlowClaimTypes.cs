@@ -13,4 +13,10 @@ public static class OfiFlowClaimTypes
 
     /// <summary>El rol del usuario en el tenant activo (nombre de un TenantRole). Lo escribe TokenService y lo lee CurrentUser.</summary>
     public const string Role = "role";
+
+    /// <summary>El «mundo» al que pertenece una sesión (spec 011 R7). Solo lo escribe la sesión de plataforma; una sesión de empresa no lo lleva.</summary>
+    public const string Realm = "realm";
+
+    /// <summary>El valor de <see cref="Realm"/> de una sesión de operador de la plataforma.</summary>
+    public const string PlatformRealm = "platform";
 }

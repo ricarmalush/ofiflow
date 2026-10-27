@@ -33,7 +33,7 @@ Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para cons
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
 | `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
 
-(Los límites están en [`RateLimiting.cs:35-44`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
+(Los límites están en [`RateLimiting.cs:44-46`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
 
 ---
 
@@ -132,7 +132,51 @@ Dos decisiones de seguridad en este flujo:
 
 **El log sí distingue el motivo, pero sin datos personales.** Cuando falla, se registra el evento de seguridad `1001` con el motivo (`UnknownEmail` o `WrongPassword`) y, si se conoce, el `UserId`, nunca el email ni la contraseña (`IdentityService.cs:90` y `:109`): en un ataque con miles de emails ajenos, el registro se llenaría de datos personales de terceros.
 
-El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:34`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+El paso ② consulta la pertenencia del usuario a una empresa con `IgnoreQueryFilters()` ([`LoginCommandHandler.cs:37`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs)): es una de las dos excepciones justificadas al filtro de empresa del capítulo 5, porque aún no hay empresa activa; es justo lo que el login determina.
+
+**Una empresa suspendida no obtiene sesión** (spec 011). Tras la contraseña correcta, el login comprueba si la empresa de la persona está suspendida y, si lo está, responde **403** con `tenant.suspended` (con una contraseña errónea sigue siendo el 401 de siempre, sin revelar nada). Se hace **antes** de crear el desafío del segundo factor: sin sesión posible no hay segundo paso. No cuenta como intento fallido: se pueden hacer siete intentos seguidos y la cuenta no se bloquea por ello. El detalle de los cinco sitios que lo hacen cumplir está en el [capítulo 5](./05-multi-tenancy.md).
+
+### El operador de la plataforma: una cuenta que no es de ninguna empresa (spec 011)
+
+Todo lo anterior habla de personas que **pertenecen a una empresa**. La spec 011 añade una excepción deliberada: el **operador de la plataforma**, que puede ver qué empresas existen y suspender o reactivar una, **sin ver nada de lo que hay dentro**. Es la excepción más peligrosa al aislamiento (una cuenta robada vería todas las empresas), así que se construye lo más estrecha posible. Esta parte explica su identidad; la sesión viene en la sección siguiente y las operaciones (listar, suspender y reactivar), en el anexo del capítulo 4 y en el capítulo 8.
+
+**Qué es un operador.** Una cuenta normal (mismo hash de contraseña, mismo segundo factor, mismo bloqueo) **más una fila en [`PlatformOperator`](../../src/OfiFlow.Infrastructure/Identity/PlatformOperator.cs)**. No es un rol de empresa ni un booleano en la cuenta, por dos motivos: un rol vive *dentro* de una empresa y el operador no tiene ninguna, y un solo bit mal cambiado en la cuenta daría acceso global, mientras que una tabla aparte se puede auditar y proteger por separado. La baja **no borra la fila**: rellena `DisabledAt`, y la fila conserva quién fue y cuándo.
+
+**La regla que lo sostiene: una cuenta es de empresa o de plataforma, nunca de las dos (R1).** Se garantiza por los dos lados:
+
+- **Que un miembro no pueda hacerse operador:** el alta ([`PlatformOperators.AddAsync`](../../src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs)) comprueba que la cuenta no tenga **ninguna** pertenencia, en cualquier empresa. Por eso usa `IgnoreQueryFilters()` (es el quinto sitio de la lista blanca del capítulo 5): sin empresa activa, el filtro la limitaría a la empresa del contexto y una cuenta de otra empresa pasaría por operador. Un test lo comprueba abriendo el contexto para *otra* empresa.
+- **Que un operador no pueda hacerse miembro:** ninguna ruta añade una pertenencia a una cuenta que ya existe. Solo el registro y aceptar una invitación crean una pertenencia, y los dos con una cuenta **recién creada**. Un test de arquitectura ([`TenantMemberships_AreOnlyCreatedForBrandNewAccounts`](../../tests/OfiFlow.Api.Tests/Architecture/SecurityArchitectureTests.cs)) fija esos dos sitios: si mañana alguien escribe un «invitar a quien ya tiene cuenta», el test falla y obliga a repensar la regla.
+
+**Un desafío del segundo paso no cruza de un mundo a otro (R9).** El desafío que recibe quien pone bien la contraseña ahora lleva una **audiencia** (`Tenant` o `Platform`). El canje de empresa solo acepta los de empresa y el de plataforma solo los de plataforma; uno de otro mundo se trata como un desafío desconocido, **antes de comprobar el código**, de modo que no gasta ni un intento de la cuenta ni el código (si contara, cualquiera podría bloquear una cuenta ajena con desafíos del otro mundo). Los desafíos que ya existían al migrar se marcan como de empresa, que es lo que eran.
+
+**La auditoría solo se inserta.** Cada acción de un operador que cambia algo dejará una fila en [`PlatformAuditEntry`](../../src/OfiFlow.Infrastructure/Identity/PlatformAuditEntry.cs) (solo Ids, un código de acción y la hora), en la **misma transacción** que la acción: si la acción falla, no queda fila. El log no sirve de auditoría (caduca a los 14 días, ADR-015). El `ApplicationDbContext` rechaza cualquier intento de **modificar o borrar** una fila de auditoría. **Límite honesto:** eso protege contra el código de la aplicación, no contra alguien con acceso directo a la base de datos, ni contra una sentencia `ExecuteUpdate`; una garantía a nivel de base de datos (un usuario sin permiso de `UPDATE`/`DELETE` sobre esa tabla) queda como mejora futura.
+
+Un operador **no se crea por HTTP**: lo da de alta el programa del servidor `OfiFlow.Admin`, enrolando el segundo factor en el mismo acto (capítulo 1 y capítulo 8).
+
+### La sesión de plataforma: otro mundo, otra llave (spec 011, bloque 5)
+
+Un operador entra por **su propia puerta**: `POST /api/v1/platform/auth/login` y `POST /api/v1/platform/auth/verify`. No comparte con las empresas ni la ruta, ni la clave, ni la audiencia, ni el esquema de autenticación. La razón es la misma que separa los dos tipos de cuenta: si fueran el mismo mundo, un solo fallo en una validación dejaría que un token de empresa valiera para suspender empresas.
+
+| | Sesión de empresa | Sesión de plataforma |
+|---|---|---|
+| Clave que firma | `Jwt:Secret` | `Jwt:PlatformSecret` (otra; la API no arranca si es igual) |
+| Audiencia | `Jwt:Audience` | `Jwt:PlatformAudience` (otra; la API no arranca si es igual) |
+| Esquema de autenticación | `Bearer` (el de por defecto) | `PlatformBearer`, fijado por la política `PlatformOperator` |
+| Qué lleva | `sub`, `tenant_id`, `role` | `sub`, `realm = platform`, `jti`. Ni empresa ni rol: un operador no tiene ninguno |
+| Duración | 30 minutos, con *refresh token* | **15 minutos fijos, sin refresh token**: pasado el tiempo hay que repetir contraseña y código |
+| Quién la emite | Login sin segundo factor, canje del desafío y *refresh* | **Un único sitio**: el canje del desafío de plataforma |
+
+**Siempre dos pasos.** El primer paso (`/login`) **nunca** devuelve una sesión: con las credenciales de un operador activo devuelve un desafío (`200 { mfaRequired, challenge, expiresAt }`); con cualquier otra cosa, un `401`. El segundo (`/verify`) canjea el desafío con un código de la app o de recuperación y devuelve la sesión. No hay operador sin segundo factor (el alta lo exige), y si por algún error faltara, la contraseña sola no da nada.
+
+**Un único 401 (R6).** En el primer paso, seis casos —email desconocido, contraseña errónea, cuenta bloqueada, **cuenta de empresa con su contraseña correcta**, operador dado de baja y operador sin segundo factor— dan **exactamente la misma respuesta** (mismo estado, mismas cabeceras, mismo cuerpo) y cuestan **una verificación de contraseña cada uno** (los que no tienen hash real la hacen contra uno ficticio). Así quien intenta entrar no aprende si un email es de un operador, y la respuesta tampoco delata a una persona de empresa que puso bien su contraseña. En el segundo paso, un desafío desconocido, caducado, agotado o de la empresa, o un código erróneo o mal formado, también dan el mismo 401. El motivo real solo llega al registro de eventos (1602 y el 1504 del canje). *Lo único que no es un 401 es un campo vacío o enorme: es un error de validación (`400`), igual que en la puerta de las empresas.*
+
+**Se revalida en cada petición (R10).** El token dice «soy un operador», pero lo que decide es la base de datos: la política de las rutas de plataforma deja pasar la petición y después la operación, declarada con [`[RequiresPlatformOperator]`](../../src/OfiFlow.Application/Common/Authorization/RequiresPlatformOperatorAttribute.cs), pregunta si esa cuenta **sigue siendo un operador activo** (una consulta, una vez por petición). Dar de baja a un operador surte efecto en **su siguiente petición**, no a los 15 minutos de su sesión; esa petición recibe un `403` y deja el evento `1608`. Es el mismo principio que ya usan el rol y la suspensión de empresa (capítulo 5).
+
+**Tres tipos de declaración, y se excluyen.** Toda operación declara una de tres cosas: `[RequiresPermission]` (un rol de empresa), `[AllowAnonymousRequest]` (nadie en particular) o `[RequiresPlatformOperator]` (un operador). Combinar dos se deniega y lo detecta un test de arquitectura. Dentro del espacio `OfiFlow.Application.Platform` solo caben operaciones de plataforma o anónimas: ningún permiso de empresa se cuela en el mundo de la plataforma (R14).
+
+**Qué se prueba, y cómo.** El ciclo completo contra SQL Server real; un token de empresa en una ruta de plataforma y al revés (siempre `401`); fabricar tokens con la clave de empresa y la audiencia de plataforma, o con la clave de plataforma y la audiencia de empresa; un token de plataforma sin el claim del mundo (`403`); un desafío de empresa canjeado en plataforma y al revés **sin gastarse** (con el código correcto sigue valiendo en su mundo); y que la API no arranca con la clave ausente, mal formada, de otra longitud o repetida. Como todavía no hay rutas de plataforma con efecto (llegan en el bloque 6), los tests añaden una ruta de prueba que pasa por el pipeline real.
+
+**Un riesgo que no se cierra con código.** Mientras dure la sesión (15 minutos), un operador **al que han robado la sesión** puede hacer todo lo que el rol permite; la baja lo corta en la siguiente petición, pero hay que enterarse. Por eso cada sesión emitida deja el evento `1601` y una fila de auditoría, y las operaciones del bloque 6 dejarán la suya.
 
 ### El bloqueo de cuenta (spec 010)
 
@@ -184,7 +228,7 @@ Lo escribe [`TokenService.GenerateAccessToken`](../../src/OfiFlow.Infrastructure
 
 La firma es la clave. El servidor calcula la firma con un secreto que solo él conoce. Si alguien cambia `"role": "Technician"` por `"Owner"`, o `tenant_id` por el de otra empresa, la firma que viaja **ya no corresponde** al contenido, y el servidor la rechaza con un 401. Para falsificar un token válido habría que conocer el secreto.
 
-En cada petición, el servidor comprueba el token con estas reglas ([`DependencyInjection.cs:72-79`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)):
+En cada petición, el servidor comprueba el token con estas reglas ([`DependencyInjection.cs:98-108`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)):
 
 | Qué se comprueba | Qué evita |
 |---|---|
@@ -201,7 +245,7 @@ Y en la configuración, un detalle que dio un susto de verdad: `options.MapInbou
 El secreto que firma los tokens es lo más delicado de todo el sistema: quien lo tenga puede fabricar un token de cualquiera. Por eso:
 
 - **Nunca está en el repositorio.** En local vive en `dotnet user-secrets` (fuera del proyecto); en producción, en una variable de entorno o un almacén de secretos.
-- **Si falta, la aplicación no arranca**, con un mensaje que indica el comando exacto ([`DependencyInjection.cs:54-60`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)). Prefiere no funcionar a funcionar con una clave débil por defecto.
+- **Si falta, la aplicación no arranca**, con un mensaje que indica el comando exacto ([`DependencyInjection.cs:78-84`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)). Prefiere no funcionar a funcionar con una clave débil por defecto.
 - En los tests se genera uno distinto en cada ejecución.
 
 ### Un límite inevitable
@@ -250,7 +294,7 @@ Marta usa su token T1  → recibe T2        (T1 queda revocado)
 El ladrón usa T1       → T1 ya estaba revocado: ¡alguien lo está reutilizando!
 ```
 
-Un token revocado **no debería volver a aparecer** nunca, salvo que lo hayan copiado. Cuando el servidor lo detecta ([`TokenService.cs:46-63`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)):
+Un token revocado **no debería volver a aparecer** nunca, salvo que lo hayan copiado. Cuando el servidor lo detecta ([`TokenService.cs:47-64`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)):
 
 - **Revoca todos los refresh tokens activos de ese usuario**, incluido el T2 que tenía Marta. El ladrón se queda sin nada, y Marta también (tendrá que volver a iniciar sesión, que es lo seguro).
 - Registra el evento de seguridad `1003` (*reutilización de refresh token*) con el usuario y la empresa, sin el token.
@@ -320,6 +364,8 @@ Es **anónima** (la persona aún no tiene cuenta) y por eso es la que más cuida
 Al probar la carrera de dos aceptaciones con SQL Server de verdad, la perdedora **no** recibía el error de concurrencia que yo esperaba. Recibía una violación del **índice único del email**: las dos peticiones intentan crear una cuenta con el mismo email, y la base de datos rechaza la segunda *antes* de comprobar la versión de la invitación. Sin arreglo, esa petición habría acabado en un **error 500** en vez del mensaje de "token que ya no sirve".
 
 La corrección fue tratar ambos fallos de la confirmación como lo mismo (ambos significan "este token ya no sirve"). Lo interesante para entender: **los tests con una base en memoria no podían ver esto**, porque no aplican índices únicos ni versiones de fila. Es una de las razones por las que los tests de integración usan SQL Server real (capítulo 9).
+
+**Una tercera vuelta de la misma carrera (la cazó el CI, en la spec 011).** Hay una ventana más: las dos peticiones leen la invitación como pendiente, la primera confirma (cuenta y token consumido) y la segunda llega a *crear la cuenta* cuando el email ya existe. Eso salía como `user.email_already_registered`, no como `invitation.invalid`: la perdedora aprendía algo distinto de «este token ya no sirve». No es un fallo grave (el email es el de su propia invitación) pero rompe la regla de que todos los tokens que no sirven dan la misma respuesta (R7). Ahora, cuando la creación de la cuenta falla por email ocupado, el handler **vuelve a leer el estado actual de la invitación** (sin seguimiento: la que ya cargó sigue diciendo «pendiente»): si entre tanto se consumió, es `invitation.invalid`; si sigue pendiente, sí fue otra persona la que registró ese email y la invitación no se consume. Un test con un doble que consume la invitación justo antes de crear la cuenta lo fija (y falla sin la corrección).
 
 **Una segunda lección, más pequeña.** Un test intermitente de mi propia comprobación del formato del token destapó que la función de .NET que usé (`Base64Url.IsValid`) **ignora los espacios en blanco**: un token con un espacio dentro podía darse por bueno según el azar de su último carácter. No era una vulnerabilidad (ese texto daría otro hash y no se encontraría), pero la función prometía "solo caracteres de URL" y no lo cumplía. Ahora se comprueba el alfabeto carácter a carácter. La moraleja: **no confiar en que una función de la librería hace exactamente lo que su nombre sugiere**, y probar con muchos valores aleatorios, no con uno.
 
@@ -427,22 +473,22 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 
 | Amenaza | Control | Dónde | Test |
 |---|---|---|---|
-| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP, **y bloqueo por cuenta** (5 fallos / 15 min, con el intento reservado antes de comprobar) | `RateLimiting.cs:35`, `AccountLockout.cs` | `RateLimitingTests`, `FiftySimultaneousWrongAttempts_PerformExactlyFiveRealVerifications_AndLockTheAccount` |
+| **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP, **y bloqueo por cuenta** (5 fallos / 15 min, con el intento reservado antes de comprobar) | `RateLimiting.cs:44`, `AccountLockout.cs` | `RateLimitingTests`, `FiftySimultaneousWrongAttempts_PerformExactlyFiveRealVerifications_AndLockTheAccount` |
 | Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:18,38` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
 | Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
 | Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:45` | `Handle_WithInvalidCredentials_IsRejected` |
 | Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs` (`LogLoginFailed` y los dos eventos del bloqueo) | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` (SQL real) y `TheSecurityEvents_AreLoggedWithoutTheEmailNorThePassword` (HTTP) |
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
-| Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:77` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
-| Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:78-79` | **Sin test propio** (ver "Controles sin test") |
-| **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:46-63` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
-| Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:133` | `RotateRefreshTokenAsync_WithValidToken_...` |
+| Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:106-107` | **Sin test propio** (ver "Controles sin test") |
+| **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:47-64` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
+| Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:142` | `RotateRefreshTokenAsync_WithValidToken_...` |
 | Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `OpaqueToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
 | Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | Usar dos veces la misma invitación | Un solo uso + versión de fila: gana una | `Invitation.cs`, `InvitationConfiguration.cs` | `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` |
 | Un invitante que se queda con la contraseña de otro | La persona elige la suya al aceptar; el invitante solo fija email y rol | `AcceptInvitationCommand.cs` | `ThePersonCanThenLogInWithTheirOwnPassword` |
-| Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:54-60` | **Sin test propio** (ver "Controles sin test") |
-| El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:68` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
+| Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:78-84` | **Sin test propio** (ver "Controles sin test") |
+| El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:96` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
 
 ---
 

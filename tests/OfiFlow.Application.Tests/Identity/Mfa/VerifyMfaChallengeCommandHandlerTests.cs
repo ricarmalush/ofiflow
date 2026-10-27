@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OfiFlow.Application.Common.Abstractions;
+using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Common.Security;
 using OfiFlow.Application.Identity;
@@ -173,5 +174,43 @@ public class VerifyMfaChallengeCommandHandlerTests : MfaTestBase
         Assert.False(validator.Validate(new VerifyMfaChallengeCommand(huge, "123456")).IsValid);
         Assert.False(validator.Validate(new VerifyMfaChallengeCommand("x", huge)).IsValid);
         Assert.True(validator.Validate(new VerifyMfaChallengeCommand(new string('a', 64), "123456")).IsValid); // el límite exacto vale
+    }
+
+    // ===== Empresa suspendida entre la contraseña y el código (spec 011 R15a) =====
+
+    [Fact]
+    public async Task IfTheCompanyWasSuspendedBetweenThePasswordAndTheCode_NoSessionIsIssued_AndTheMemberIsToldWhy()
+    {
+        // La persona ya probó quién es (contraseña y código válido): se le dice la verdad, y no recibe ninguna sesión.
+        var tenant = Tenant.Create("Fontanería Pérez");
+        tenant.Suspend(new DateTime(2026, 10, 22, 10, 0, 0, DateTimeKind.Utc));
+        Db.Tenants.Add(tenant);
+        Db.TenantUsers.Add(TenantUser.Create(tenant.Id, UserId, TenantRole.Manager));
+        await Db.SaveChangesAsync(CancellationToken.None);
+        Mfa.NextRedemption = new ChallengeRedemption(true, UserId);
+
+        var denied = await Assert.ThrowsAsync<ForbiddenException>(() => VerifyAsync());
+
+        Assert.Equal(TenancyErrors.TenantSuspended, denied.Code);
+        Assert.Equal(0, Tokens.IssuedSessions);
+        Assert.Contains(_logger.Entries, e => e.EventId.Id == SecurityEventIds.TenantSuspendedAccessDenied
+            && e.Message.Contains(UserId.ToString()) && e.Message.Contains(tenant.Id.ToString()));
+    }
+
+    [Fact]
+    public async Task IfTheCompanyIsActive_TheSessionIsIssued_EvenThoughTheCompanyRowExists()
+    {
+        // Control positivo: con la fila de la empresa presente y activa, el canje sigue funcionando. Sin él, el test de
+        // arriba pasaría aunque el handler denegara siempre que exista la fila.
+        var tenant = Tenant.Create("Fontanería Pérez");
+        Db.Tenants.Add(tenant);
+        Db.TenantUsers.Add(TenantUser.Create(tenant.Id, UserId, TenantRole.Manager));
+        await Db.SaveChangesAsync(CancellationToken.None);
+        Mfa.NextRedemption = new ChallengeRedemption(true, UserId);
+
+        var result = await VerifyAsync();
+
+        Assert.NotNull(result);
+        Assert.Equal([(UserId, tenant.Id, TenantRole.Manager)], Tokens.Issued);
     }
 }

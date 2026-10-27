@@ -1,5 +1,6 @@
 using MediatR;
 using OfiFlow.Application;
+using OfiFlow.Application.Common.Authorization;
 
 namespace OfiFlow.Api.Tests.Architecture;
 
@@ -22,7 +23,11 @@ public class SecurityArchitectureTests
         // canjear el desafío del login en dos pasos: la petición es anónima y aún no hay empresa activa; la pertenencia se busca por la cuenta del desafío (ADR-014)
         "src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs",
         // el refresh relee el rol del usuario en su tenant
-        "src/OfiFlow.Infrastructure/Identity/TokenService.cs"
+        "src/OfiFlow.Infrastructure/Identity/TokenService.cs",
+        // dar de alta a un operador de la plataforma (spec 011 R1): hay que saber si la cuenta tiene ALGUNA pertenencia, en cualquier empresa, y no hay empresa activa; solo mira si existe una fila (AnyAsync), no la lee
+        "src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs",
+        // listar las empresas (spec 011 R11): hay que contar los miembros de CADA empresa y el operador no tiene ninguna activa; es un recuento por empresa de la página, sin proyectar ninguna columna de personas
+        "src/OfiFlow.Application/Platform/Queries/ListTenants/ListTenantsQueryHandler.cs"
     ];
 
     /// <summary>
@@ -43,7 +48,18 @@ public class SecurityArchitectureTests
             "src/OfiFlow.Application/Tenancy/Queries/GetUsers/GetUsersQueryHandler.cs",
             "src/OfiFlow.Application/Tenancy/Commands/RemoveUser/RemoveUserCommandHandler.cs"
         ],
-        ["Tenants"] = [],
+        // el estado de suspensión de la empresa (spec 011): UNA sola lectura, reutilizada por el login, el canje del segundo
+        // factor, el refresh, aceptar una invitación y la comprobación de pertenencia de cada petición. Un sitio nuevo que
+        // necesite saber si una empresa está suspendida llama a TenantStatus; no lee la tabla por su cuenta.
+        // Además, los tres handlers del panel de la plataforma (spec 011 R11 y R12): listar las empresas, suspender una y reactivarla.
+        // Son las únicas operaciones que ven una empresa que no es la suya, y las tres exigen ser un operador activo.
+        ["Tenants"] =
+        [
+            "src/OfiFlow.Application/Tenancy/TenantStatus.cs",
+            "src/OfiFlow.Application/Platform/Queries/ListTenants/ListTenantsQueryHandler.cs",
+            "src/OfiFlow.Application/Platform/Commands/SuspendTenant/SuspendTenantCommandHandler.cs",
+            "src/OfiFlow.Application/Platform/Commands/ReactivateTenant/ReactivateTenantCommandHandler.cs"
+        ],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
         ["ApplicationUsers"] = [
             "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
@@ -62,7 +78,11 @@ public class SecurityArchitectureTests
         ["RecoveryCodes"] = [MfaServiceFile, MfaStoreFile],
         ["MfaChallenges"] = [MfaServiceFile, MfaStoreFile],
         // se buscan por el hash del token, que es secreto y único
-        ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"]
+        ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"],
+        // los operadores de la plataforma (spec 011): se consulta siempre por el Id de la cuenta ("¿es operador activo?", alta y baja), nunca por listado
+        ["PlatformOperators"] = ["src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs"],
+        // la auditoría de plataforma es de solo inserción (.Add se admite en cualquier sitio) y hoy NADIE la lee desde la aplicación: una lectura nueva tiene que añadirse aquí a propósito
+        ["PlatformAuditEntries"] = []
     };
 
     [Theory]
@@ -97,6 +117,42 @@ public class SecurityArchitectureTests
         Assert.True(offenders.Count == 0,
             $"'{api}' ejecuta SQL fuera de LINQ y solo está permitido en {RawSqlAllowedFile} (ADR-014: la reserva atómica del " +
             $"intento). Un uso nuevo hay que justificarlo y añadirlo aquí a propósito. Aparece en: {string.Join(", ", offenders)}");
+    }
+
+    /// <summary>
+    /// Los ÚNICOS sitios que crean una pertenencia a una empresa (<c>TenantUser</c>), y los dos con una cuenta <b>recién
+    /// creada</b> (un <c>Guid.NewGuid()</c> justo antes de crear las credenciales). Es el lado contrario de la regla R1 de la
+    /// spec 011: un operador de la plataforma nunca es miembro de una empresa. Se cumple porque ninguna ruta añade una
+    /// pertenencia a una cuenta que ya existe; si alguna lo hiciera (una cuenta con dos empresas, un «invitar a quien ya
+    /// tiene cuenta»), un operador podría acabar siendo miembro. Un sitio nuevo exige repensar R1 y añadirlo aquí a propósito.
+    /// </summary>
+    private static readonly string[] TenantMembershipCreators =
+    [
+        "src/OfiFlow.Application/Identity/Commands/Register/RegisterCommandHandler.cs",
+        "src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs"
+    ];
+
+    [Fact]
+    public void TenantMemberships_AreOnlyCreatedForBrandNewAccounts()
+    {
+        var creators = SourceCode.FilesContaining("TenantUser.Create");
+
+        var offenders = creators.Where(path => !TenantMembershipCreators.Contains(path)).ToList();
+        Assert.True(offenders.Count == 0,
+            "Solo el registro y aceptar una invitación pueden crear una pertenencia, y siempre para una cuenta recién creada " +
+            $"(spec 011 R1: un operador nunca es miembro de una empresa). Aparece en: {string.Join(", ", offenders)}");
+
+        // Control positivo: los dos sitios permitidos siguen creando pertenencias. Si uno dejara de hacerlo, la lista estaría
+        // describiendo un código que ya no existe.
+        Assert.All(TenantMembershipCreators, path => Assert.Contains(path, creators));
+    }
+
+    [Fact]
+    public void TheTenantsAllowList_StillCorrespondsToARealRead()
+    {
+        // Control positivo de la lista blanca de «Tenants» (spec 011): si TenantStatus dejara de leer esa tabla (o se moviera),
+        // el test de las lecturas globales pasaría en vacío para ella. Este avisa de que la lista ya no corresponde a nada.
+        Assert.Contains("src/OfiFlow.Application/Tenancy/TenantStatus.cs", SourceCode.FilesContaining("dbContext.Tenants"));
     }
 
     [Fact]
@@ -189,6 +245,62 @@ public class SecurityArchitectureTests
         Assert.Contains("return new LoginResult.SecondFactorRequired", login[secondFactorBranch..issue]);
     }
 
+    private const string PlatformLoginHandler = "src/OfiFlow.Application/Platform/Commands/PlatformLogin/PlatformLoginCommandHandler.cs";
+
+    private const string PlatformRedemptionHandler = "src/OfiFlow.Application/Platform/Commands/VerifyPlatformChallenge/VerifyPlatformChallengeCommandHandler.cs";
+
+    [Fact]
+    public void OnlyTheChallengeRedemptionOfThePlatform_CanIssueAPlatformSession()
+    {
+        // Spec 011 R8: junto al login sin segundo factor y al canje del desafío de empresa, hay UN tercer sitio que emite una sesión,
+        // el canje del desafío de plataforma. Si alguien añade otro camino (un «recordarme», una renovación), este test falla y
+        // obliga a decidir, a propósito, qué pasa con el segundo factor en él.
+        var definitions = new[]
+        {
+            "src/OfiFlow.Application/Common/Abstractions/IPlatformTokenService.cs",
+            "src/OfiFlow.Infrastructure/Identity/PlatformTokenService.cs"
+        };
+
+        var callers = SourceCode.FilesContaining("IssuePlatformSession(").Where(path => !definitions.Contains(path)).Order().ToList();
+
+        Assert.True(callers.SequenceEqual([PlatformRedemptionHandler]),
+            $"Solo el canje del desafío de plataforma puede emitir una sesión de plataforma (spec 011 R8). Hoy la emiten: {string.Join(", ", callers)}");
+    }
+
+    [Fact]
+    public void ThePlatformLogin_NeverIssuesAnySession_AndOnlyCreatesChallengesForThePlatform()
+    {
+        // R5: la contraseña de un operador nunca da una sesión, solo un desafío, y de plataforma (R9). La clase ni siquiera
+        // recibe un servicio de tokens.
+        var login = SourceCode.ReadText(PlatformLoginHandler);
+
+        Assert.DoesNotContain("ITokenService", login);
+        Assert.DoesNotContain("IPlatformTokenService", login);
+        Assert.DoesNotContain("IssuePlatformSession", login);
+        Assert.DoesNotContain("IssueTokensAsync", login);
+        Assert.Contains("ChallengeAudience.Platform", login);
+        Assert.DoesNotContain("ChallengeAudience.Tenant", login);
+    }
+
+    [Fact]
+    public void ThePlatformRedemption_RedeemsThenChecksTheOperatorThenIssuesThenAudits()
+    {
+        // El orden es la seguridad: canjear el desafío de plataforma, volver a comprobar que sigue siendo un operador activo (R10),
+        // emitir la sesión, y escribir y CONFIRMAR la auditoría antes de devolverla (R17).
+        var handler = SourceCode.ReadText(PlatformRedemptionHandler);
+
+        var redeem = handler.IndexOf("RedeemChallengeAsync(", StringComparison.Ordinal);
+        var check = handler.IndexOf("IsActiveOperatorAsync(", StringComparison.Ordinal);
+        var issue = handler.IndexOf("IssuePlatformSession(", StringComparison.Ordinal);
+        var audit = handler.IndexOf("platformAudit.Add(", StringComparison.Ordinal);
+        var save = handler.IndexOf("SaveChangesAsync(", StringComparison.Ordinal);
+
+        Assert.True(redeem >= 0 && check > redeem && issue > check && audit > issue && save > audit,
+            "El canje de plataforma debe ir en este orden: RedeemChallengeAsync, IsActiveOperatorAsync, IssuePlatformSession, platformAudit.Add, SaveChangesAsync.");
+        Assert.Contains("ChallengeAudience.Platform", handler);
+        Assert.DoesNotContain("ChallengeAudience.Tenant", handler);
+    }
+
     [Fact]
     public void TheTotpCodeComparison_IsConstantTime()
     {
@@ -225,18 +337,39 @@ public class SecurityArchitectureTests
             $"para añadir uno, justifícalo ahí. Accesos no permitidos: {string.Join("; ", offenders)}");
     }
 
+    /// <summary>
+    /// Las dos únicas operaciones que reciben un <c>TenantId</c> por la petición (spec 011): el panel de la plataforma suspende o
+    /// reactiva la empresa que el operador elige. Ahí el Id es el OBJETIVO de la acción, no el contexto de quien la pide (un operador no
+    /// tiene empresa). Es una lista cerrada y con nombre: cualquier otra operación sigue sin poder recibirlo.
+    /// </summary>
+    private static readonly string[] OperationsThatTargetATenant =
+    [
+        "OfiFlow.Application.Platform.Commands.SuspendTenant.SuspendTenantCommand",
+        "OfiFlow.Application.Platform.Commands.ReactivateTenant.ReactivateTenantCommand"
+    ];
+
     [Fact]
-    public void NoCommandOrQuery_AcceptsTenantIdFromTheClient()
+    public void NoCommandOrQuery_AcceptsTenantIdFromTheClient_ExceptTheTwoNamedPlatformOperations()
     {
-        var offenders = typeof(DependencyInjection).Assembly.GetTypes()
+        var withTenantId = typeof(DependencyInjection).Assembly.GetTypes()
             .Where(type => type.GetInterfaces().Any(IsMediatRRequest))
             .Where(type => type.GetProperty("TenantId") is not null)
+            .ToList();
+
+        var offenders = withTenantId
             .Select(type => type.FullName)
+            .Where(name => !OperationsThatTargetATenant.Contains(name))
             .ToList();
 
         Assert.True(offenders.Count == 0,
             "Un Command/Query no puede recibir TenantId: se toma siempre del JWT vía ITenantContext " +
             $"(ADR-002, ADR-009 R2, protección contra mass assignment). Lo tienen: {string.Join(", ", offenders)}");
+
+        // Control positivo: las dos excepciones existen de verdad y son operaciones de plataforma. Si una dejara de tener TenantId, la
+        // lista estaría describiendo un código que ya no existe; si una excepción se colara en una operación de empresa, no pasaría de aquí.
+        Assert.Equal(OperationsThatTargetATenant.Order(), withTenantId.Select(type => type.FullName!).Order());
+        Assert.All(withTenantId, type => Assert.True(type.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true),
+            $"{type.Name}: solo una operación de plataforma puede recibir el Id de la empresa objetivo."));
     }
 
     private static bool IsMediatRRequest(Type type) =>

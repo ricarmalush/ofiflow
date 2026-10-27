@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Identity;
+using OfiFlow.Application.Tenancy;
 using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Persistence;
 
@@ -17,10 +18,39 @@ namespace OfiFlow.Infrastructure.Identity;
 /// </summary>
 public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, ApplicationDbContext dbContext) : ICurrentUser
 {
+    private readonly PlatformOperators _platformOperators = new(dbContext);
+
     private bool _verified;
     private TenantRole? _effectiveRole;
+    private bool _tenantSuspended;
+    private bool _platformVerified;
+    private bool _platformOperatorActive;
 
     private ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
+
+    /// <summary>
+    /// El token trae el claim del mundo de plataforma. Solo lo puede traer una sesión firmada con la clave de plataforma
+    /// (<see cref="PlatformTokenService"/>); una de empresa no lo lleva ni puede añadirlo, porque la firma la rompería.
+    /// </summary>
+    public bool IsPlatformSession =>
+        Principal?.FindFirst(OfiFlowClaimTypes.Realm)?.Value == OfiFlowClaimTypes.PlatformRealm;
+
+    public async Task<bool> VerifyPlatformOperatorAsync(CancellationToken cancellationToken)
+    {
+        // Una sola consulta por petición, y fail-closed: sin sesión de plataforma o sin la cuenta no se consulta nada.
+        if (_platformVerified)
+        {
+            return _platformOperatorActive;
+        }
+
+        var userId = UserId;
+        _platformOperatorActive = IsPlatformSession
+            && userId is not null
+            && await _platformOperators.IsActiveOperatorAsync(userId.Value, cancellationToken);
+        _platformVerified = true;
+
+        return _platformOperatorActive;
+    }
 
     public Guid? UserId => ParseGuid(JwtRegisteredClaimNames.Sub);
 
@@ -28,6 +58,9 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
 
     /// <summary>Fail-closed: hasta verificar la pertenencia, no hay ningún rol.</summary>
     public TenantRole? Role => _verified ? _effectiveRole : null;
+
+    /// <summary>Solo vale después de verificar la pertenencia (antes es falso).</summary>
+    public bool TenantSuspended => _verified && _tenantSuspended;
 
     public TenantRole? TokenRole
     {
@@ -64,11 +97,20 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
 
         // La consulta usa solo lo que dice el token ya validado, nunca nada que mande el cliente. Va por el índice único
         // (TenantId, UserId). Se indica la empresa explícitamente además del filtro global, para que no dependa de él.
-        _effectiveRole = await dbContext.TenantUsers
+        // El estado de la empresa viaja en la MISMA consulta (una subconsulta sobre la clave de la empresa): comprobar la
+        // suspensión no añade una ida a la base de datos por petición (spec 011 R15d).
+        var suspendedTenants = dbContext.SuspendedTenantIds();
+        var membership = await dbContext.TenantUsers
             .AsNoTracking()
             .Where(tu => tu.TenantId == tenantId.Value && tu.UserId == userId.Value)
-            .Select(tu => (TenantRole?)tu.Role)
+            .Select(tu => new { tu.Role, Suspended = suspendedTenants.Contains(tu.TenantId) })
             .FirstOrDefaultAsync(cancellationToken);
+
+        _tenantSuspended = membership?.Suspended ?? false;
+
+        // Fail-closed: una empresa suspendida no da ningún rol, aunque la persona siga siendo miembro. Reactivarla devuelve
+        // el rol que tenía, porque la pertenencia no se toca.
+        _effectiveRole = membership is { Suspended: false } ? membership.Role : null;
 
         _verified = true;
         return _effectiveRole is not null;

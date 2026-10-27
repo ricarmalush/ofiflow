@@ -74,7 +74,7 @@ La marca es lo que **activa** el filtro automático de la pieza ③.
 
 ## Pieza ② — El tenant viaja dentro del token
 
-Cuando alguien inicia sesión, el servidor emite un token JWT **firmado** que contiene, entre otras cosas, la empresa en la que trabaja. Está en [`TokenService.cs:103-110`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs):
+Cuando alguien inicia sesión, el servidor emite un token JWT **firmado** que contiene, entre otras cosas, la empresa en la que trabaja. Está en [`TokenService.cs:112-119`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs):
 
 ```csharp
 Claim[] claims =
@@ -162,16 +162,41 @@ No depende de la memoria del autor: un test lo vigila (ver más abajo).
 
 ## La excepción: `IgnoreQueryFilters()`
 
-A veces hay que saltarse el filtro **a propósito**. EF Core ofrece `IgnoreQueryFilters()`, que desactiva el filtro en una consulta concreta. Hoy se usa en **solo cuatro sitios**, todos con motivo:
+A veces hay que saltarse el filtro **a propósito**. EF Core ofrece `IgnoreQueryFilters()`, que desactiva el filtro en una consulta concreta. Hoy se usa en **solo seis sitios**, todos con motivo:
 
 | Dónde | Por qué es necesario |
 |---|---|
-| [`LoginCommandHandler.cs:32-35`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs) | En el login **todavía no hay tenant activo**: es justo lo que el login determina. Busca la pertenencia del usuario a una empresa para saber qué poner en el token |
-| [`TokenService.cs:72-74`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) | Al renovar la sesión, relee el rol del usuario **en su empresa** (el rol puede haber cambiado) |
+| [`LoginCommandHandler.cs:35-38`](../../src/OfiFlow.Application/Identity/Commands/Login/LoginCommandHandler.cs) | En el login **todavía no hay tenant activo**: es justo lo que el login determina. Busca la pertenencia del usuario a una empresa para saber qué poner en el token |
+| [`TokenService.cs:73-75`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) | Al renovar la sesión, relee el rol del usuario **en su empresa** (el rol puede haber cambiado) |
 | [`AcceptInvitationCommandHandler.cs:30`](../../src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs) | Quien acepta una invitación **todavía no tiene cuenta ni empresa activa**: la invitación se busca por el hash de su token (único y de 256 bits), sin saber de qué empresa es. Es un caso gemelo del login |
-| [`VerifyMfaChallengeCommandHandler.cs:38`](../../src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs) | Canjear el desafío del login en dos pasos es **anónimo** y aún no hay empresa activa: la pertenencia se busca por la cuenta del desafío para emitir la sesión de **esa** empresa (spec 010) |
+| [`VerifyMfaChallengeCommandHandler.cs:41`](../../src/OfiFlow.Application/Identity/Commands/VerifyMfaChallenge/VerifyMfaChallengeCommandHandler.cs) | Canjear el desafío del login en dos pasos es **anónimo** y aún no hay empresa activa: la pertenencia se busca por la cuenta del desafío para emitir la sesión de **esa** empresa (spec 010) |
+| [`PlatformOperators.cs:21-23`](../../src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs) | Al dar de alta a un operador de la plataforma (spec 011) hay que saber si la cuenta tiene **alguna pertenencia a alguna empresa**, y el operador no tiene empresa activa. Solo comprueba si existe una fila (`AnyAsync`), no la lee |
+| [`ListTenantsQueryHandler.cs`](../../src/OfiFlow.Application/Platform/Queries/ListTenants/ListTenantsQueryHandler.cs) | Listar las empresas (spec 011): el operador ve **todas** y hay que contar los miembros de **cada una**, y no tiene empresa activa. Es un recuento por empresa de la página que se devuelve (nunca se proyecta una columna de personas), y es el **único** sitio que cuenta miembros ajenos |
 
 Es la forma **deliberada** de saltarse el filtro (más abajo verás otra, accidental, que hoy no está vigilada), y por eso esta sí lo está. El test [`IgnoreQueryFilters_IsOnlyUsedInTheAllowList`](../../tests/OfiFlow.Api.Tests/Architecture/SecurityArchitectureTests.cs) escanea el código fuente y falla si `IgnoreQueryFilters(` aparece en cualquier fichero que no esté en una **lista blanca** de esos tres. Para añadir un tercer uso hay que modificar la lista a propósito y justificarlo, es decir, tomar la decisión de forma consciente.
+
+## Una empresa suspendida (spec 011)
+
+Hasta ahora una empresa solo podía existir o no existir. Desde la spec 011 también puede estar **suspendida**: [`Tenant.SuspendedAt`](../../src/OfiFlow.Domain/Tenancy/Tenant.cs) lleva la hora en la que se suspendió (o nada, si está activa). Suspender **no borra ni cambia ningún dato**: solo corta el acceso de sus miembros, y reactivarla lo devuelve todo a como estaba.
+
+La suspensión se hace cumplir en **cinco sitios**, y los cinco preguntan lo mismo a un único lugar, [`TenantStatus`](../../src/OfiFlow.Application/Tenancy/TenantStatus.cs):
+
+| Dónde | Qué pasa con una empresa suspendida |
+|---|---|
+| La comprobación de **cada petición** ([`CurrentUser`](../../src/OfiFlow.Infrastructure/Identity/CurrentUser.cs)) | **403** con el código `tenant.suspended` y un evento `1303`. Un `Owner` tampoco se libra: no hay rol efectivo |
+| El **login** | Con la contraseña correcta, **403** (`tenant.suspended`). Con una errónea, el 401 de siempre: sin las credenciales nadie aprende que la empresa existe ni que está suspendida |
+| El **canje del segundo factor** | Si se suspende entre la contraseña y el código, 403 y ninguna sesión |
+| **Renovar la sesión** | Falla como un token caducado (401). El token **no se revoca**: al reactivar la empresa vuelve a servir |
+| **Aceptar una invitación** | La misma respuesta que con un token inválido (`invitation.invalid`); el motivo real solo queda en el log, y la invitación **no se consume** |
+
+Dos detalles que conviene saber explicar:
+
+- **No cuesta una consulta más por petición.** La suspensión viaja en la **misma consulta** que ya comprobaba la pertenencia (una subconsulta sobre la clave de la empresa). Un test cuenta las consultas y comprueba que sigue siendo una, esté la empresa suspendida o no.
+- **`TenantStatus` es el único que lee la tabla `Tenants` para saberlo.** `Tenants` es una de las tablas **sin filtro de empresa** (es la propia empresa, no algo de una empresa), así que leerla exige estar en la lista blanca del test de arquitectura. Solo `TenantStatus.cs` está en ella: un sitio nuevo que necesite saber si una empresa está suspendida **llama a `TenantStatus`**, no escribe su propia consulta, y así no puede olvidarse de la suspensión ni reescribirla distinta.
+
+Un login con la contraseña correcta en una empresa suspendida **no cuenta como intento fallido** (no se bloquea la cuenta por ello): el test de extremo a extremo hace siete intentos seguidos y todos dan el mismo 403.
+
+Hoy nadie puede suspender una empresa por la API: el operador de la plataforma que lo hará llega en los bloques siguientes de la spec 011. Mientras tanto, los tests la suspenden directamente en la base de datos, que es lo que hará el operador.
 
 ## De dónde sale el tenant la primera vez
 
@@ -251,7 +276,7 @@ Un buen diseño conoce sus límites. Al escribir este capítulo se identificaron
 Antes, una entidad con su propia columna `TenantId` pero sin la interfaz `ITenantOwned` no tenía filtro y nada fallaba. Ahora [`TenantModelClassificationTests`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/TenantModelClassificationTests.cs) exige que **toda** entidad mapeada sea de una empresa (con su filtro aplicado) o esté en una lista explícita de entidades globales, cada una con su motivo (`Tenant`, `User`, `ApplicationUser`, `RefreshToken` y, desde la spec 010, las tres del segundo factor: `MfaCredential`, `RecoveryCode` y `MfaChallenge`, que son credenciales de una **cuenta** y no de una empresa; el test saltó solo al añadirlas y obligó a clasificarlas a propósito). Si alguien añade una entidad sin decidir cuál de las dos es, el build falla con un mensaje que dice qué hacer. Es un diseño *fail-closed*: ante la duda, rechaza.
 
 **2. ✅ Cerrado: `Tenants` y `Users` no tienen filtro, y `IApplicationDbContext` los expone.**
-Sigue siendo así por diseño (no pertenecen a una empresa), pero ahora un test de arquitectura prohíbe **leerlos** fuera de una lista blanca (`Tenants`, ningún fichero; `ApplicationUsers`, solo `IdentityService`; `RefreshTokens`, solo `TokenService`; y `Users`, solo dos ficheros de la spec 009 que nunca lo leen suelto: `GetUsersQueryHandler`, que lista a los miembros con un *join* contra `TenantUsers` —que **sí** está filtrada por empresa—, y `RemoveUserCommandHandler`, que busca la ficha a partir de la pertenencia del miembro que se quita). Crear con `.Add` se admite en cualquier sitio. Un handler futuro que escribiera `dbContext.Users.ToListAsync()` rompería ese test. Y como los tests de Application usan una base en memoria **sin** el filtro por empresa, hay tests contra SQL Server real que comprueban que una empresa no ve a los miembros de otra aunque la tabla de personas sea compartida, y que no puede cambiar el rol ni quitar a un miembro ajeno (recibe el mismo 404 que con un `Id` inexistente).
+Sigue siendo así por diseño (no pertenecen a una empresa), pero ahora un test de arquitectura prohíbe **leerlos** fuera de una lista blanca (`Tenants`, `TenantStatus` y los tres handlers del panel de la plataforma de la spec 011 —listar, suspender y reactivar—; `ApplicationUsers`, solo `IdentityService`; `RefreshTokens`, solo `TokenService`; y `Users`, solo dos ficheros de la spec 009 que nunca lo leen suelto: `GetUsersQueryHandler`, que lista a los miembros con un *join* contra `TenantUsers` —que **sí** está filtrada por empresa—, y `RemoveUserCommandHandler`, que busca la ficha a partir de la pertenencia del miembro que se quita). Crear con `.Add` se admite en cualquier sitio. Un handler futuro que escribiera `dbContext.Users.ToListAsync()` rompería ese test. Y como los tests de Application usan una base en memoria **sin** el filtro por empresa, hay tests contra SQL Server real que comprueban que una empresa no ve a los miembros de otra aunque la tabla de personas sea compartida, y que no puede cambiar el rol ni quitar a un miembro ajeno (recibe el mismo 404 que con un `Id` inexistente).
 
 **3. ✅ Cerrado: los tests solo cubrían lecturas de `Customer` y `Job`.**
 Ahora hay tests de **escritura** entre empresas (modificar, borrar, cambiar de estado y asignar, con los handlers reales y SQL Server real), la lectura de `TenantUser`, y el test de extremo a extremo por HTTP con dos empresas registradas. El comentario obsoleto de `ApplicationDbContextTenantFilterTests` está corregido.
@@ -279,7 +304,7 @@ Una tabla para ver de un vistazo qué amenaza cubre qué control (el germen del 
 | Alguien se salta el filtro con `IgnoreQueryFilters` | Lista blanca vigilada | `SecurityArchitectureTests.cs:16-24` | `IgnoreQueryFilters_IsOnlyUsedInTheAllowList` |
 | Adivinar el `Id` de un recurso ajeno para leerlo | El filtro no lo encuentra; mismo 404 que si no existiera | `GlobalExceptionHandler.cs:71-72` | `Jobs_AreNotVisibleAcrossTenants`, `TenantB_WithTenantAsIds_GetsTheSameNotFoundAsForAnIdThatDoesNotExist` (HTTP) |
 | Adivinar el `Id` de un recurso ajeno para **modificarlo o borrarlo** | El handler lo busca con el filtro: no lo encuentra | Los `*CommandHandler.cs` | `CrossTenantWriteIsolationTests` |
-| Token manipulado para cambiar de empresa | Firma HMAC-SHA256 | `DependencyInjection.cs:62-81` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
+| Token manipulado para cambiar de empresa | Firma HMAC-SHA256 | `DependencyInjection.cs:90-109` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | Entidad nueva sin la marca o sin clasificar | Clasificación obligatoria (*fail-closed*) | `TenantModelRules.cs` (tests) | `TenantModelClassificationTests` |
 | Handler futuro que lea `Users` o `Tenants` | Lista blanca de lecturas de entidades globales | `SecurityArchitectureTests.cs` | `GlobalEntities_AreOnlyReadInTheAllowList` |
 | Un `IgnoreQueryFilters` colado en otro fichero con el mismo nombre | Lista blanca por ruta completa | `SecurityArchitectureTests.cs` | `TenantAccessRulesTests` |

@@ -123,3 +123,4 @@ De los riesgos aceptados de arriba, **el del rol desfasado se cerró** (spec 009
 - Responde: el punto abierto de ADR-004 sobre permisos granulares.
 - Depende de: ADR-002 (el tenant y el rol viajan en el token), ADR-011 (el 403 usa el contrato de errores con código).
 - Afecta a: ADR-009 (nuevo evento de seguridad 1301 en el catálogo de R5).
+- Ampliada por: ADR-016 (spec 011): un **tercer tipo de declaración**, `[RequiresPlatformOperator]`, excluyente con permiso y con anónima, *fail-closed* como los otros dos y solo permitido en `OfiFlow.Application.Platform`. La operación revalida en la base de datos, en cada petición, que la cuenta sigue siendo un operador activo (no hay rol ni pertenencia que mirar). El atajo de las operaciones anónimas ya no deja pasar una que además sea de plataforma.

@@ -44,6 +44,16 @@ public interface IMfaService
     Task<string> BeginSetupAsync(Guid userId, byte[] secret, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Crea el segundo factor de una cuenta <b>nueva</b> ya confirmado, con sus códigos de recuperación, sin pasar por el
+    /// estado «pendiente». Es para el alta de un operador de la plataforma (spec 011 R2): quien llama ya comprobó el primer
+    /// código con <see cref="Identity.Mfa.Totp"/> <i>antes</i> de guardar nada, y pasa el paso al que correspondía para que
+    /// ese mismo código no valga otra vez en el primer inicio de sesión. No confirma: lo hace quien llama en su único
+    /// SaveChanges, junto con la cuenta, así que o existe todo o no existe nada. <b>Solo la usa el alta del operador</b>
+    /// (lo fija un test de arquitectura): no comprueba ningún código por sí misma.
+    /// </summary>
+    Task EnrollConfirmedAsync(Guid userId, byte[] secret, long acceptedStep, IReadOnlyCollection<string> recoveryCodeHashes, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Comprueba el código contra el secreto pendiente. Si vale, lo confirma y guarda los hashes de los códigos de
     /// recuperación. Los fallos <b>no</b> cuentan para el bloqueo de cuenta (se limitan por IP).
     /// </summary>
@@ -62,20 +72,32 @@ public interface IMfaService
     /// <summary>
     /// Crea un desafío del login en dos pasos (solo su hash) y borra los de la cuenta que ya no sirven (caducados,
     /// canjeados o agotados), para que la tabla no crezca con cada contraseña correcta. No confirma: lo hace el Handler.
+    /// El desafío nace para un <paramref name="audience"/> y solo se canjea en él (spec 011 R9).
     /// </summary>
-    Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, CancellationToken cancellationToken);
+    Task CreateChallengeAsync(Guid userId, string tokenHash, DateTime expiresAt, ChallengeAudience audience, CancellationToken cancellationToken);
 
     /// <summary>
     /// Canjea un desafío con un código (TOTP o de recuperación): es el segundo paso del login. Solo tiene éxito si el
     /// desafío existe, no caducó, no se usó y no agotó sus intentos, y si el código es válido. <b>Todos los fallos son
     /// iguales para quien llama</b> (el motivo real va al registro). Cada código erróneo suma un intento al desafío y al
     /// bloqueo de la cuenta; un acierto pone el contador de la cuenta a cero (es un acceso completo, R17). Escribe en el
-    /// acto (no necesita SaveChanges).
+    /// acto (no necesita SaveChanges). Un desafío de OTRO <paramref name="audience"/> se trata como uno desconocido: ni se
+    /// comprueba el código ni se gasta ningún intento (spec 011 R9).
     /// </summary>
-    Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, CancellationToken cancellationToken);
+    Task<ChallengeRedemption> RedeemChallengeAsync(string tokenHash, string code, ChallengeAudience audience, CancellationToken cancellationToken);
 
     /// <summary>Borra el secreto, los códigos de recuperación y los desafíos de la cuenta. Idempotente.</summary>
     Task RemoveAllAsync(Guid userId, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// En qué mundo vale un desafío del segundo paso (spec 011 R9): el de las empresas o el de la plataforma. Un desafío no
+/// cruza de uno a otro: el de empresa solo se canjea por una sesión de empresa, y el de plataforma, por una de plataforma.
+/// </summary>
+public enum ChallengeAudience
+{
+    Tenant,
+    Platform
 }
 
 /// <summary>El resultado de canjear un desafío.</summary>

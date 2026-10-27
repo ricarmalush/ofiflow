@@ -22,20 +22,23 @@ internal static class AuthorizationDeclarationRules
                 .Select(attribute => attribute.Permission)
                 .ToList();
             var anonymous = operation.IsDefined(typeof(AllowAnonymousRequestAttribute), inherit: true);
+            var platform = operation.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true);
+            var kinds = (permissions.Count > 0 ? 1 : 0) + (anonymous ? 1 : 0) + (platform ? 1 : 0);
 
-            if (permissions.Count == 0 && !anonymous)
+            if (kinds == 0)
             {
                 violations.Add(
                     $"{operation.Name}: no declara su autorización. Añade [RequiresPermission(Permission.X)] con el permiso que exige, " +
-                    "o [AllowAnonymousRequest] si de verdad se ejecuta sin sesión. Mientras tanto, el AuthorizationBehavior la denegará siempre.");
+                    "[AllowAnonymousRequest] si de verdad se ejecuta sin sesión, o [RequiresPlatformOperator] si es una operación de la plataforma. " +
+                    "Mientras tanto, el AuthorizationBehavior la denegará siempre.");
                 continue;
             }
 
-            if (permissions.Count > 0 && anonymous)
+            if (kinds > 1)
             {
                 violations.Add(
-                    $"{operation.Name}: declara [AllowAnonymousRequest] y [RequiresPermission] a la vez. Es contradictorio: " +
-                    "elige una. El AuthorizationBehavior la denegará siempre.");
+                    $"{operation.Name}: declara más de un tipo de autorización (permiso, anónima y plataforma son excluyentes). Es contradictorio: " +
+                    "elige uno. El AuthorizationBehavior la denegará siempre.");
                 continue;
             }
 

@@ -29,6 +29,9 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
     /// </summary>
     public string JwtSecret { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
+    /// <summary>La clave de las sesiones de plataforma (spec 011 R7): distinta de la de empresa, para poder firmar tokens de los dos mundos en los tests.</summary>
+    public string PlatformSecret { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+
     public string JwtIssuer => "OfiFlow.Api.Tests";
 
     public string JwtAudience => "OfiFlow.Api.Tests.Client";
@@ -69,6 +72,7 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", _container.GetConnectionString());
 
         builder.UseSetting("Jwt:Secret", JwtSecret);
+        builder.UseSetting("Jwt:PlatformSecret", PlatformSecret);
         builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
         builder.UseSetting("Jwt:Issuer", JwtIssuer);
         builder.UseSetting("Jwt:Audience", JwtAudience);
