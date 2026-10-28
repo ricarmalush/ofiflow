@@ -26,6 +26,13 @@ public static class SecurityEventIds
     /// </summary>
     public const int SessionClosed = 1007;
 
+    /// <summary>
+    /// Una persona pidió cerrar <b>todas</b> sus sesiones (spec 014). A diferencia de <see cref="SessionClosed"/>, se registra en cada
+    /// petición, también cuando no había ninguna activa: es una acción explícita y rara de alguien identificado, y el recuento
+    /// (cero incluido) es información. Lleva solo el UserId y un número, nunca tokens ni hashes.
+    /// </summary>
+    public const int AllSessionsClosed = 1008;
+
     // 1100-1199: abuso
     public const int RateLimitExceeded = 1101;
 

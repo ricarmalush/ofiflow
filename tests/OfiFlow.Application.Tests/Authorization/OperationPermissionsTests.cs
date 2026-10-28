@@ -6,6 +6,7 @@ using OfiFlow.Application.Customers.Commands.UpdateCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomers;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
+using OfiFlow.Application.Identity.Commands.CloseAllSessions;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
@@ -43,7 +44,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 37 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy» y, de la spec 013, la de cerrar sesión) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 38 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -77,7 +78,9 @@ public class OperationPermissionsTests
         (typeof(RegenerateRecoveryCodesCommand), Permission.MfaManage),
         (typeof(ResetUserMfaCommand), Permission.UsersManage),
         // Spec 012: ver los datos de la propia cuenta, su empresa y su rol (los cinco roles).
-        (typeof(GetCurrentAccountQuery), Permission.AccountRead)
+        (typeof(GetCurrentAccountQuery), Permission.AccountRead),
+        // Spec 014: cerrar todas las sesiones de la propia cuenta (los cinco roles).
+        (typeof(CloseAllSessionsCommand), Permission.AccountCloseSessions)
     ];
 
     private static readonly Type[] AnonymousTable =
@@ -185,7 +188,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(37, inTheTable.Count);
+        Assert.Equal(38, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

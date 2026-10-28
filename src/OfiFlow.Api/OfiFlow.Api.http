@@ -80,6 +80,13 @@ Content-Type: application/json
 GET {{host}}/api/v1/account/me
 Authorization: Bearer {{tokenA}}
 
+### Cerrar TODAS mis sesiones (spec 014): revoca todos tus refresh tokens, en todos tus dispositivos, incluido este.
+### Es el caso de «perdí el móvil». Sin cuerpo ni parámetros: siempre habla de quien la pide. Responde 204 aunque no hubiera sesiones.
+### Límite conocido: el access token que ya tengas sigue valiendo hasta 30 min (pero ya no se podrá renovar). Úsala al FINAL de la
+### sesión de pruebas: después de esto, {{refreshA}} deja de servir. Máximo 10 por hora y por IP.
+DELETE {{host}}/api/v1/account/sessions
+Authorization: Bearer {{tokenA}}
+
 ###############################################################################
 # 2. CLIENTES (con el token de A)
 ###############################################################################

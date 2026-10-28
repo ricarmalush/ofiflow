@@ -272,6 +272,150 @@ public class TokenServiceTests
         Assert.NotNull((await db.RefreshTokens.SingleAsync()).RevokedAt);
     }
 
+    // ===== Cerrar todas las sesiones (spec 014) =====
+
+    [Fact]
+    public async Task RevokeAll_RevokesEveryActiveSessionOfTheAccount_AndNoneCanRotateAnymore()
+    {
+        var (db, service) = CreateSut();
+        var first = await SeedSessionAsync(db, service, suspended: false);
+        var second = await service.IssueTokensAsync(first.UserId, first.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+        var third = await service.IssueTokensAsync(first.UserId, first.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+
+        var closed = await service.RevokeAllRefreshTokensAsync(first.UserId, CancellationToken.None);
+
+        Assert.Equal(3, closed);
+        Assert.All(await db.RefreshTokens.ToListAsync(), token => Assert.NotNull(token.RevokedAt));
+        Assert.Null(await service.RotateRefreshTokenAsync(first.RefreshToken, CancellationToken.None));
+        Assert.Null(await service.RotateRefreshTokenAsync(second.RefreshToken, CancellationToken.None));
+        Assert.Null(await service.RotateRefreshTokenAsync(third.RefreshToken, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RevokeAll_RevokesNotDeletes_TheRowsRemain()
+    {
+        // R3: si se borraran, el token de un ladrón pasaría a ser «desconocido» y se perdería la señal de reutilización.
+        var (db, service) = CreateSut();
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        await service.IssueTokensAsync(session.UserId, session.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+
+        await service.RevokeAllRefreshTokensAsync(session.UserId, CancellationToken.None);
+
+        Assert.Equal(2, await db.RefreshTokens.CountAsync());
+    }
+
+    [Fact]
+    public async Task RevokeAll_DoesNotTouchTheSessionsOfAnotherAccount()
+    {
+        // R1: RefreshTokens no tiene filtro de empresa; el Where por UserId es lo único que separa una cuenta de otra.
+        var (db, service) = CreateSut();
+        var ana = await SeedSessionAsync(db, service, suspended: false);
+        var luis = await SeedSessionAsync(db, service, suspended: false);
+
+        var closed = await service.RevokeAllRefreshTokensAsync(ana.UserId, CancellationToken.None);
+
+        Assert.Equal(1, closed);
+        Assert.Single(await db.RefreshTokens.Where(t => t.RevokedAt != null).ToListAsync());
+        Assert.NotNull(await service.RotateRefreshTokenAsync(luis.RefreshToken, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RevokeAll_ReachesTheSessionsOfEveryCompanyOfTheAccount()
+    {
+        // R2: una cuenta con sesiones en varias empresas las pierde todas.
+        var (db, service) = CreateSut();
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        await service.IssueTokensAsync(session.UserId, Guid.NewGuid(), TenantRole.Technician, CancellationToken.None);
+
+        var closed = await service.RevokeAllRefreshTokensAsync(session.UserId, CancellationToken.None);
+
+        Assert.Equal(2, closed);
+        Assert.DoesNotContain(await db.RefreshTokens.ToListAsync(), token => token.RevokedAt is null);
+    }
+
+    [Fact]
+    public async Task RevokeAll_DoesNotOverwriteTheDateOfAnAlreadyRevokedToken_NorCountsIt()
+    {
+        var (db, service) = CreateSut();
+        var closedBefore = await SeedSessionAsync(db, service, suspended: false);
+        await service.RevokeRefreshTokenAsync(closedBefore.RefreshToken, CancellationToken.None);
+        var alreadyRevoked = await db.RefreshTokens.SingleAsync();
+        var revokedAt = alreadyRevoked.RevokedAt;
+        await service.IssueTokensAsync(closedBefore.UserId, closedBefore.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+        await Task.Delay(20); // que la hora de ahora no pueda coincidir con la de la revocación anterior
+
+        var closed = await service.RevokeAllRefreshTokensAsync(closedBefore.UserId, CancellationToken.None);
+
+        Assert.Equal(1, closed); // solo la activa
+        Assert.Equal(revokedAt, alreadyRevoked.RevokedAt); // EF devuelve la misma fila rastreada: si se tocara, cambiaría
+    }
+
+    [Fact]
+    public async Task RevokeAll_DoesNotCountNorTouchExpiredTokens()
+    {
+        var (db, service) = CreateSut();
+        var userId = Guid.NewGuid();
+        db.RefreshTokens.Add(new RefreshToken(userId, Guid.NewGuid(), "hash-caducado", DateTime.UtcNow.AddMinutes(-1)));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        var closed = await service.RevokeAllRefreshTokensAsync(userId, CancellationToken.None);
+
+        Assert.Equal(0, closed);
+        Assert.Null((await db.RefreshTokens.SingleAsync()).RevokedAt); // una sesión caducada no es una sesión que cerrar
+    }
+
+    [Fact]
+    public async Task RevokeAll_WithNoActiveSessions_ReturnsZero_AndStillLeavesTheEventWithZero()
+    {
+        // R6: «alguien pidió cerrar todo y no había nada» también es información.
+        var logger = new ListLogger<TokenService>();
+        var (_, service) = CreateSut(logger);
+        var userId = Guid.NewGuid();
+
+        var closed = await service.RevokeAllRefreshTokensAsync(userId, CancellationToken.None);
+
+        Assert.Equal(0, closed);
+        var entry = Assert.Single(logger.Entries, e => e.EventId.Id == SecurityEventIds.AllSessionsClosed);
+        Assert.Contains(userId.ToString(), entry.Message);
+        Assert.Contains("sesiones cerradas 0", entry.Message); // el texto entero: un «0» suelto podría salir del Guid
+    }
+
+    [Fact]
+    public async Task RevokeAll_LogsOneEvent_WithTheUserAndTheCount_NeverTheTokensNorTheirHashes()
+    {
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var first = await SeedSessionAsync(db, service, suspended: false);
+        var second = await service.IssueTokensAsync(first.UserId, first.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+        var hashes = (await db.RefreshTokens.ToListAsync()).Select(t => t.TokenHash).ToList();
+
+        await service.RevokeAllRefreshTokensAsync(first.UserId, CancellationToken.None);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(SecurityEventIds.AllSessionsClosed, entry.EventId.Id);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Contains(first.UserId.ToString(), entry.Message);
+        Assert.Contains("sesiones cerradas 2", entry.Message); // el texto entero: un «2» suelto podría salir del Guid
+        Assert.DoesNotContain(first.RefreshToken, entry.Message);
+        Assert.DoesNotContain(second.RefreshToken, entry.Message);
+        Assert.All(hashes, hash => Assert.DoesNotContain(hash, entry.Message));
+    }
+
+    [Fact]
+    public async Task RevokeAll_ThenRotateWithAClosedToken_IsTreatedAsReuse()
+    {
+        // R3: un token cerrado que alguien usa después es, por definición, una copia.
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        await service.RevokeAllRefreshTokensAsync(session.UserId, CancellationToken.None);
+
+        var reuse = await service.RotateRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.Null(reuse);
+        Assert.Single(logger.Entries, e => e.EventId.Id == SecurityEventIds.RefreshTokenReuseDetected);
+    }
+
     // ===== Empresa suspendida (spec 011 R15b) =====
 
     /// <summary>Una empresa real (con su fila, para que la suspensión pueda leerse) y un miembro suyo con sesión emitida.</summary>

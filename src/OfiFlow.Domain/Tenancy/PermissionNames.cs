@@ -18,8 +18,9 @@ public static partial class PermissionNames
             throw new ArgumentOutOfRangeException(nameof(permission), permission, "No es un permiso conocido.");
         }
 
-        // «CustomersRead» → «Customers.Read»: el punto va donde empieza la segunda palabra.
-        return Boundary().Replace(permission.ToString(), ".");
+        // «CustomersRead» → «Customers.Read»: el punto va donde empieza la segunda palabra y solo ahí (count = 1). La acción puede
+        // tener varias palabras: «AccountCloseSessions» → «Account.CloseSessions», no «Account.Close.Sessions» (spec 014).
+        return Boundary().Replace(permission.ToString(), ".", 1);
     }
 
     /// <summary>
