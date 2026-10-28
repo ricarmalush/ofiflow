@@ -26,11 +26,11 @@ Los proyectos de `tests/` reflejan las capas del capítulo 3. Cuanto más hacia 
 | Proyecto | Prueba | Con qué | Casos | Tarda | ¿Docker? |
 |---|---|---|---|---|---|
 | `OfiFlow.Domain.Tests` | Las reglas del negocio | Nada: C# puro | 229 | ~0,1 s | No |
-| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 575 | ~1 s | No |
-| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 315 | ~55 s | **Sí**, en parte |
-| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 461 | ~2 min | **Sí**, en parte |
+| `OfiFlow.Application.Tests` | Los casos de uso, los validadores y el pipeline | Base en memoria y dobles de prueba | 584 | ~1 s | No |
+| `OfiFlow.Infrastructure.Tests` | Persistencia, tokens y aislamiento entre empresas | **SQL Server real** en Docker (y base en memoria para lo ligero) | 323 | ~55 s | **Sí**, en parte |
+| `OfiFlow.Api.Tests` | HTTP, seguridad, arquitectura y extremo a extremo | La API entera en memoria; con SQL Server real en los de extremo a extremo | 474 | ~2 min | **Sí**, en parte |
 
-En total, **1580 casos**. Un "caso" no es lo mismo que un método de test: hay unos 980 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 60 veces).
+En total, **1610 casos**. Un "caso" no es lo mismo que un método de test: hay unos 1000 métodos, pero un mismo método con `[Theory]` se ejecuta varias veces con datos distintos (la matriz de permisos es un solo método que se ejecuta 60 veces).
 
 ---
 
@@ -229,6 +229,14 @@ Y los de la **spec 012** (`GET /account/me`, «quién soy»), una funcionalidad 
 - **Mutaciones.** 15 sobre el código real, todas detectadas: el nombre del permiso sin punto o sin ordenar, el técnico sin `Account.Read`, el rol del token en lugar del de la base de datos, todos los permisos en lugar de los del rol, la consulta sin filtrar por la persona o por la empresa del token, la consulta saltándose el filtro de empresa (la caza Infrastructure, no los dobles), sin denegar cuando no hay pertenencia, la operación sin su declaración de permiso, un campo de más en la respuesta, la respuesta cacheable, la ruta sin exigir sesión o sin mapear y el handler quitado de la lista blanca de lecturas de `Users`. Cada capa caza lo que le toca; las del filtro de empresa y la forma HTTP no las puede cazar nadie más.
 - **Verificación contra la API publicada** (script, no test del repositorio): Kestrel real y una base de datos real, 26 comprobaciones entre las que está el desfase del token a la vista (el rol del token sigue siendo `Technician` y `/me` dice `Manager` tras el cambio), el `membershipId` de un técnico igual al de su trabajo asignado, la empresa B sin ver nada de la A, los parámetros ajenos ignorados, `Cache-Control: no-store`, ningún secreto en el cuerpo y el `403` de un miembro quitado.
 
+Y los de la **spec 013** (cerrar sesión en el servidor), con el reparto de siempre:
+
+- **Application** (`LogoutCommandHandlerTests`, `IdentityValidatorTests` y la tabla de operaciones): el handler entrega el token al servicio y **no devuelve nada**, y responde lo mismo con un token real que con uno inventado (no hay oráculo); el validador rechaza vacío, nulo y en blanco y admite 200 caracteres pero no 201, igual que renovar; la operación entra en la tabla aprobada como **anónima** (37 operaciones).
+- **Infrastructure** (`TokenServiceTests`): revoca **solo esa fila** y no la borra; con dos dispositivos de la misma cuenta, el otro sigue renovando; usar después un token cerrado dispara la detección de robo (`1003`) y revoca la cadena; un token desconocido, caducado o ya revocado **no cambia nada**, no pisa la fecha de revocación, **no revoca la cadena** y no deja evento; el evento `1007` lleva los Ids y **ni el token ni su hash**; una empresa suspendida puede cerrar.
+- **Api** (`LogoutEndToEndTests`, la API entera con SQL Server real): cerrar da `204` sin cuerpo y desde ahí `/auth/refresh` da `401`; funciona con un token de acceso basura; dos dispositivos y dos empresas, cada uno cierra solo lo suyo; cerrar dos veces, con un token inventado o con uno ya rotado da `204` y **respuestas idénticas**; empresa suspendida y miembro quitado cierran bien; cuerpo vacío, sin cuerpo o de 201 caracteres da `400`; el token de acceso ya emitido **sigue valiendo** (el límite conocido, escrito como test); ningún token ni hash en ninguna línea del registro; y la 21.ª petición de la misma IP en un minuto da `429` con `Retry-After` sin gastar el cubo de `/auth/refresh`.
+- **Mutaciones.** 14 sobre el código real, 13 detectadas: no revocar, revocar todos los tokens de la cuenta, borrar la fila, no comprobar `IsActive`, registrar el hash (la primera vez solo la cazó Infrastructure: se reforzó el test de la API para que revise **todo** el registro), registrar el evento aunque no se cierre nada, la ruta sin límite, con el cubo de renovar, con 30 en vez de 20, devolviendo `401`, el validador sin máximo y la operación sin `[AllowAnonymousRequest]`. **Una sobrevivió y es equivalente:** poner `RequireAuthorization()` en la ruta no cambia nada porque el grupo `/auth` ya es `AllowAnonymous` y esa marca gana; el "exigir sesión" de verdad es quitar `[AllowAnonymousRequest]`, y esa sí se detecta. Una primera tanda apuntó sin querer a la rotación (el script cambió la primera coincidencia): por eso ahora las mutaciones se dirigen por número de línea y el script avisa si no cambió nada.
+- **Verificación contra la API publicada** (script, no test del repositorio): Kestrel real y una base de datos real desechable; 12 comprobaciones entre las que están el `204` repetido, con un token inventado, con uno rotado y con una cabecera basura, los `400`, el otro dispositivo que sigue renovando, el token cerrado que da `401` con su `1003`, un solo `1007` en el registro, ninguna huella del token y el `429` a partir de la 21.ª petición con `/auth/refresh` aún respondiendo.
+
 ## Parte 4 — Api: tres clases de test en un mismo proyecto
 
 `OfiFlow.Api.Tests` arranca la **API entera en memoria** (con `WebApplicationFactory`) y le hace peticiones HTTP reales. Dentro hay tres familias:
@@ -298,7 +306,7 @@ La batería de este proyecto es grande (más de 600 casos) y un lector atento se
 
 ### Un caso no es un método
 
-Antes de asustarse con la cifra: **1580 casos son unos 980 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 60 celdas (12 permisos por 5 roles) y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
+Antes de asustarse con la cifra: **1610 casos son unos 1000 métodos**. Un mismo método con `[Theory]` se ejecuta una vez por cada dato. La matriz de permisos son 60 celdas (12 permisos por 5 roles) y la de jerarquía de roles 25, y cada celda es un caso a propósito: si alguien cambia una, debe fallar *esa* celda y no "algo".
 
 ### Tres niveles de riesgo
 

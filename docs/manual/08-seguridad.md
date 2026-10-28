@@ -298,7 +298,8 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **treinta y dos event
 | `1004` | Refresh token rechazado | Desconocido, caducado o sin pertenencia a la empresa |
 | `1005` | **Cuenta bloqueada** | La cuenta llegó a 5 intentos fallidos y queda bloqueada 15 minutos (con el recuento y la duración, sin el email). Se registra una vez por bloqueo |
 | `1006` | **Intento con la cuenta bloqueada** | Alguien intenta entrar en una cuenta bloqueada. Una ráfaga de estos sobre el mismo `UserId` es un ataque en curso |
-| `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register` o `refresh` |
+| `1007` | **Sesión cerrada** (spec 013) | Alguien cerró una sesión: se revocó su refresh token (con el `UserId` y el `TenantId`, nunca el token ni su hash). Solo se registra cuando se cierra algo de verdad; cerrar con un token desconocido, caducado o ya revocado no deja evento. Un `1003` justo después del `1007` del mismo usuario es alguien usando el token que acaba de cerrarse: una copia |
+| `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register`, `refresh` o `logout` |
 | `1201` | Excepción no controlada | Un 500; se registra con el detalle interno completo |
 | `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso, o intenta gestionar a un rol que no le corresponde (la jerarquía de roles) |
 | `1302` | **Pertenencia revocada** | Un token todavía válido de alguien que ya no pertenece a la empresa (se le quitó mientras el token seguía vivo). La revalidación en cada petición lo detecta |
@@ -500,7 +501,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Autenticación**
 1. ✅ **Cerrado (spec 010): hay bloqueo de cuenta.** Además del límite por IP, cada cuenta se bloquea 15 minutos tras 5 fallos (capítulo 6), con el intento reservado antes de comprobar la contraseña para que las peticiones simultáneas no lo esquiven. **Riesgo aceptado:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito; se mitiga con el límite por IP y los eventos `1005`/`1006`. Los NEXT: bloqueo progresivo y desbloqueo manual.
 2. ✅ **Cerrado (spec 010) en el login: el tiempo de respuesta ya no delata si un email existe** (misma verificación completa para desconocido, bloqueada y errónea). **Sigue abierto** que el registro diga "ese email ya está registrado".
-3. **No hay cierre de sesión en el servidor**, y un token de acceso no se puede anular antes de caducar (hasta 30 minutos). Desde la spec 009 esto afecta menos a la autorización, porque la pertenencia se revalida en cada petición, pero un usuario **sigue autenticado** hasta que el token caduca.
+3. **Cierre de sesión en el servidor (spec 013): parcial.** Desde la spec 013 `POST /auth/logout` revoca el refresh token (capítulo 6), así que quien cierra sesión ya no puede renovarla ni nadie con una copia. Sigue abierto que **un token de acceso no se puede anular antes de caducar** (hasta 30 minutos; arreglarlo pide un `sid` en el token) y que no hay "cerrar todas mis sesiones". Desde la spec 009 esto afecta menos a la autorización, porque la pertenencia se revalida en cada petición, pero un usuario **sigue autenticado** hasta que el token caduca.
 
    Y, con el segundo factor (spec 010), estos límites se añaden a los de la autenticación:
 

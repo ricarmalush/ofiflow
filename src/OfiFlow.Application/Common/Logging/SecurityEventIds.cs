@@ -20,6 +20,12 @@ public static class SecurityEventIds
     /// <summary>Alguien intentó entrar en una cuenta que estaba bloqueada. Una ráfaga de estos sobre el mismo UserId es un ataque en curso.</summary>
     public const int LoginRejectedWhileLocked = 1006;
 
+    /// <summary>
+    /// Alguien cerró una sesión (spec 013): se revocó su refresh token. Solo se registra cuando se cierra algo de verdad; un cierre con un
+    /// token desconocido, caducado o ya revocado no deja evento. Lleva solo los Ids, nunca el token ni su hash.
+    /// </summary>
+    public const int SessionClosed = 1007;
+
     // 1100-1199: abuso
     public const int RateLimitExceeded = 1101;
 

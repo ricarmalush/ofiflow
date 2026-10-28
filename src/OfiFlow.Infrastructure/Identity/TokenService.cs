@@ -99,6 +99,28 @@ public sealed partial class TokenService(
         return new AuthResultDto(accessToken, newRefreshTokenValue, DateTime.UtcNow.AddMinutes(_options.AccessTokenMinutes));
     }
 
+    public async Task<bool> RevokeRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken)
+    {
+        var tokenHash = Hash(refreshToken);
+
+        var existing = await dbContext.RefreshTokens.FirstOrDefaultAsync(rt => rt.TokenHash == tokenHash, cancellationToken);
+
+        // Desconocido, caducado o ya revocado: no se escribe nada ni se registra nada. Y NO se revoca la cadena (a diferencia de
+        // /auth/refresh): aquí presentar un token revocado es un cierre, no un uso (spec 013 R3).
+        if (existing is null || !existing.IsActive)
+        {
+            return false;
+        }
+
+        // Una sola fila: la de esa sesión. Se revoca y no se borra para que, si alguien usa después este token, /auth/refresh lo
+        // detecte como reutilización (ADR-007, spec 013 D3).
+        existing.Revoke();
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        LogSessionClosed(logger, existing.UserId, existing.TenantId);
+        return true;
+    }
+
     public async Task DeleteRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {
         var tokens = await dbContext.RefreshTokens
@@ -146,6 +168,10 @@ public sealed partial class TokenService(
     [LoggerMessage(EventId = SecurityEventIds.RefreshTokenReuseDetected, Level = LogLevel.Warning,
         Message = "Reutilización de refresh token revocado (posible robo). UserId {UserId}, TenantId {TenantId}; revocados {RevokedCount} tokens activos")]
     private static partial void LogRefreshTokenReuseDetected(ILogger logger, Guid userId, Guid tenantId, int revokedCount);
+
+    [LoggerMessage(EventId = SecurityEventIds.SessionClosed, Level = LogLevel.Information,
+        Message = "Sesión cerrada. UserId {UserId}, TenantId {TenantId}")]
+    private static partial void LogSessionClosed(ILogger logger, Guid userId, Guid tenantId);
 
     [LoggerMessage(EventId = SecurityEventIds.RefreshTokenRejected, Level = LogLevel.Warning,
         Message = "Refresh token rechazado. Motivo {Reason}, UserId {UserId}")]

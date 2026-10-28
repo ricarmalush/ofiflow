@@ -81,6 +81,7 @@ OfiFlow, por ahora, es **solo una API** (un servidor al que se le hacen peticion
 | **Cuenta** (pública, sin iniciar sesión) | Registrarse | `POST /api/v1/auth/register` |
 | | Iniciar sesión | `POST /api/v1/auth/login` |
 | | Renovar la sesión | `POST /api/v1/auth/refresh` |
+| | Cerrar la sesión (revoca el refresh token; spec 013) | `POST /api/v1/auth/logout` |
 | | Aceptar una invitación (elige nombre y contraseña) | `POST /api/v1/auth/accept-invitation` |
 | | Segundo paso del login (cuentas con segundo factor) | `POST /api/v1/auth/mfa/verify` |
 | **Mi cuenta** (requiere sesión; spec 012) | Quién soy: mis datos, mi empresa, mi rol **efectivo** y mis permisos | `GET /api/v1/account/me` |

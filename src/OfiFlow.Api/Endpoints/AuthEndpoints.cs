@@ -3,6 +3,7 @@ using OfiFlow.Api.Common;
 using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.Login;
+using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
 using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
@@ -66,6 +67,17 @@ public static class AuthEndpoints
             .WithName("Refresh")
             .WithSummary("Rota un Refresh Token válido por un nuevo par de tokens.")
             .RequireRateLimiting(RateLimiting.Refresh);
+
+        group.MapPost("/logout", async (LogoutCommand command, ISender sender, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(command, cancellationToken);
+
+                // 204 siempre que la forma sea válida, exista el token o no (spec 013 R4): la ruta no debe servir para comprobar tokens.
+                return Results.NoContent();
+            })
+            .WithName("Logout")
+            .WithSummary("Cierra la sesión del Refresh Token recibido (revocándolo). Anónimo: no pide access token, para poder salir con la sesión caducada. Responde 204 exista el token o no.")
+            .RequireRateLimiting(RateLimiting.Logout);
 
         group.MapPost("/accept-invitation", async (AcceptInvitationCommand command, ISender sender, CancellationToken cancellationToken) =>
             {
