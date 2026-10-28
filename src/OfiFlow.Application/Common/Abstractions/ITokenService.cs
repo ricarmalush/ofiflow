@@ -26,6 +26,14 @@ public interface ITokenService
     Task<bool> RevokeRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Cierra <b>todas</b> las sesiones activas de una cuenta (spec 014): revoca (no borra, como en la spec 013) cada refresh token
+    /// activo de ese usuario, en todas sus empresas. No toca los ya revocados ni los caducados, ni los de otra cuenta. Confirma el
+    /// cambio por sí mismo y deja el evento <c>1008</c> con el recuento, también si es cero.
+    /// </summary>
+    /// <returns>Cuántas sesiones activas se cerraron (cero si no había ninguna).</returns>
+    Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Borra todos los refresh tokens de un usuario, también los ya revocados, para que no pueda renovar la
     /// sesión ni queden filas huérfanas (spec 009 R14b). No confirma el cambio: lo hace el Handler en su
     /// único SaveChanges, junto con el resto del borrado.

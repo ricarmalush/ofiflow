@@ -50,5 +50,12 @@ public enum Permission
     /// cinco roles: solo cuenta a cada persona lo que ya es suyo. No es <see cref="MfaManage"/> aunque lo tengan los mismos roles: un
     /// permiso dice <i>qué se hace</i>, y ver quién soy no es gestionar el segundo factor.
     /// </summary>
-    AccountRead
+    AccountRead,
+
+    /// <summary>
+    /// Account.CloseSessions: cerrar <b>todas las sesiones de la propia cuenta</b>, en todos los dispositivos
+    /// (<c>DELETE /account/sessions</c>, spec 014). Lo tienen los cinco roles: la persona decide sobre sus propias credenciales y la
+    /// operación solo <i>quita</i> acceso. No es <see cref="MfaManage"/> ni <see cref="AccountRead"/>: un permiso dice <i>qué se hace</i>.
+    /// </summary>
+    AccountCloseSessions
 }

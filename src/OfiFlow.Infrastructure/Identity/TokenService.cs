@@ -121,6 +121,29 @@ public sealed partial class TokenService(
         return true;
     }
 
+    public async Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        // Solo las filas ACTIVAS de esta cuenta (R2): las ya revocadas conservan su fecha y las caducadas no cuentan como sesión. El
+        // filtro es siempre por el UserId que llega del token, nunca por un dato de la petición (R1); RefreshTokens no tiene filtro
+        // de empresa, así que este Where es lo único que separa a una cuenta de otra.
+        var now = DateTime.UtcNow;
+        var active = await dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now)
+            .ToListAsync(cancellationToken);
+
+        // Se revoca y no se borra, como en la spec 013: un token cerrado que alguien use después se detecta como reutilización (1003).
+        foreach (var token in active)
+        {
+            token.Revoke();
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Un evento por petición, también con cero (R6): «alguien pidió cerrar todo y no había nada» es información.
+        LogAllSessionsClosed(logger, userId, active.Count);
+        return active.Count;
+    }
+
     public async Task DeleteRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {
         var tokens = await dbContext.RefreshTokens
@@ -172,6 +195,10 @@ public sealed partial class TokenService(
     [LoggerMessage(EventId = SecurityEventIds.SessionClosed, Level = LogLevel.Information,
         Message = "Sesión cerrada. UserId {UserId}, TenantId {TenantId}")]
     private static partial void LogSessionClosed(ILogger logger, Guid userId, Guid tenantId);
+
+    [LoggerMessage(EventId = SecurityEventIds.AllSessionsClosed, Level = LogLevel.Warning,
+        Message = "Todas las sesiones cerradas a petición de su dueño. UserId {UserId}; sesiones cerradas {ClosedCount}")]
+    private static partial void LogAllSessionsClosed(ILogger logger, Guid userId, int closedCount);
 
     [LoggerMessage(EventId = SecurityEventIds.RefreshTokenRejected, Level = LogLevel.Warning,
         Message = "Refresh token rechazado. Motivo {Reason}, UserId {UserId}")]

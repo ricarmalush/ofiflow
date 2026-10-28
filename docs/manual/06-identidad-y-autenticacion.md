@@ -32,6 +32,7 @@ Estas son las rutas **anónimas** de la primera hora (no exigen sesión, porque 
 | `POST /api/v1/auth/login` | Comprueba la contraseña y entrega los tokens | 5 por minuto y por IP |
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
 | `POST /api/v1/auth/logout` | Cierra la sesión de un *refresh token* (lo revoca; spec 013, Parte 5) | 20 por minuto y por IP (cubo propio, distinto del de renovar) |
+| `DELETE /api/v1/account/sessions` | Cierra **todas** las sesiones de la cuenta de quien lo pide (autenticada; spec 014, Parte 5) | 10 por hora y por IP (cubo propio) |
 | `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
 
 (Los límites están en [`RateLimiting.cs:44-46`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
@@ -320,6 +321,23 @@ Ahora existe `POST /api/v1/auth/logout` con el refresh token en el cuerpo ([`Rev
 
 **Lo que no hace, y está dicho:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos (es un JWT sin estado). Lo que se corta es poder **renovarlo**. Anularlo antes exigiría un identificador de sesión (`sid`) en el token y comprobarlo en cada petición; está anotado como NEXT. Un test (`TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit`) deja el límite escrito en el código para que nadie crea que no existe.
 
+### Cerrar todas mis sesiones (spec 014)
+
+El caso que el cierre de una sola sesión no resuelve es **perder el móvil**: la sesión que hay que cerrar es la de *otro* dispositivo, y desde el portátil no se tiene su refresh token. Ahora existe `DELETE /api/v1/account/sessions` ([`RevokeAllRefreshTokensAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)), que revoca **todos los refresh tokens activos de la cuenta**, también el del dispositivo desde el que se pide. Lo que cambia respecto al cierre de una sola, y por qué:
+
+| Decisión | Por qué |
+|---|---|
+| **Autenticada** y colgada del grupo `/account`, no de `/auth` | A diferencia de `logout`, aquí la credencial es el access token: la cuenta sale **del token**. El grupo `/auth` es anónimo y su marca gana a `RequireAuthorization()` (lo aprendimos en la spec 013); una ruta autenticada dentro de él seguiría siendo anónima en HTTP |
+| **Sin Id, cuerpo ni parámetros** | Nadie puede pedir las sesiones de otra persona por aquí. Si la petición trae un `userId` ajeno, se ignora. Un test comprueba que el comando **no tiene propiedades** y otro que `/account/sessions/{id}` da `404` |
+| **Un permiso nuevo, `Account.CloseSessions`**, para los cinco roles | Un permiso dice *qué se hace*: ni «ver quién soy» (`Account.Read`) ni «gestionar mi segundo factor» (`Mfa.Manage`) son cerrar sesiones aunque lo tengan los mismos roles. La matriz pasa de 60 a 65 celdas |
+| **Se revoca, no se borra** (como la spec 013) | Si un ladrón usa después su copia, `/auth/refresh` la ve como un token revocado y deja el evento `1003`. **Coste que conviene saber:** esa reutilización revoca también los tokens activos de la cuenta, así que si la víctima ya volvió a entrar, el intento del ladrón le cierra la sesión nueva (falla hacia cerrar, que es el lado seguro) |
+| **No pide la contraseña** | Solo *quita* acceso, nunca lo da, y se usa en el momento más urgente. Quien tenga una sesión robada solo podría molestar (cerrar la de su dueño), no escalar. La contraseña sí se pide para activar o desactivar el segundo factor porque eso cambia las credenciales |
+| **`204` haya o no sesiones activas** | Idempotente; quien pide ya sabe quién es, no hay nada que ocultar |
+| **Un evento `1008` en cada petición, con el recuento (cero incluido)** | A diferencia de `1007`, es una acción explícita y rara de una persona identificada: «alguien pidió cerrar todo y no había nada» es información. Lleva el `UserId` y un número, nunca tokens ni hashes |
+| **`Cache-Control: no-store`** y **cubo de límite propio** (`account-sessions`, 10/hora/IP) | Como el resto de la cuenta; y que gastar el cubo de cerrar todas no afecte a renovar ni a cerrar una sesión |
+
+**Lo que no hace, y está dicho:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos, igual que en la spec 013. Es justo el caso del móvil perdido: el ladrón conserva ese margen aunque ya no pueda renovarlo. Un test (`TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit`, en `CloseAllSessionsEndToEndTests`) lo deja escrito. **Carrera conocida y aceptada:** si en el mismo instante hay un `/auth/refresh` en vuelo de esa cuenta, puede nacer un token nuevo justo después de la revocación y sobrevivir; la ventana es de milisegundos y repetir la operación lo cierra. No se añade bloqueo (coste desproporcionado para el riesgo).
+
 ---
 
 ## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)
@@ -536,7 +554,7 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **3. El registro revela si un email ya está en uso.** Responde "el email ya está registrado". Es cómodo para el usuario, pero permite comprobar si alguien tiene cuenta. Se revisará cuando exista confirmación de email.
 
-**4. ✅ Cerrado (spec 013): hay cierre de sesión en el servidor.** `POST /auth/logout` revoca el refresh token (Parte 5). **Lo que sigue abierto:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos (lo que se corta es poder renovarlo; anularlo antes exige llevar un identificador de sesión `sid` en el token, que es el NEXT), y "cerrar todas mis sesiones" no existe como ruta.
+**4. ✅ Cerrado (spec 013): hay cierre de sesión en el servidor.** `POST /auth/logout` revoca el refresh token (Parte 5). **Lo que sigue abierto:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos (lo que se corta es poder renovarlo; anularlo antes exige llevar un identificador de sesión `sid` en el token, que es el NEXT), y, desde la spec 014, **"cerrar todas mis sesiones" sí existe** (`DELETE /account/sessions`, Parte 5). Siguen abiertos: listar mis sesiones y cerrar una concreta, y purgar los refresh tokens caducados o revocados (las filas se acumulan).
 
 **5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007).
 

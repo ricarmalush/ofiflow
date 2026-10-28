@@ -40,6 +40,15 @@ public sealed class FakeTokenService : ITokenService
         return Task.FromResult(refreshToken == ValidRefreshToken);
     }
 
+    /// <summary>Las cuentas cuyas sesiones se pidió cerrar todas (spec 014), en orden.</summary>
+    public List<Guid> UsersWithAllSessionsRevoked { get; } = [];
+
+    public Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        UsersWithAllSessionsRevoked.Add(userId);
+        return Task.FromResult(3);
+    }
+
     public Task<AuthResultDto?> RotateRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken) =>
         Task.FromResult(refreshToken == ValidRefreshToken
             ? new AuthResultDto("new-access-token", "new-refresh-token", DateTime.UtcNow.AddMinutes(30))

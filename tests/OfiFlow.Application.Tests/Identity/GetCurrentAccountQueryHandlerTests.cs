@@ -51,7 +51,7 @@ public class GetCurrentAccountQueryHandlerTests
         Assert.Equal(ana.TenantId, account.TenantId);
         Assert.Equal("Fontanería A", account.TenantName);
         Assert.Equal("Technician", account.Role);
-        Assert.Equal(["Account.Read", "Customers.Read", "Jobs.Execute", "Jobs.Read", "Mfa.Manage"], account.Permissions);
+        Assert.Equal(["Account.CloseSessions", "Account.Read", "Customers.Read", "Jobs.Execute", "Jobs.Read", "Mfa.Manage"], account.Permissions);
     }
 
     [Fact]

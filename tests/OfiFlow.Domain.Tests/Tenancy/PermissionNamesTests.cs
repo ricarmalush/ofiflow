@@ -24,7 +24,8 @@ public partial class PermissionNamesTests
         [Permission.UsersRead] = "Users.Read",
         [Permission.UsersManage] = "Users.Manage",
         [Permission.MfaManage] = "Mfa.Manage",
-        [Permission.AccountRead] = "Account.Read"
+        [Permission.AccountRead] = "Account.Read",
+        [Permission.AccountCloseSessions] = "Account.CloseSessions"
     };
 
     public static TheoryData<Permission, string> Names()
@@ -71,7 +72,7 @@ public partial class PermissionNamesTests
     {
         var names = PermissionNames.For(TenantRole.Technician);
 
-        Assert.Equal(["Account.Read", "Customers.Read", "Jobs.Execute", "Jobs.Read", "Mfa.Manage"], names);
+        Assert.Equal(["Account.CloseSessions", "Account.Read", "Customers.Read", "Jobs.Execute", "Jobs.Read", "Mfa.Manage"], names);
         Assert.Equal(names.Order(StringComparer.Ordinal), names); // orden estable: la respuesta no cambia de una petición a otra
     }
 
@@ -92,6 +93,7 @@ public partial class PermissionNamesTests
         Assert.Empty(PermissionNames.For((TenantRole)999));
     }
 
-    [GeneratedRegex(@"^[A-Z][a-z]+\.[A-Z][a-z]+$")]
+    // Entidad de una palabra, un punto y una acción que puede tener varias («CloseSessions»): el punto separa entidad y acción, y nada más.
+    [GeneratedRegex(@"^[A-Z][a-z]+\.[A-Z][a-z]+([A-Z][a-z]+)*$")]
     private static partial Regex NameFormat();
 }

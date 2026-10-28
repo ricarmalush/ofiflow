@@ -31,7 +31,9 @@ public class RolePermissionsTests
         // Añadida por la spec 010: todos los roles gestionan el segundo factor de su PROPIA cuenta.
         "MfaManage          X     X     X       X        X",
         // Añadida por la spec 012: todos los roles ven los datos de su PROPIA cuenta, su empresa y su rol (GET /account/me).
-        "AccountRead        X     X     X       X        X"
+        "AccountRead        X     X     X       X        X",
+        // Añadida por la spec 014: todos los roles cierran todas las sesiones de su PROPIA cuenta (solo quita acceso, nunca lo da).
+        "AccountCloseSessions X   X     X       X        X"
     ];
 
     public static TheoryData<TenantRole, Permission, bool> Cells()
