@@ -51,6 +51,7 @@
 | [011-platform-operator-panel](./specs/011-platform-operator-panel/spec.md) | Panel de operador de la plataforma: listar, suspender y reactivar empresas con una identidad aparte y segundo factor obligatorio (implementa ADR-016) | Implementada |
 | [012-account-me](./specs/012-account-me/spec.md) | «Quién soy»: `GET /account/me` con los datos de la propia cuenta, su empresa, su rol efectivo y sus permisos (amplía ADR-012) | Implementada |
 | [013-server-logout](./specs/013-server-logout/spec.md) | Cierre de sesión en el servidor: `POST /auth/logout` revoca el refresh token (amplía ADR-007) | Implementada (API; el frontend es el bloque 5) |
+| [014-logout-all](./specs/014-logout-all/spec.md) | Cerrar todas mis sesiones: `DELETE /account/sessions` revoca todos los refresh tokens de la cuenta (amplía ADR-007 y ADR-012) | Implementada (API; el frontend es el bloque 5) |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

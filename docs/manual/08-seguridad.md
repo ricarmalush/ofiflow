@@ -143,6 +143,7 @@ Para frenar la **fuerza bruta** (probar contraseñas sin parar) y la saturación
 | `accept-invitation` | 10 por hora (es anónima y cara: hashea una contraseña) |
 | `mfa/verify` | 10 por minuto (es anónima, toca la base de datos y es la vía obvia para probar códigos de 6 dígitos) |
 | Gestión del segundo factor (`setup`, `enable`, `disable`, `recovery-codes` y reiniciar el de un miembro) | 10 por hora (son operaciones raras) |
+| `DELETE account/sessions` (cerrar todas mis sesiones; spec 014) | 10 por hora, cubo propio (es una acción rara y explícita; el tope frena una sesión robada usada solo para molestar) |
 
 Al pasarse, responde **429** (*demasiadas peticiones*) con la cabecera `Retry-After` (cuántos segundos esperar), en el mismo formato de error del capítulo 7. Cada rechazo genera el evento de seguridad `1101`.
 
@@ -185,8 +186,11 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Gestionar el segundo factor **de la propia cuenta** (`Mfa.Manage`; spec 010) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Ver los datos de la **propia** cuenta, su empresa y su rol (`Account.Read`; spec 012) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Cerrar **todas las sesiones de la propia cuenta** (`Account.CloseSessions`; spec 014) | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 **«Quién soy» (spec 012).** `GET /api/v1/account/me` responde a la persona con su nombre y email, su empresa, el Id de su pertenencia, su rol **efectivo** y los permisos de ese rol (`Customers.Read`, `Jobs.Assign`...). Es una lectura de **uno mismo**, y tiene tres rasgos que conviene saber defender: **(1)** no lleva ningún parámetro: la cuenta sale del token, así que nadie puede preguntar por otra persona (un `userId` o un `tenantId` en la consulta se ignora y hay un test que lo prueba); **(2)** el rol sale de la **base de datos**, no del token, como el resto de decisiones de la API: tras un cambio de rol, el mismo token ya recibe el rol nuevo; **(3)** la persona y la empresa se leen **a través de la pertenencia filtrada por empresa** (una sola sentencia), de modo que nada de otra empresa puede salir por aquí. La respuesta lleva `Cache-Control: no-store` y un test comprueba que tiene exactamente ocho campos y que ningún secreto (hash, secreto del segundo factor, códigos de recuperación, tokens) puede colarse. **Límite honesto:** los permisos que devuelve son **informativos, para pintar la interfaz**; quien decide es siempre la API en cada operación, así que un cliente que los falsifique solo consigue botones que dan 403.
+
+**«Cerrar todas mis sesiones» (spec 014).** `DELETE /api/v1/account/sessions`, permiso `Account.CloseSessions` (los cinco roles). Responde `204` sin cuerpo y con `Cache-Control: no-store`, **haya o no sesiones activas**, y revoca todos los refresh tokens activos de quien la pide. Como `/me`, no lleva ningún Id ni parámetro: la cuenta sale del token y un `userId` ajeno en la ruta, la consulta o el cuerpo se ignora (en la ruta, `/account/sessions/{id}` ni existe: `404`). Exige una sesión de **empresa** (sin token, con basura o con una sesión de plataforma da `401`; una empresa suspendida, `403 tenant.suspended`; un miembro quitado con el token aún válido, `403`). Deja el evento `1008` con el recuento. **Límite honesto:** el access token ya emitido sigue valiendo hasta que caduque (30 minutos); lo que se corta es poder renovarlo.
 
 **Las rutas (spec 009).** Cada una exige sesión (salvo aceptar), y quién puede lo decide el permiso más la jerarquía, no el endpoint:
 
@@ -299,7 +303,8 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **treinta y dos event
 | `1005` | **Cuenta bloqueada** | La cuenta llegó a 5 intentos fallidos y queda bloqueada 15 minutos (con el recuento y la duración, sin el email). Se registra una vez por bloqueo |
 | `1006` | **Intento con la cuenta bloqueada** | Alguien intenta entrar en una cuenta bloqueada. Una ráfaga de estos sobre el mismo `UserId` es un ataque en curso |
 | `1007` | **Sesión cerrada** (spec 013) | Alguien cerró una sesión: se revocó su refresh token (con el `UserId` y el `TenantId`, nunca el token ni su hash). Solo se registra cuando se cierra algo de verdad; cerrar con un token desconocido, caducado o ya revocado no deja evento. Un `1003` justo después del `1007` del mismo usuario es alguien usando el token que acaba de cerrarse: una copia |
-| `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register`, `refresh` o `logout` |
+| `1008` | **Todas las sesiones cerradas** (spec 014) | Una persona pidió cerrar todas sus sesiones: lleva el `UserId` y **cuántas** cerró (nunca tokens ni hashes). Se registra en **cada** petición, también con cero: «alguien pidió cerrar todo y no había nada» es información. Un `1008` seguido de `1003` del mismo usuario es alguien usando una copia de un token que acaba de cerrarse |
+| `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register`, `refresh`, `logout` o `account/sessions` |
 | `1201` | Excepción no controlada | Un 500; se registra con el detalle interno completo |
 | `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso, o intenta gestionar a un rol que no le corresponde (la jerarquía de roles) |
 | `1302` | **Pertenencia revocada** | Un token todavía válido de alguien que ya no pertenece a la empresa (se le quitó mientras el token seguía vivo). La revalidación en cada petición lo detecta |
@@ -501,7 +506,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Autenticación**
 1. ✅ **Cerrado (spec 010): hay bloqueo de cuenta.** Además del límite por IP, cada cuenta se bloquea 15 minutos tras 5 fallos (capítulo 6), con el intento reservado antes de comprobar la contraseña para que las peticiones simultáneas no lo esquiven. **Riesgo aceptado:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito; se mitiga con el límite por IP y los eventos `1005`/`1006`. Los NEXT: bloqueo progresivo y desbloqueo manual.
 2. ✅ **Cerrado (spec 010) en el login: el tiempo de respuesta ya no delata si un email existe** (misma verificación completa para desconocido, bloqueada y errónea). **Sigue abierto** que el registro diga "ese email ya está registrado".
-3. **Cierre de sesión en el servidor (spec 013): parcial.** Desde la spec 013 `POST /auth/logout` revoca el refresh token (capítulo 6), así que quien cierra sesión ya no puede renovarla ni nadie con una copia. Sigue abierto que **un token de acceso no se puede anular antes de caducar** (hasta 30 minutos; arreglarlo pide un `sid` en el token) y que no hay "cerrar todas mis sesiones". Desde la spec 009 esto afecta menos a la autorización, porque la pertenencia se revalida en cada petición, pero un usuario **sigue autenticado** hasta que el token caduca.
+3. **Cierre de sesión en el servidor (spec 013): parcial.** Desde la spec 013 `POST /auth/logout` revoca el refresh token (capítulo 6), así que quien cierra sesión ya no puede renovarla ni nadie con una copia. Desde la spec 014 también existe **"cerrar todas mis sesiones"** (`DELETE /account/sessions`), el caso del móvil perdido. Sigue abierto que **un token de acceso no se puede anular antes de caducar** (hasta 30 minutos; arreglarlo pide un `sid` en el token o un «sesiones válidas desde» por cuenta), por lo que el ladrón de un móvil conserva ese margen aunque ya no pueda renovar. Desde la spec 009 esto afecta menos a la autorización, porque la pertenencia se revalida en cada petición, pero un usuario **sigue autenticado** hasta que el token caduca.
 
    Y, con el segundo factor (spec 010), estos límites se añaden a los de la autenticación:
 
