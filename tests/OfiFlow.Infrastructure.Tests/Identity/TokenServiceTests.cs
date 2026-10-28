@@ -140,6 +140,138 @@ public class TokenServiceTests
         Assert.DoesNotContain(issued.RefreshToken, entry.Message);
     }
 
+    // ===== Cerrar sesión (spec 013) =====
+
+    [Fact]
+    public async Task Revoke_OfAnActiveToken_RevokesThatOneRow_AndTheTokenNoLongerRotates()
+    {
+        var (db, service) = CreateSut();
+        var session = await SeedSessionAsync(db, service, suspended: false);
+
+        var closed = await service.RevokeRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.True(closed);
+        var stored = await db.RefreshTokens.SingleAsync(); // se revoca, no se borra (D3)
+        Assert.NotNull(stored.RevokedAt);
+    }
+
+    [Fact]
+    public async Task Revoke_ClosesOnlyThatSession_TheOtherDeviceOfTheSameAccountKeepsWorking()
+    {
+        var (db, service) = CreateSut();
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        var otherDevice = await service.IssueTokensAsync(session.UserId, session.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+
+        await service.RevokeRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.Single(await db.RefreshTokens.Where(t => t.RevokedAt == null).ToListAsync()); // solo queda activa la del otro dispositivo
+        Assert.NotEqual(session.RefreshToken, otherDevice.RefreshToken);
+        Assert.NotNull(await service.RotateRefreshTokenAsync(otherDevice.RefreshToken, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Revoke_ThenRotateWithTheSameToken_IsTreatedAsReuse_AndRevokesTheChain()
+    {
+        // R6: un token que el cliente legítimo ya cerró y alguien usa después es, por definición, una copia.
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        var otherDevice = await service.IssueTokensAsync(session.UserId, session.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+        await service.RevokeRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        var reuse = await service.RotateRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.Null(reuse);
+        Assert.Single(logger.Entries, e => e.EventId.Id == SecurityEventIds.RefreshTokenReuseDetected);
+        Assert.Null(await service.RotateRefreshTokenAsync(otherDevice.RefreshToken, CancellationToken.None)); // la cadena cayó
+    }
+
+    [Fact]
+    public async Task Revoke_OfAnUnknownToken_ChangesNothing_AndLogsNothing()
+    {
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var session = await SeedSessionAsync(db, service, suspended: false);
+
+        var closed = await service.RevokeRefreshTokenAsync("token-que-no-existe", CancellationToken.None);
+
+        Assert.False(closed);
+        Assert.Null((await db.RefreshTokens.SingleAsync()).RevokedAt);
+        Assert.Empty(logger.Entries);
+    }
+
+    [Fact]
+    public async Task Revoke_OfAnAlreadyRevokedToken_ChangesNothing_AndDoesNotRevokeTheChain()
+    {
+        // R3: cerrar con un token ya rotado NO es una reutilización; los demás tokens de la cuenta siguen vivos.
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        var otherDevice = await service.IssueTokensAsync(session.UserId, session.Tenant.Id, TenantRole.Owner, CancellationToken.None);
+        await service.RevokeRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+        var revokedAt = (await db.RefreshTokens.SingleAsync(t => t.RevokedAt != null)).RevokedAt;
+        logger.Entries.Clear();
+
+        var closedAgain = await service.RevokeRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.False(closedAgain);
+        Assert.Equal(revokedAt, (await db.RefreshTokens.SingleAsync(t => t.RevokedAt != null)).RevokedAt); // la fecha no se pisa
+        Assert.Single(await db.RefreshTokens.Where(t => t.RevokedAt == null).ToListAsync()); // el otro dispositivo sigue activo
+        Assert.Empty(logger.Entries);
+        Assert.NotNull(await service.RotateRefreshTokenAsync(otherDevice.RefreshToken, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Revoke_OfAnExpiredToken_ChangesNothing_AndLogsNothing()
+    {
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var value = "token-caducado";
+        var hash = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
+        db.RefreshTokens.Add(new RefreshToken(userId, tenantId, hash, DateTime.UtcNow.AddMinutes(-1)));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        var closed = await service.RevokeRefreshTokenAsync(value, CancellationToken.None);
+
+        Assert.False(closed);
+        Assert.Null((await db.RefreshTokens.SingleAsync()).RevokedAt);
+        Assert.Empty(logger.Entries);
+    }
+
+    [Fact]
+    public async Task Revoke_OfAnActiveToken_LogsOneSecurityEvent_WithIdsOnly_NeverTheTokenNorItsHash()
+    {
+        var logger = new ListLogger<TokenService>();
+        var (db, service) = CreateSut(logger);
+        var session = await SeedSessionAsync(db, service, suspended: false);
+        var hash = (await db.RefreshTokens.SingleAsync()).TokenHash;
+
+        await service.RevokeRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        var entry = Assert.Single(logger.Entries, e => e.EventId.Id == SecurityEventIds.SessionClosed);
+        Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Information, entry.Level);
+        Assert.Contains(session.UserId.ToString(), entry.Message);
+        Assert.Contains(session.Tenant.Id.ToString(), entry.Message);
+        Assert.DoesNotContain(session.RefreshToken, entry.Message);
+        Assert.DoesNotContain(hash, entry.Message);
+    }
+
+    [Fact]
+    public async Task Revoke_OfASuspendedCompanysToken_StillClosesIt()
+    {
+        // R5: cerrar sesión no se bloquea por la empresa.
+        var (db, service) = CreateSut();
+        var session = await SeedSessionAsync(db, service, suspended: true);
+
+        var closed = await service.RevokeRefreshTokenAsync(session.RefreshToken, CancellationToken.None);
+
+        Assert.True(closed);
+        Assert.NotNull((await db.RefreshTokens.SingleAsync()).RevokedAt);
+    }
+
     // ===== Empresa suspendida (spec 011 R15b) =====
 
     /// <summary>Una empresa real (con su fila, para que la suspensión pueda leerse) y un miembro suyo con sesión emitida.</summary>

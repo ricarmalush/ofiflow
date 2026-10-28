@@ -24,13 +24,14 @@ En el modelo **AAA** de CyberOps (*Authentication, Authorization, Accounting*), 
 
 ## Las operaciones anónimas
 
-Hay cuatro rutas **anónimas** (no exigen sesión, porque sirven justo para conseguirla; la cuarta es para quien aún no tiene cuenta):
+Estas son las rutas **anónimas** de la primera hora (no exigen sesión, porque sirven justo para conseguirla, para quien aún no tiene cuenta o —el cierre de sesión— para poder salir con la sesión ya caducada; el canje del segundo factor, anónimo también, está en la Parte 7):
 
 | Ruta | Qué hace | Límite de peticiones |
 |---|---|---|
 | `POST /api/v1/auth/register` | Crea una empresa y su primer usuario | 3 por hora y por IP |
 | `POST /api/v1/auth/login` | Comprueba la contraseña y entrega los tokens | 5 por minuto y por IP |
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
+| `POST /api/v1/auth/logout` | Cierra la sesión de un *refresh token* (lo revoca; spec 013, Parte 5) | 20 por minuto y por IP (cubo propio, distinto del de renovar) |
 | `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
 
 (Los límites están en [`RateLimiting.cs:44-46`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
@@ -301,6 +302,24 @@ Un token revocado **no debería volver a aparecer** nunca, salvo que lo hayan co
 
 Dos tests lo demuestran: `RotateRefreshTokenAsync_WithAlreadyRevokedToken_RevokesWholeChainAndReturnsNull` y `..._LogsSecurityEventWithoutTheToken`.
 
+### Cerrar sesión de verdad (spec 013)
+
+Hasta aquí, "Cerrar sesión" en la pantalla solo hacía que el navegador se **olvidara** de los tokens. El refresh token seguía vivo en la base de datos hasta 7 días: si alguien lo había copiado antes (un portátil compartido, una extensión maliciosa), podía seguir renovando la sesión **después** de que Marta pulsara "Salir". Un cierre de sesión que no cierra nada en el servidor es un fallo clásico.
+
+Ahora existe `POST /api/v1/auth/logout` con el refresh token en el cuerpo ([`RevokeRefreshTokenAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)). Las decisiones, y el porqué de cada una:
+
+| Decisión | Por qué |
+|---|---|
+| **Anónimo**: el refresh token es la credencial, no se pide token de acceso | El caso más frecuente es volver con el token de acceso ya caducado y pulsar "Salir". Exigir sesión para cerrarla obligaría a renovar primero, que es absurdo |
+| **Solo esa sesión** (ese dispositivo) | Cerrar el portátil no debe echar al móvil. "Cerrar en todos" será su propia ruta, autenticada |
+| **Se revoca, no se borra** la fila | Así, si alguien usa después ese token, `/auth/refresh` lo ve como un token revocado y dispara la detección de robo de arriba (evento `1003`, cadena revocada): un token que su dueño ya destruyó y alguien usa es, por definición, una copia. Borrarlo lo haría indistinguible de un token inventado |
+| **`204` siempre** si la forma es válida (exista el token o no, esté caducado o ya rotado) | Si respondiera `401` a los inválidos, la ruta serviría para comprobar si un token robado sigue vivo. Quien no tiene el token no aprende nada |
+| Cerrar con un token **ya rotado no revoca la cadena** | Presentarlo en `/refresh` es un *uso*; presentarlo en `/logout` es un *cierre*. Confundirlos haría que un cliente que cierra con un token viejo echara a todos sus dispositivos |
+| Un evento `1007` **solo cuando se cierra algo de verdad**, con Ids y sin token ni hash | El frontend cierra sesión siempre, aunque ya no haya sesión: registrar cada intento sin efecto sería ruido |
+| **Cubo de límite propio** (`auth-logout`, 20/min/IP) | Que cerrar sesión no gaste el presupuesto de renovar |
+
+**Lo que no hace, y está dicho:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos (es un JWT sin estado). Lo que se corta es poder **renovarlo**. Anularlo antes exigiría un identificador de sesión (`sid`) en el token y comprobarlo en cada petición; está anotado como NEXT. Un test (`TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit`) deja el límite escrito en el código para que nadie crea que no existe.
+
 ---
 
 ## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)
@@ -517,7 +536,7 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **3. El registro revela si un email ya está en uso.** Responde "el email ya está registrado". Es cómodo para el usuario, pero permite comprobar si alguien tiene cuenta. Se revisará cuando exista confirmación de email.
 
-**4. No hay cierre de sesión en el servidor.** No existe un endpoint para revocar un refresh token. Hoy, "cerrar sesión" sería solo olvidar los tokens en el cliente, y el refresh token seguiría siendo válido hasta que caduque o rote.
+**4. ✅ Cerrado (spec 013): hay cierre de sesión en el servidor.** `POST /auth/logout` revoca el refresh token (Parte 5). **Lo que sigue abierto:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos (lo que se corta es poder renovarlo; anularlo antes exige llevar un identificador de sesión `sid` en el token, que es el NEXT), y "cerrar todas mis sesiones" no existe como ruta.
 
 **5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007).
 

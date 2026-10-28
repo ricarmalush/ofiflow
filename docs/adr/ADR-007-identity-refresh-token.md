@@ -64,7 +64,7 @@ Se decide:
 
 ### Qué queda abierto para revisar más adelante
 - Duración exacta del JWT de acceso y del refresh token — ajustar con datos reales de uso durante la fase Beta (sección 69 del prompt maestro).
-- Mecanismo de revocación manual de sesiones (ej. "cerrar sesión en todos los dispositivos") — no necesario para el MVP inicial.
+- Mecanismo de revocación manual de sesiones. **Una sola sesión: cerrado por la spec 013** (`POST /auth/logout`). Sigue abierto "cerrar sesión en todos los dispositivos" — no necesario para el MVP inicial.
 - Si se necesitan permisos granulares (`Customers.Read`, `Jobs.Write`, etc.) además del rol en `TenantUser`, y cómo convivirían con este modelo — sigue abierto desde ADR-004, sin cambios.
 
 ---
@@ -74,3 +74,4 @@ Se decide:
 - Depende de: ADR-004 (Identity — usa ASP.NET Core Identity, `TenantUser.Role` y JWT ya decididos allí; esta ADR cierra los dos puntos que ADR-004 dejó explícitamente abiertos).
 - Depende de: ADR-005 (Modular Monolith — `Domain.User` e Identity se ubican en sus carpetas de contexto correspondientes).
 - Afecta a: ADR-002 (Multi-Tenancy — el `Id` compartido entre `Domain.User` y `ApplicationUser` es el mismo que referencia `TenantUser.UserId`).
+- Ampliada por: la spec 013 (cierre de sesión en el servidor): el ciclo de vida del refresh token gana el **cierre voluntario** (`POST /auth/logout`, anónimo, que lo revoca sin borrarlo para que su uso posterior dispare la detección de reutilización). No cambia ninguna decisión de esta ADR; cierra el punto abierto "revocación manual de sesiones" en su parte de una sola sesión. Sigue abierto "cerrar todas mis sesiones" y anular el token de acceso antes de caducar (`sid`).

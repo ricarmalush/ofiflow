@@ -1,6 +1,7 @@
 using FluentValidation.TestHelper;
 using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.Login;
+using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
 using OfiFlow.Domain.Identity;
@@ -76,5 +77,44 @@ public class IdentityValidatorTests
     {
         _refresh.TestValidate(new RefreshTokenCommand(new string('a', 201)))
             .ShouldHaveValidationErrorFor(x => x.RefreshToken);
+    }
+
+    // Spec 013: el cierre de sesión acepta exactamente la misma forma que la renovación.
+    private readonly LogoutCommandValidator _logout = new();
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    [InlineData("a", true)]
+    public void Logout_RefreshToken_MustNotBeEmpty(string? token, bool valid)
+    {
+        var result = _logout.TestValidate(new LogoutCommand(token!));
+
+        if (valid)
+        {
+            result.ShouldNotHaveValidationErrorFor(x => x.RefreshToken);
+        }
+        else
+        {
+            result.ShouldHaveValidationErrorFor(x => x.RefreshToken);
+        }
+    }
+
+    [Theory]
+    [InlineData(200, true)]
+    [InlineData(201, false)]
+    public void Logout_RefreshToken_IsLimitedTo200Characters(int length, bool valid)
+    {
+        var result = _logout.TestValidate(new LogoutCommand(new string('a', length)));
+
+        if (valid)
+        {
+            result.ShouldNotHaveValidationErrorFor(x => x.RefreshToken);
+        }
+        else
+        {
+            result.ShouldHaveValidationErrorFor(x => x.RefreshToken);
+        }
     }
 }

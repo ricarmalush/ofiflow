@@ -7,6 +7,7 @@ using OfiFlow.Application.Customers.Queries.GetCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomers;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.Login;
+using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Queries.GetCurrentAccount;
 using OfiFlow.Application.Identity.Commands.Register;
@@ -42,7 +43,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 36 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy») declara exactamente el permiso aprobado, o la marca de anónima.
+/// 37 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy» y, de la spec 013, la de cerrar sesión) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -84,6 +85,7 @@ public class OperationPermissionsTests
         typeof(RegisterCommand),
         typeof(LoginCommand),
         typeof(RefreshTokenCommand),
+        typeof(LogoutCommand), // spec 013: anónima, el refresh token es la credencial (y tiene que poder cerrarse con el access token caducado)
         typeof(AcceptInvitationCommand), // spec 009: anónima, el token de la invitación es la credencial
         typeof(VerifyMfaChallengeCommand), // spec 010: anónima, el desafío del primer paso es la credencial
         typeof(PlatformLoginCommand), // spec 011: anónima, la contraseña del operador es la credencial (y solo da un desafío)
@@ -183,7 +185,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(36, inTheTable.Count);
+        Assert.Equal(37, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

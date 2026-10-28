@@ -31,6 +31,15 @@ public sealed class FakeTokenService : ITokenService
         return Task.CompletedTask;
     }
 
+    /// <summary>Los refresh tokens que se pidió cerrar, en orden.</summary>
+    public List<string> RevokedRefreshTokens { get; } = [];
+
+    public Task<bool> RevokeRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken)
+    {
+        RevokedRefreshTokens.Add(refreshToken);
+        return Task.FromResult(refreshToken == ValidRefreshToken);
+    }
+
     public Task<AuthResultDto?> RotateRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken) =>
         Task.FromResult(refreshToken == ValidRefreshToken
             ? new AuthResultDto("new-access-token", "new-refresh-token", DateTime.UtcNow.AddMinutes(30))
