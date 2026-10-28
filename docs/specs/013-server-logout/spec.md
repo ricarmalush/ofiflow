@@ -1,6 +1,6 @@
 # Spec — 013-server-logout
 
-**Estado:** Implementada en la API (2026-10-27); decisiones D1–D7 aprobadas. Pendiente el frontend (bloque 5 de las tareas) y el cierre externo (commit, PR, merge)
+**Estado:** Implementada (2026-10-28): API (PR #48) y frontend (`ofiflow-frontend`, 53fe055). Decisiones D1–D7 aprobadas
 **Fecha:** 2026-10-27
 **Bounded Context:** Identity (sesiones)
 **Depende de:** ADR-007 (refresh token con rotación y detección de reutilización), ADR-009 (seguridad base: eventos de seguridad, límite de peticiones), ADR-013 (la pertenencia y el rol se revalidan en cada petición), ADR-016 (la empresa suspendida)

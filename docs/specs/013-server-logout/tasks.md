@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionada:** [ADR-007](../../adr/ADR-007-identity-refresh-token.md) (se amplía con el cierre voluntario; sin ADR nueva)
-**Estado general:** Bloques 1–4 hechos en la API (2026-10-27); pendientes el bloque 5 (frontend) y el cierre externo (commit, push, PR y merge, cada uno con confirmación explícita).
+**Estado general:** Implementada (2026-10-28). Bloques 1–5 hechos; el cierre externo del backend es el PR #48 (el frontend ya está publicado en `ofiflow-frontend`, 53fe055).
 
 ---
 
@@ -41,12 +41,12 @@
 - [x] Verificación contra la API publicada de verdad (script fuera del repositorio)
 - [x] [manual] Capítulo 9 (cifras y tests nuevos), `docs/README.md`, ADR-007 (relación) y estado de la spec y de las tareas
 - [x] Suite completa, proyecto a proyecto
-- [ ] [externo] Commit, push de la rama, PR y merge, cada uno con confirmación explícita
+- [ ] [externo] Commit (b3a6111) y push hechos, PR #48 abierto; falta el merge, que se hace con confirmación explícita
 
 ### Bloque 5 — Frontend (repositorio `ofiflow-frontend`)
-- [ ] `AuthService.logout()` avisa al servidor (sin esperar, sin reintentar) y borra lo local **siempre**; no se llama con la sesión que ya se cerró; el interceptor no entra en bucle con esta ruta
-- [ ] Tests: con red, sin red y con error del servidor, siempre se limpia la sesión; el cuerpo lleva el refresh token; sin refresh token no hay llamada
-- [ ] Comprobación en vivo contra la API y commit (con orden explícita)
+- [x] `AuthService.logout()` avisa al servidor (sin esperar, sin reintentar) y borra lo local **siempre**; no se llama con la sesión que ya se cerró; el interceptor no entra en bucle con esta ruta
+- [x] Tests: con red, sin red y con error del servidor, siempre se limpia la sesión; el cuerpo lleva el refresh token; sin refresh token no hay llamada
+- [x] Comprobación en vivo contra la API y commit (53fe055): con el navegador integrado, al pulsar «Salir» sale `POST /auth/logout` → 204, el token copiado da `401` en `/auth/refresh` (con evento `1003`) y sin red la sesión local también se limpia
 
 ---
 
@@ -55,3 +55,7 @@
 14 mutaciones sobre el código real, con copia de seguridad: 13 detectadas y 1 equivalente. La equivalente (`RequireAuthorization()` en la ruta) no cambia el comportamiento porque el grupo `/auth` es `AllowAnonymous` y esa marca gana; el «exigir sesión» real (quitar `[AllowAnonymousRequest]`) rompe 13 tests. La mutación de registrar el hash la cazó solo Infrastructure la primera vez: se reforzó el test de la API para que revise todo el registro y se repitió (detectada). Una primera tanda apuntó sin querer a la rotación (el script cambió la primera coincidencia); se repitió dirigiendo por número de línea.
 
 Cifras tras el bloque: Domain 229, Application 584, Infrastructure 323, Api 474 = **1610 casos**, todos en verde.
+
+## Frontend (bloque 5): resultado
+
+`AuthService.logout()` lee el refresh token, borra lo local primero y siempre, y avisa a `POST /auth/logout` sin esperar ni reintentar; sin refresh token no hay llamada. 152 tests (8 nuevos), 7 mutaciones a mano, todas detectadas (la de quitar el manejador de error la caza Karma como error no capturado).
