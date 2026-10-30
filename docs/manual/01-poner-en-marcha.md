@@ -251,7 +251,7 @@ Te pide que escribas `SI`. La baja deja una fila en la auditoría y surtirá efe
 | Los tests de integración fallan al instante | Docker no está en marcha | Arranca Docker Desktop y repite |
 | **429** en el registro o el login | Superaste el límite de peticiones por IP | Espera lo que indica `Retry-After` |
 | **400** al registrar | Datos inválidos, o el email ya está registrado | Lee `code` y `errors` de la respuesta: son estables (capítulo 7) |
-| **401** en una ruta de clientes o trabajos | Falta el token o ha caducado (dura 30 minutos) | Inicia sesión de nuevo o usa `/auth/refresh` |
+| **401** en una ruta de clientes o trabajos | Falta el token, ha caducado (dura 30 minutos) o **su sesión se cerró** (cerrar sesión, cerrar todas, segundo factor, baja; spec 015) | Inicia sesión de nuevo o usa `/auth/refresh` (si la sesión se cerró, el refresh token también está revocado: hay que volver a entrar) |
 
 ## Dónde mirar después
 

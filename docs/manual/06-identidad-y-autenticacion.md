@@ -63,7 +63,7 @@ dbContext.ApplicationUsers.Add(user);
 
 **Y al revés, para quitar a alguien (spec 009).** Hay dos operaciones gemelas que siguen **la misma regla** de no confirmar por su cuenta: [`IdentityService.DeleteUserAsync`](../../src/OfiFlow.Infrastructure/Identity/IdentityService.cs) borra las credenciales (y con ello el email vuelve a quedar libre) y [`TokenService.DeleteRefreshTokensAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) borra **todos** los refresh tokens del usuario, también los ya revocados: así no puede renovar la sesión y no quedan filas huérfanas (los tokens guardan el `UserId` sin clave foránea, así que la base no las borraría sola). Las usa el caso de uso [`RemoveUserCommandHandler`](../../src/OfiFlow.Application/Tenancy/Commands/RemoveUser/RemoveUserCommandHandler.cs), junto con la pertenencia, la ficha y la desasignación de los trabajos sin terminar, en un único `SaveChanges`: **todo o nada**. Está probado con los servicios reales y SQL Server real: tras la baja no queda ninguna fila de esa persona, no puede iniciar sesión ni renovar la sesión, y su email se puede volver a usar. Y una baja que falla a medias no borra nada.
 
-**Y el token de acceso que ya tuviera no le sirve de nada.** El token sigue sin caducar hasta 30 minutos (un JWT no se puede anular), pero ya no importa: en **cada** petición se comprueba en la base de datos que la persona sigue en la empresa y con qué rol (capítulo 8), así que una vez quitada recibe un 403 en su siguiente petición, no a los 30 minutos.
+**Y el token de acceso que ya tuviera no le sirve de nada.** El token sigue sin caducar hasta 30 minutos (un JWT no se puede anular por sí solo), pero ya no importa, por dos barreras que se comprueban en **cada** petición. La primera, desde la spec 015: el token lleva el Id de su sesión y esa sesión ya no existe (la baja borró sus refresh tokens), así que recibe un **401** en su siguiente petición (ver «El token muere con su sesión», más abajo). La segunda, la de la spec 009: se comprueba en la base de datos que la persona sigue en la empresa y con qué rol (capítulo 8), y si ya no es miembro pero su sesión seguía activa, recibe un **403**. En ningún caso a los 30 minutos.
 
 Solo anota "este usuario es nuevo". Es `SaveChangesAsync`, que llama el handler **una única vez** al final (línea 33), quien escribe las cuatro filas juntas: o se guardan todas, o ninguna. Hay un test que lo demuestra: [`Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing`](../../tests/OfiFlow.Application.Tests/Identity/RegisterCommandHandlerTests.cs).
 
@@ -218,6 +218,7 @@ El contenido de un token de OfiFlow es este (ejemplo con valores inventados):
   "sub": "5f2c9e0a-...",          // quién eres (el Id del usuario)
   "tenant_id": "8d1f3b7c-...",    // en qué empresa trabajas
   "role": "Owner",                // con qué rol
+  "sid": "c3a1b6d2-...",          // de qué sesión es (spec 015)
   "iss": "OfiFlow.Api",           // quién lo emitió
   "aud": "OfiFlow.Client",        // para quién es
   "exp": 1791234567               // cuándo caduca
@@ -237,6 +238,7 @@ En cada petición, el servidor comprueba el token con estas reglas ([`Dependency
 | La **firma** | Un token falsificado o modificado |
 | El **emisor** (`iss`) y el **destinatario** (`aud`) | Un token emitido para otra aplicación |
 | La **caducidad**, sin margen de tolerancia (`ClockSkew = 0`) | Un token viejo reutilizado |
+| Que su **sesión siga activa** (`sid`, spec 015): hay un refresh token sin revocar y sin caducar de esa sesión y de esa cuenta | Un token que sigue sin caducar pero cuya sesión ya se cerró (el móvil perdido) |
 
 Y en la configuración, un detalle que dio un susto de verdad: `options.MapInboundClaims = false` (línea 63).
 
@@ -250,9 +252,11 @@ El secreto que firma los tokens es lo más delicado de todo el sistema: quien lo
 - **Si falta, la aplicación no arranca**, con un mensaje que indica el comando exacto ([`DependencyInjection.cs:78-84`](../../src/OfiFlow.Infrastructure/DependencyInjection.cs)). Prefiere no funcionar a funcionar con una clave débil por defecto.
 - En los tests se genera uno distinto en cada ejecución.
 
-### Un límite inevitable
+### Un límite inevitable (y cómo se resolvió)
 
 Un JWT es *sin estado* (*stateless*): el servidor no guarda la lista de tokens vigentes, solo comprueba la firma. Eso lo hace rápido y escalable, pero significa que **un token válido no se puede "anular"** antes de que caduque. Por eso dura poco: 30 minutos. Si alguien lo robara, el daño tiene fecha de caducidad.
+
+Hasta la spec 015 eso era todo lo que se podía hacer: cerrar la sesión cortaba la **renovación**, pero el token ya emitido seguía valiendo hasta 30 minutos. Ahora el token **no es puramente sin estado**: lleva el Id de su sesión y la API comprueba, además de la firma, que esa sesión siga activa. Es el precio de poder revocarlo, y está explicado en la [ADR-018](../adr/ADR-018-sesion-ligada-al-access-token.md) y en «El token muere con su sesión» (más abajo).
 
 ---
 
@@ -319,7 +323,7 @@ Ahora existe `POST /api/v1/auth/logout` con el refresh token en el cuerpo ([`Rev
 | Un evento `1007` **solo cuando se cierra algo de verdad**, con Ids y sin token ni hash | El frontend cierra sesión siempre, aunque ya no haya sesión: registrar cada intento sin efecto sería ruido |
 | **Cubo de límite propio** (`auth-logout`, 20/min/IP) | Que cerrar sesión no gaste el presupuesto de renovar |
 
-**Lo que no hace, y está dicho:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos (es un JWT sin estado). Lo que se corta es poder **renovarlo**. Anularlo antes exigiría un identificador de sesión (`sid`) en el token y comprobarlo en cada petición; está anotado como NEXT. Un test (`TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit`) deja el límite escrito en el código para que nadie crea que no existe.
+**Lo que esta spec no hacía, y la 015 resolvió:** el *token de acceso* ya emitido seguía valiendo hasta 30 minutos (es un JWT sin estado); lo que se cortaba era poder **renovarlo**. Un test (`TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit`) dejaba ese límite escrito en el código. Desde la spec 015 ese test se llama `TheAccessTokenOfTheClosedSession_IsRejectedAtOnce_NotAfter30Minutes` y espera un **401** (ver «El token muere con su sesión», más abajo).
 
 ### Cerrar todas mis sesiones (spec 014)
 
@@ -336,7 +340,32 @@ El caso que el cierre de una sola sesión no resuelve es **perder el móvil**: l
 | **Un evento `1008` en cada petición, con el recuento (cero incluido)** | A diferencia de `1007`, es una acción explícita y rara de una persona identificada: «alguien pidió cerrar todo y no había nada» es información. Lleva el `UserId` y un número, nunca tokens ni hashes |
 | **`Cache-Control: no-store`** y **cubo de límite propio** (`account-sessions`, 10/hora/IP) | Como el resto de la cuenta; y que gastar el cubo de cerrar todas no afecte a renovar ni a cerrar una sesión |
 
-**Lo que no hace, y está dicho:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos, igual que en la spec 013. Es justo el caso del móvil perdido: el ladrón conserva ese margen aunque ya no pueda renovarlo. Un test (`TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit`, en `CloseAllSessionsEndToEndTests`) lo deja escrito. **Carrera conocida y aceptada:** si en el mismo instante hay un `/auth/refresh` en vuelo de esa cuenta, puede nacer un token nuevo justo después de la revocación y sobrevivir; la ventana es de milisegundos y repetir la operación lo cierra. No se añade bloqueo (coste desproporcionado para el riesgo).
+**Lo que esta spec no hacía, y la 015 resolvió:** el *token de acceso* ya emitido seguía valiendo hasta 30 minutos, igual que en la spec 013. Era justo el caso del móvil perdido: el ladrón conservaba ese margen aunque ya no pudiera renovarlo. Ahora los access tokens de **todas** esas sesiones dan `401` en la petición siguiente (el test se llama `TheAccessTokensOfEveryClosedSession_AreRejectedAtOnce_NotAfter30Minutes`). **Carrera conocida y aceptada:** si en el mismo instante hay un `/auth/refresh` en vuelo de esa cuenta, puede nacer un token nuevo justo después de la revocación y sobrevivir; la ventana es de milisegundos y repetir la operación lo cierra. No se añade bloqueo (coste desproporcionado para el riesgo).
+
+Otra consecuencia de la spec 015: **quien llama siempre tiene al menos una sesión activa (la suya)**, porque su propio access token solo vale si esa sesión sigue viva. Así que el `204` con recuento **cero** que prometía la spec 014 ya no se alcanza por HTTP (una segunda llamada con el mismo token da `401`); el recuento cero sigue existiendo en el servicio y lo cubren sus tests.
+
+### El token muere con su sesión (spec 015)
+
+Hasta aquí, cerrar una sesión revocaba su **refresh token**: nadie podía renovar. Pero el *token de acceso* ya emitido, al ser un JWT sin estado, seguía valiendo hasta 30 minutos. La spec 015 lo ata a su sesión. Las piezas, y el porqué de cada una:
+
+| Pieza | Qué hace y por qué |
+|---|---|
+| **`RefreshToken.SessionId`** | Una *sesión* es un inicio de sesión **y todas sus renovaciones**. Iniciar sesión crea un `SessionId` nuevo; renovar crea una fila nueva **con el mismo** (el token anterior se revoca y el nuevo se inserta en la misma confirmación a la base de datos, así que la sesión nunca se queda sin un refresh token activo). Dos dispositivos, dos sesiones: cerrar el portátil no echa al móvil |
+| **El claim `sid`** del access token | Es el Id de la sesión. Lo escribe [`TokenService.GenerateAccessToken`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs) |
+| **[`SessionTokenValidation`](../../src/OfiFlow.Infrastructure/Identity/SessionTokenValidation.cs)**, conectado al evento `OnTokenValidated` del esquema de las empresas | Después de comprobar la firma y la caducidad, pregunta a `ITokenService.IsSessionActiveAsync(userId, sessionId)`: *¿existe un refresh token **de esa sesión y de esa cuenta**, sin revocar y sin caducar?* Si no, `context.Fail` ⇒ **`401`** sin cuerpo |
+| **Por qué va en la autenticación y da `401`, no `403`** | El interceptor del frontend solo renueva la sesión o vuelve al login ante un `401`. Un `403` (que es lo que daría comprobarlo en la autorización) dejaría a la persona ante errores sueltos en cada pantalla |
+| **Por qué el `UserId` va en la pregunta** | Sin él, el Id de sesión de una cuenta valdría en el token de otra. Un test fabrica un token firmado de verdad con *mi* `sub` y el `sid` de la sesión de *otra* persona: da `401` |
+| **Un token sin `sid` se rechaza** (fail-closed) | Son los emitidos antes de desplegar esto. Caducan en 30 minutos de todos modos y el frontend, al recibir el `401`, los renueva solo con su refresh token (que sigue valiendo: la migración da a cada fila antigua `SessionId = Id`) |
+| **El evento `1009`**, nivel `Information` | Con el motivo (`MissingSessionId` o `SessionNotActive`) y el `UserId`; nunca el token ni el `sid`. Que llegue un token de una sesión cerrada es **normal** (una petición en vuelo, una pestaña que no se enteró): no merece `Warning` |
+| **Solo el esquema de las empresas** | La sesión de plataforma (spec 011) no tiene refresh token (15 minutos fijos) y se comprueba por otra vía: que el operador siga activo, en cada petición |
+
+**Qué cierra:** cerrar una sesión (spec 013), todas (spec 014), la detección de reutilización, activar o desactivar el segundo factor y quitar a un miembro dejan a la sesión sin refresh token activo, y por tanto cortan **también** su access token, en la petición siguiente. Esas operaciones no se tocaron: es la comprobación nueva la que las hace inmediatas.
+
+**La migración, con cuidado.** La columna se añade **anulable**, cada fila existente pasa a ser su propia sesión (`SessionId = Id`) y solo entonces se vuelve `NOT NULL`, **sin valor por defecto**. Si EF la hubiera creado con el Guid vacío por defecto (lo que genera si no se corrige), todas las filas de hoy habrían sido **una sola sesión**. Se comprobó con la API real: sesiones creadas por la versión anterior sobre el esquema anterior, la migración aplicada encima y la versión nueva servida después. El access token anterior da `401`, y el refresh token anterior **renueva** y devuelve un token con `sid` igual al `SessionId` de la fila antigua.
+
+**Lo que cuesta.** Una consulta más por petición autenticada. Medido en local con la API real (300 peticiones a `GET /account/me`): mediana 12,17 ms → 13,66 ms y p95 30,06 ms → 32,35 ms. El plan de ejecución es un `Index Seek` sobre `IX_RefreshTokens_SessionId` (con `UserId`, `RevokedAt` y `ExpiresAt` incluidas en el índice), 2 lecturas lógicas, sin `Key Lookup` ni `Scan`. Sin caché a propósito: reintroduciría una ventana. Y como se consulta en cada petición, **purgar** las filas caducadas o revocadas (spec 016) pasa de deseable a necesaria a medio plazo.
+
+**Lo que no cierra.** Un token robado **mientras nadie cierra la sesión** sigue valiendo: esto cierra el robo *después* de cerrar sesión (el móvil perdido), no detecta que lo use otra persona. Una petición que ya pasó la comprobación cuando se cierra la sesión se completa; la siguiente falla.
 
 ---
 
@@ -454,7 +483,7 @@ Todas estas operaciones son sobre **la propia cuenta** (permiso `Mfa.Manage`, qu
 | **3. Desactivar** | Contraseña **y** un código (de la app o de recuperación) | Quien solo tenga la contraseña, o solo un token, no puede quitar el segundo factor |
 | **4. Regenerar códigos** | Contraseña y un código | Los anteriores, usados o no, dejan de valer |
 
-**Activar y desactivar cierran todas las sesiones de la cuenta.** Lo que cambia es *cómo se demuestra quién eres*, y las sesiones abiertas se abrieron con las reglas antiguas. Se hace en el **mismo `SaveChanges`** que el cambio, para que sea todo o nada. El token de acceso ya emitido sigue valiendo hasta 30 minutos (el límite de siempre).
+**Activar y desactivar cierran todas las sesiones de la cuenta.** Lo que cambia es *cómo se demuestra quién eres*, y las sesiones abiertas se abrieron con las reglas antiguas. Se hace en el **mismo `SaveChanges`** que el cambio, para que sea todo o nada. Desde la spec 015, además, el token de acceso ya emitido de esas sesiones deja de valer en la petición siguiente (antes valía hasta 30 minutos): su sesión se queda sin refresh token activo.
 
 **Un código no se acepta dos veces, ni siquiera a la vez.** El estándar (RFC 6238) lo exige: quien viera el código por encima del hombro podría reutilizarlo durante los 30 segundos de su vida. Se guarda el último paso aceptado, y se anota con un `UPDATE` condicional (`... WHERE LastUsedTimeStep < `): de cuatro peticiones simultáneas con el mismo código, **solo una cambia una fila**. Un `if` en el código no lo garantizaría, porque comprobar y escribir serían dos pasos. Con los códigos de recuperación pasa igual (`... WHERE UsedAt IS NULL`). Y cuando se acepta un código de un paso *posterior*, los anteriores dejan de valer aunque aún estén en la ventana de ±30 segundos.
 
@@ -532,7 +561,8 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 | Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs` (`LogLoginFailed` y los dos eventos del bloqueo) | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` (SQL real) y `TheSecurityEvents_AreLoggedWithoutTheEmailNorThePassword` (HTTP) |
 | Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
 | Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
-| Token de acceso robado | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:106-107` | **Sin test propio** (ver "Controles sin test") |
+| Token de acceso robado **tras cerrar la sesión** | La sesión del token ya no está activa (`sid`, spec 015): `401` en la petición siguiente | `SessionTokenValidation.cs` + `TokenService.IsSessionActiveAsync` | `TheAccessTokenOfTheClosedSession_IsRejectedAtOnce_NotAfter30Minutes`, `SessionTokenEndToEndTests` (19) |
+| Token de acceso robado **sin cerrar la sesión** | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:106-107` | **Sin test propio** (ver "Controles sin test") |
 | **Refresh token robado** | Rotación y detección de reutilización | `TokenService.cs:47-64` | `RotateRefreshTokenAsync_WithAlreadyRevokedToken_...` |
 | Base de datos robada: tokens utilizables | Solo se guarda el hash SHA-256 | `TokenService.cs:142` | `RotateRefreshTokenAsync_WithValidToken_...` |
 | Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token de la invitación | `OpaqueToken.cs`, `InviteUserCommandHandler.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
@@ -554,11 +584,11 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **3. El registro revela si un email ya está en uso.** Responde "el email ya está registrado". Es cómodo para el usuario, pero permite comprobar si alguien tiene cuenta. Se revisará cuando exista confirmación de email.
 
-**4. ✅ Cerrado (spec 013): hay cierre de sesión en el servidor.** `POST /auth/logout` revoca el refresh token (Parte 5). **Lo que sigue abierto:** el *token de acceso* ya emitido sigue valiendo hasta 30 minutos (lo que se corta es poder renovarlo; anularlo antes exige llevar un identificador de sesión `sid` en el token, que es el NEXT), y, desde la spec 014, **"cerrar todas mis sesiones" sí existe** (`DELETE /account/sessions`, Parte 5). Siguen abiertos: listar mis sesiones y cerrar una concreta, y purgar los refresh tokens caducados o revocados (las filas se acumulan).
+**4. ✅ Cerrado (specs 013, 014 y 015): hay cierre de sesión en el servidor, de una o de todas, y corta también el token de acceso.** `POST /auth/logout` revoca el refresh token y `DELETE /account/sessions` los de todas las sesiones (Parte 5); desde la spec 015 el *token de acceso* de esas sesiones también deja de valer en la petición siguiente (lleva el Id de su sesión, `sid`; ver «El token muere con su sesión»). Siguen abiertos: listar mis sesiones y cerrar una concreta, y purgar los refresh tokens caducados o revocados (las filas se acumulan).
 
 **5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007).
 
-**6. Un token de acceso no se puede anular** antes de caducar (hasta 30 minutos), por ser un JWT sin estado. Desde la spec 009 esto importa menos para la autorización: el rol y la pertenencia se revalidan en cada petición, así que un token de alguien al que se quitó de la empresa no autoriza nada. Sigue valiendo, en cambio, para lo que no consulta la base de datos (por ejemplo, la propia firma).
+**6. ✅ Resuelto (spec 015): un token de acceso se puede anular antes de caducar.** Por ser un JWT sin estado no se podía (valía hasta 30 minutos); ahora lleva el Id de su sesión y la API comprueba en cada petición que esa sesión siga activa (ADR-018). **Lo que sigue abierto:** un token robado *mientras nadie cierra la sesión* sigue valiendo hasta que caduque, y es una consulta más por petición (medida, ver «El token muere con su sesión»).
 
 **7. La rotación no tiene control de concurrencia explícito.** Si dos peticiones llegaran *a la vez* con el mismo refresh token, en teoría ambas podrían leerlo como válido antes de que ninguna lo revoque. No está probado ni se ha observado; lo apunto como pregunta abierta, no como fallo confirmado.
 

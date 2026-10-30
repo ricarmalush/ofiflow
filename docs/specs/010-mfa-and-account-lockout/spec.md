@@ -72,7 +72,7 @@ Es el primer límite que cierra el anexo del manual y el **requisito previo del 
 
 **Cerrar sesiones**
 
-- **R14.** Activar, desactivar y reiniciar el MFA **borran todos los refresh tokens** de la cuenta (como al quitar a un miembro, spec 009 R14): lo que cambia es *cómo se demuestra quién eres*, y las sesiones abiertas se abrieron con las reglas antiguas. El token de acceso que ya esté emitido sigue valiendo, como mucho, sus 30 minutos (límite conocido, el mismo que tenía la spec 009 antes de la revalidación).
+- **R14.** Activar, desactivar y reiniciar el MFA **borran todos los refresh tokens** de la cuenta (como al quitar a un miembro, spec 009 R14): lo que cambia es *cómo se demuestra quién eres*, y las sesiones abiertas se abrieron con las reglas antiguas. El token de acceso que ya esté emitido sigue valiendo, como mucho, sus 30 minutos (límite conocido, el mismo que tenía la spec 009 antes de la revalidación). **Actualización (spec 015, 2026-10-30):** ese límite ya no existe: el token de acceso de esas sesiones deja de valer en la petición siguiente (lleva el Id de su sesión y la API comprueba que siga activa; ver ADR-018).
 
 **Bloqueo de cuenta**
 

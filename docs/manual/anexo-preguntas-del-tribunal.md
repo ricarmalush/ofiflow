@@ -58,13 +58,13 @@ En **tres**, todos con motivo y en una lista blanca que vigila un test: el login
 Con el `PasswordHasher` de ASP.NET Core: **PBKDF2**, lento a propósito y con sal. Nunca en claro ni cifradas (un hash no se puede deshacer). Mínimo 8 caracteres y máximo 128, para no ejecutar el hash sobre entradas enormes. *(Cap. 6)*
 
 **¿Qué lleva el token de acceso y cuánto dura?**
-Es un JWT firmado (HMAC-SHA256) con el usuario, la empresa y el rol; dura **30 minutos**. El secreto con el que se firma no está en el repositorio: en local vive en *user-secrets* y en producción vendría de una variable de entorno o un gestor de secretos. *(Cap. 6, ADR-009)*
+Es un JWT firmado (HMAC-SHA256) con el usuario, la empresa, el rol y el **Id de su sesión** (`sid`); dura **30 minutos**. El secreto con el que se firma no está en el repositorio: en local vive en *user-secrets* y en producción vendría de una variable de entorno o un gestor de secretos. *(Cap. 6, ADR-009)*
 
 **¿Y el refresh token?**
 64 bytes aleatorios; en la base de datos solo se guarda su **hash**. Cada uso lo **rota** (emite uno nuevo y revoca el anterior). Si alguien presenta uno ya revocado, se interpreta como robo y se revoca toda la cadena del usuario. *(Cap. 6, ADR-007)*
 
 **Si roban un token de acceso, ¿qué pasa?**
-Vale hasta que caduque (un JWT no se puede anular), **pero** el rol y la pertenencia a la empresa se revalidan en la base de datos en cada petición, así que un token de alguien al que se quitó ya no autoriza nada. *(Cap. 6 y 8)*
+Depende de si su dueño ya cerró la sesión. **Si la cerró** (cerrar sesión, «cerrar todas mis sesiones», activar o desactivar el segundo factor, o quitar a esa persona de la empresa), el token **deja de valer en la petición siguiente**: lleva el Id de su sesión y la API comprueba en cada petición que esa sesión siga activa (`401`). Hasta la spec 015 no era así: un JWT no se puede anular y valía hasta 30 minutos. **Si no la cerró**, sigue valiendo hasta que caduque (esto no detecta que lo use otra persona), **pero** el rol y la pertenencia a la empresa se revalidan en la base de datos en cada petición, así que un token de alguien al que se quitó de la empresa no autoriza nada. El coste de poder anularlo es una consulta más por petición (medida: ~1,5 ms de mediana en local, por un índice que la cubre entera). *(Cap. 6 y 8, ADR-018)*
 
 **¿Cómo se frena la fuerza bruta?**
 Con un límite de peticiones por IP: 5 logins por minuto, 3 registros por hora, 10 aceptaciones de invitación por hora. Al pasarse, un 429 y un evento de seguridad. **Además, desde la spec 010, **cada cuenta se bloquea 15 minutos tras 5 fallos** aunque los intentos vengan de IP distintas, y el intento se reserva antes de comprobar la contraseña para que 50 peticiones simultáneas no den 50 intentos. **Límite honesto:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito. *(Cap. 6 y 8)*
