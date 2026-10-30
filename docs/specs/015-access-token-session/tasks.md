@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-007](../../adr/ADR-007-identity-refresh-token.md), [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) y [ADR-014](../../adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) (se anotan) y la **[ADR-018](../../adr/ADR-018-sesion-ligada-al-access-token.md)** nueva (D8)
-**Estado general:** API implementada y verificada (2026-10-30): 1686 tests en verde (Domain 235, Application 587, Infrastructure 347, Api 517), 14 mutaciones detectadas y verificación contra la API publicada, incluida la migración sobre sesiones reales de la versión anterior. **Pendiente:** commit, push, PR y merge (órdenes explícitas) y el bloque 4 (frontend).
+**Estado general:** API implementada y verificada (2026-10-30): 1686 tests en verde (Domain 235, Application 587, Infrastructure 347, Api 517), 14 mutaciones detectadas y verificación contra la API publicada, incluida la migración sobre sesiones reales de la versión anterior. Bloque 4 (frontend) hecho y verificado en vivo (182 tests, 6 mutaciones). **Pendiente:** push, PR y merge del backend, y commit y push del frontend (órdenes explícitas).
 
 ---
 
@@ -43,7 +43,7 @@
 - [ ] [externo] Commit, push de la rama, PR y merge (con `--merge`), cada uno con confirmación explícita
 
 ### Bloque 4 — Frontend (repositorio `ofiflow-frontend`)
-- [ ] Verificar en vivo que los flujos que cierran sesión siguen bien: «Cerrar todas mis sesiones», activar y desactivar el segundo factor (con la API real: ahora la petición siguiente da `401`)
-- [ ] El aviso «Tu sesión se cerró. Vuelve a entrar.» cuando la renovación falla tras un `401` (hoy se vuelve al login sin explicación)
-- [ ] Tests: el aviso aparece cuando la sesión se cerró en otro sitio y no aparece en un `logout` normal (que ya lleva el suyo o ninguno)
-- [ ] Comprobación en vivo y commit (con orden explícita)
+- [x] Verificado en vivo con la API real (base desechable, `ng serve`, navegador): **«Cerrar todas mis sesiones»** (`DELETE` → `204`, aviso verde «Se cerraron todas tus sesiones», sin ningún `401` posterior que lo pise) y **activar el segundo factor**, donde había un riesgo concreto: al activarlo el servidor borra las sesiones y el token del navegador queda muerto, así que cualquier petición durante la pantalla de los códigos de recuperación (que solo se muestran una vez) habría expulsado a la persona. Comprobado: tras `enable` (`200`) no hay ninguna petición más, los códigos siguen en pantalla pasados 12 s y «Terminar» cierra la sesión con su propio aviso. Los flujos de `disable` y de renovar no cambiaron
+- [x] El aviso «Tu sesión se cerró. Vuelve a entrar.» cuando la renovación falla tras un `401` (antes se volvía al login sin explicación). En el interceptor (`auth.interceptor.ts`), en ámbar (`warn`: la persona debe actuar), viajando en el estado de navegación y no en la URL. Probado en vivo: la sesión del navegador se revocó desde el servidor, y al pedir `Clientes` salió `GET /customers` → `401`, `POST /auth/refresh` → `401` y el login con el aviso
+- [x] Tests (6 nuevos, 182 en total): no hay aviso cuando el refresh funciona; sí lo hay, ámbar, cuando el refresh se rechaza; viaja en el estado de navegación con su severidad; el `401` original llega a quien hizo la petición; sin refresh token no se pregunta nada y se avisa igual; un `403` no lleva el aviso. 6 mutaciones, todas detectadas (sin aviso, severidad por defecto, texto, error distinto, aviso en un `403`, aviso al tener éxito la renovación)
+- [ ] [externo] Commit y push del frontend (órdenes explícitas)

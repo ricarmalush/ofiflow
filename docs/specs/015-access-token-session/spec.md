@@ -1,6 +1,6 @@
 # Spec — 015-access-token-session
 
-**Estado:** Implementada (API, 2026-10-30; el frontend es el bloque 4). Decisiones D1–D9 aprobadas el 2026-10-30 tal como estaban escritas
+**Estado:** Implementada (API y frontend, 2026-10-30). Decisiones D1–D9 aprobadas el 2026-10-30 tal como estaban escritas
 **Fecha:** 2026-10-28
 **Bounded Context:** Identity (sesiones)
 **Depende de:** spec 013 (cerrar una sesión) y spec 014 (cerrar todas), ADR-007 (refresh token con rotación), ADR-009 (eventos de seguridad), ADR-013 (la pertenencia se revalida en cada petición)
