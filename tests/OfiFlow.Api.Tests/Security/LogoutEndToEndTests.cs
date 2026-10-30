@@ -65,15 +65,36 @@ public class LogoutEndToEndTests(MfaFlowFixture fixture) : IClassFixture<MfaFlow
     }
 
     [Fact]
-    public async Task TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit()
+    public async Task TheAccessTokenOfTheClosedSession_IsRejectedAtOnce_NotAfter30Minutes()
     {
-        // Lo que esta spec NO hace (ver «Qué NO incluye»): documentarlo en un test evita que alguien crea que sí.
+        // Hasta la spec 015 este test se llamaba «...KeepsWorkingUntilItExpires_ThisIsTheKnownLimit» y esperaba un 200: el access token
+        // ya emitido valía hasta 30 minutos tras cerrar la sesión. Ahora la sesión cerrada deja sin efecto su token al instante.
         var account = await fixture.RegisterOwnerAsync();
+        var userId = UserIdOf(account);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.SendAsync(HttpMethod.Get, "/api/v1/customers", bearer: account.AccessToken)).StatusCode); // control
         await LogoutAsync(account.RefreshToken);
 
         var withOldAccessToken = await fixture.SendAsync(HttpMethod.Get, "/api/v1/customers", bearer: account.AccessToken);
 
-        Assert.Equal(HttpStatusCode.OK, withOldAccessToken.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, withOldAccessToken.StatusCode);
+        Assert.Single(EventsOf(SecurityEventIds.SessionTokenRejected, userId));
+    }
+
+    [Fact]
+    public async Task ClosingOneDevice_LeavesTheAccessTokenOfTheOtherDeviceWorking()
+    {
+        // El «sid» es por sesión, no por cuenta (spec 015 R7): cerrar el portátil no echa al móvil.
+        var account = await fixture.RegisterOwnerAsync();
+        var laptopAccess = account.AccessToken;
+        var laptopRefresh = account.RefreshToken;
+        await fixture.LoginPlainAsync(account);
+        var phoneAccess = account.AccessToken;
+        Assert.NotEqual(laptopAccess, phoneAccess);
+
+        await LogoutAsync(laptopRefresh);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await fixture.SendAsync(HttpMethod.Get, "/api/v1/customers", bearer: laptopAccess)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.SendAsync(HttpMethod.Get, "/api/v1/customers", bearer: phoneAccess)).StatusCode);
     }
 
     [Fact]

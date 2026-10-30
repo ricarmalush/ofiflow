@@ -24,8 +24,10 @@ public sealed partial class TokenService(
 
     public async Task<AuthResultDto> IssueTokensAsync(Guid userId, Guid tenantId, TenantRole role, CancellationToken cancellationToken)
     {
-        var accessToken = GenerateAccessToken(userId, tenantId, role);
-        var (refreshTokenValue, refreshToken) = CreateRefreshToken(userId, tenantId);
+        // Iniciar sesión crea una sesión NUEVA (spec 015 R1): dos dispositivos, dos Id, y cerrar uno no toca al otro.
+        var sessionId = Guid.NewGuid();
+        var accessToken = GenerateAccessToken(userId, tenantId, role, sessionId);
+        var (refreshTokenValue, refreshToken) = CreateRefreshToken(userId, tenantId, sessionId);
 
         dbContext.RefreshTokens.Add(refreshToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -90,8 +92,10 @@ public sealed partial class TokenService(
 
         existing.Revoke();
 
-        var accessToken = GenerateAccessToken(existing.UserId, existing.TenantId, tenantUser.Role);
-        var (newRefreshTokenValue, newRefreshToken) = CreateRefreshToken(existing.UserId, existing.TenantId);
+        // Renovar NO crea una sesión: es la misma (spec 015 R1), así que el token nuevo hereda el SessionId del anterior. El token anterior se
+        // revoca y el nuevo se inserta en este mismo SaveChanges (R5): la sesión nunca se queda sin un refresh token activo.
+        var accessToken = GenerateAccessToken(existing.UserId, existing.TenantId, tenantUser.Role, existing.SessionId);
+        var (newRefreshTokenValue, newRefreshToken) = CreateRefreshToken(existing.UserId, existing.TenantId, existing.SessionId);
 
         dbContext.RefreshTokens.Add(newRefreshToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -144,6 +148,17 @@ public sealed partial class TokenService(
         return active.Count;
     }
 
+    public Task<bool> IsSessionActiveAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken)
+    {
+        // La misma definición de «activo» que RefreshToken.IsActive y que los cierres de las specs 013 y 014 (sin revocar y sin caducar).
+        // Se filtra por el SessionId Y por el UserId del token ya validado: RefreshTokens no tiene filtro de empresa, y sin el UserId el Id de
+        // sesión de una cuenta valdría en el token de otra. Un solo AnyAsync que el índice IX_RefreshTokens_SessionId responde entero.
+        var now = DateTime.UtcNow;
+        return dbContext.RefreshTokens
+            .AsNoTracking()
+            .AnyAsync(rt => rt.SessionId == sessionId && rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now, cancellationToken);
+    }
+
     public async Task DeleteRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {
         var tokens = await dbContext.RefreshTokens
@@ -154,13 +169,14 @@ public sealed partial class TokenService(
         dbContext.RefreshTokens.RemoveRange(tokens);
     }
 
-    private string GenerateAccessToken(Guid userId, Guid tenantId, TenantRole role)
+    private string GenerateAccessToken(Guid userId, Guid tenantId, TenantRole role, Guid sessionId)
     {
         Claim[] claims =
         [
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new Claim(OfiFlowClaimTypes.TenantId, tenantId.ToString()),
-            new Claim(OfiFlowClaimTypes.Role, role.ToString())
+            new Claim(OfiFlowClaimTypes.Role, role.ToString()),
+            new Claim(OfiFlowClaimTypes.SessionId, sessionId.ToString())
         ];
 
         var key = new SymmetricSecurityKey(Convert.FromBase64String(_options.Secret));
@@ -176,10 +192,10 @@ public sealed partial class TokenService(
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private (string Value, RefreshToken Entity) CreateRefreshToken(Guid userId, Guid tenantId)
+    private (string Value, RefreshToken Entity) CreateRefreshToken(Guid userId, Guid tenantId, Guid sessionId)
     {
         var value = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
-        var entity = new RefreshToken(userId, tenantId, Hash(value), DateTime.UtcNow.AddDays(_options.RefreshTokenDays));
+        var entity = new RefreshToken(userId, tenantId, sessionId, Hash(value), DateTime.UtcNow.AddDays(_options.RefreshTokenDays));
 
         return (value, entity);
     }

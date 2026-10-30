@@ -140,20 +140,19 @@ public sealed class CloseAllSessionsEndToEndTests(PlatformFlowFixture fixture) :
     // ===== Idempotente, sin sesiones =====
 
     [Fact]
-    public async Task WithNoActiveSessions_ItIsStill204_AndTheEventCarriesAZero()
+    public async Task TheSecondCallWithTheSameToken_IsA401_AndLogsNoSecondEvent()
     {
+        // Hasta la spec 015 este test pedía cerrar dos veces con el mismo token y esperaba un 204 con recuento «0». Ahora la primera
+        // llamada cierra la sesión del propio token, así que la segunda ya no llega al caso de uso. Quien llama siempre tiene al menos
+        // UNA sesión activa (la suya): el recuento cero ya no se alcanza por HTTP; lo cubren los tests de TokenService.
         var account = await _fixture.RegisterOwnerAsync();
         var userId = UserIdOf(account);
         Assert.Equal(HttpStatusCode.NoContent, (await CloseAllAsync(account.AccessToken)).StatusCode); // cierra la única
 
-        // El access token sigue valiendo (límite conocido), así que se puede pedir otra vez: ya no hay ninguna activa.
         var again = await CloseAllAsync(account.AccessToken);
 
-        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
-        var events = EventsOf(SecurityEventIds.AllSessionsClosed, userId);
-        Assert.Equal(2, events.Count); // uno por petición (R6)
-        Assert.Contains("sesiones cerradas 1", events[0].Message);
-        Assert.Contains("sesiones cerradas 0", events[1].Message);
+        Assert.Equal(HttpStatusCode.Unauthorized, again.StatusCode);
+        Assert.Contains("sesiones cerradas 1", Assert.Single(EventsOf(SecurityEventIds.AllSessionsClosed, userId)).Message);
     }
 
     [Fact]
@@ -192,15 +191,26 @@ public sealed class CloseAllSessionsEndToEndTests(PlatformFlowFixture fixture) :
     }
 
     [Fact]
-    public async Task TheAccessTokenAlreadyIssued_KeepsWorkingUntilItExpires_ThisIsTheKnownLimit()
+    public async Task TheAccessTokensOfEveryClosedSession_AreRejectedAtOnce_NotAfter30Minutes()
     {
-        // Lo que esta spec NO hace (ver «Qué NO incluye»): documentarlo en un test evita que alguien crea que sí.
+        // Hasta la spec 015 este test se llamaba «...KeepsWorkingUntilItExpires_ThisIsTheKnownLimit» y esperaba un 200. Era el caso
+        // «perdí el móvil»: el ladrón conservaba media hora de acceso. Ahora los tokens de TODAS las sesiones caen al instante.
         var account = await _fixture.RegisterOwnerAsync();
-        await CloseAllAsync(account.AccessToken);
+        var laptopAccess = account.AccessToken;
+        await NewDeviceAsync(account);
+        var phoneAccess = account.AccessToken;
+        var tabletAccess = await _fixture.OpenExtraSessionTokenAsync(account);
+        foreach (var token in new[] { laptopAccess, phoneAccess, tabletAccess })
+        {
+            Assert.Equal(HttpStatusCode.OK, (await _fixture.SendAsync(HttpMethod.Get, "/api/v1/customers", bearer: token)).StatusCode); // control
+        }
 
-        var withOldAccessToken = await _fixture.SendAsync(HttpMethod.Get, "/api/v1/customers", bearer: account.AccessToken);
+        await CloseAllAsync(phoneAccess);
 
-        Assert.Equal(HttpStatusCode.OK, withOldAccessToken.StatusCode);
+        foreach (var token in new[] { laptopAccess, phoneAccess, tabletAccess })
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await _fixture.SendAsync(HttpMethod.Get, "/api/v1/customers", bearer: token)).StatusCode);
+        }
     }
 
     // ===== Quién puede llamar =====
@@ -242,13 +252,30 @@ public sealed class CloseAllSessionsEndToEndTests(PlatformFlowFixture fixture) :
     }
 
     [Fact]
-    public async Task AMemberWhoWasRemoved_WithAStillValidToken_GetsA403_AndClosesNothing()
+    public async Task AMemberRemovedThroughTheApi_HasNoSessionLeft_SoTheTokenIsA401_AndClosesNothing()
     {
+        // Hasta la spec 015 daba un 403 (la revalidación de la pertenencia). La baja borra los refresh tokens de la persona, y ahora un
+        // token sin sesión activa se rechaza ANTES de llegar a la autorización: 401.
         var owner = await _fixture.RegisterOwnerAsync();
         var member = await _fixture.InviteAndJoinAsync(owner, TenantRole.Employee);
         var memberId = UserIdOf(member);
         var membershipId = await _fixture.TenantUserIdOfAsync(owner, member);
         Assert.Equal(HttpStatusCode.NoContent, (await _fixture.SendAsync(HttpMethod.Delete, $"/api/v1/users/{membershipId}", bearer: owner.AccessToken)).StatusCode);
+
+        var response = await CloseAllAsync(member.AccessToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Empty(EventsOf(SecurityEventIds.AllSessionsClosed, memberId));
+    }
+
+    [Fact]
+    public async Task AMembershipRemovedButTheSessionAlive_StillGetsA403_AndClosesNothing()
+    {
+        // La revalidación de la pertenencia (ADR-013) sigue siendo la segunda barrera: una sesión activa cuya persona ya no es miembro.
+        var owner = await _fixture.RegisterOwnerAsync();
+        var member = await _fixture.InviteAndJoinAsync(owner, TenantRole.Employee);
+        var memberId = UserIdOf(member);
+        await _fixture.RemoveMembershipKeepingSessionsAsync(member);
 
         var response = await CloseAllAsync(member.AccessToken);
 
@@ -320,21 +347,24 @@ public sealed class CloseAllSessionsEndToEndTests(PlatformFlowFixture fixture) :
         var account = await _fixture.RegisterOwnerAsync();
         var ip = TestClientIpStartupFilter.NewIp();
 
-        HttpRequestMessage NewRequest(HttpMethod method, string path)
+        HttpRequestMessage NewRequest(HttpMethod method, string path, string token)
         {
             var request = new HttpRequestMessage(method, path);
             request.Headers.Add(TestClientIpStartupFilter.HeaderName, ip);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", account.AccessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             return request;
         }
 
-        // El access token sigue valiendo tras cerrar (límite conocido), así que se pueden repetir las diez permitidas.
+        // Cada llamada cierra la sesión de su propio token, así que (spec 015) la siguiente necesita una sesión nueva. Se abre por el servicio,
+        // no por el login: el login tiene su propio límite por IP y aquí se mide el de esta ruta.
+        var token = account.AccessToken;
         for (var attempt = 1; attempt <= 10; attempt++)
         {
-            Assert.Equal(HttpStatusCode.NoContent, (await _fixture.Http.SendAsync(NewRequest(HttpMethod.Delete, SessionsPath))).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await _fixture.Http.SendAsync(NewRequest(HttpMethod.Delete, SessionsPath, token))).StatusCode);
+            token = await _fixture.OpenExtraSessionTokenAsync(account);
         }
 
-        var rejected = await _fixture.Http.SendAsync(NewRequest(HttpMethod.Delete, SessionsPath));
+        var rejected = await _fixture.Http.SendAsync(NewRequest(HttpMethod.Delete, SessionsPath, token));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
         Assert.Equal("application/problem+json", rejected.Content.Headers.ContentType?.MediaType);
@@ -345,8 +375,8 @@ public sealed class CloseAllSessionsEndToEndTests(PlatformFlowFixture fixture) :
         Assert.InRange(int.Parse(rejected.Headers.GetValues("Retry-After").Single()), 61, 3600);
 
         // Cubo propio: desde la misma IP, la lectura de «quién soy» (sin límite) y cerrar sesión (otro cubo) siguen respondiendo lo suyo.
-        Assert.Equal(HttpStatusCode.OK, (await _fixture.Http.SendAsync(NewRequest(HttpMethod.Get, "/api/v1/account/me"))).StatusCode);
-        var logout = NewRequest(HttpMethod.Post, LogoutPath);
+        Assert.Equal(HttpStatusCode.OK, (await _fixture.Http.SendAsync(NewRequest(HttpMethod.Get, "/api/v1/account/me", token))).StatusCode);
+        var logout = NewRequest(HttpMethod.Post, LogoutPath, token);
         logout.Content = System.Net.Http.Json.JsonContent.Create(new { refreshToken = "no-existe" });
         Assert.Equal(HttpStatusCode.NoContent, (await _fixture.Http.SendAsync(logout)).StatusCode);
     }

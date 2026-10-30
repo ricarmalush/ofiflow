@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using OfiFlow.Api.Tests.Common;
 using OfiFlow.Application.Identity.Mfa;
 using OfiFlow.Domain.Tenancy;
@@ -138,6 +139,40 @@ public class MfaFlowFixture : IAsyncLifetime
         var tokens = await JsonOf(response);
         account.AccessToken = tokens.GetProperty("accessToken").GetString()!;
         account.RefreshToken = tokens.GetProperty("refreshToken").GetString()!;
+    }
+
+    /// <summary>
+    /// Abre otra sesión de la cuenta SIN pasar por el login (que tiene su límite de peticiones por IP) y devuelve su access token. Sirve
+    /// para tests que necesitan muchas sesiones o muchos tokens válidos de la misma cuenta. La sesión es de verdad (una fila de
+    /// refresh token), emitida por el mismo servicio que usa el login.
+    /// </summary>
+    public async Task<string> OpenExtraSessionTokenAsync(Account account)
+    {
+        var current = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(account.AccessToken);
+        using var scope = Services.CreateScope();
+
+        var issued = await scope.ServiceProvider.GetRequiredService<OfiFlow.Application.Common.Abstractions.ITokenService>().IssueTokensAsync(
+            Guid.Parse(current.Subject),
+            Guid.Parse(current.Claims.Single(c => c.Type == "tenant_id").Value),
+            Enum.Parse<TenantRole>(current.Claims.Single(c => c.Type == "role").Value),
+            CancellationToken.None);
+
+        return issued.AccessToken;
+    }
+
+    /// <summary>
+    /// Quita la pertenencia de una persona a su empresa directamente en la base de datos, SIN tocar sus sesiones (la baja por la API
+    /// borra además sus refresh tokens). Deja el caso en que el token sigue siendo de una sesión activa pero la persona ya no es
+    /// miembro: lo que detecta la revalidación de la pertenencia (ADR-013).
+    /// </summary>
+    public async Task RemoveMembershipKeepingSessionsAsync(Account account)
+    {
+        var userId = Guid.Parse(new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(account.AccessToken).Subject);
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfiFlow.Infrastructure.Persistence.ApplicationDbContext>();
+
+        db.TenantUsers.Remove(await db.TenantUsers.IgnoreQueryFilters().SingleAsync(tu => tu.UserId == userId));
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Invita a una persona con un rol, ella acepta con su contraseña y entra: un miembro con credenciales conocidas.</summary>

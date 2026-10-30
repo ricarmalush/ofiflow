@@ -44,7 +44,7 @@ public static class AccountEndpoints
                 return Results.NoContent();
             })
             .WithName("CloseAllSessions")
-            .WithSummary("Cierra TODAS tus sesiones (revoca todos tus refresh tokens, en todos tus dispositivos), incluida la desde la que lo pides. Sin parámetros: siempre habla de quien la pide. Responde 204 aunque no hubiera ninguna. Los access tokens ya emitidos siguen valiendo hasta que caduquen (30 min), pero ya no se pueden renovar.")
+            .WithSummary("Cierra TODAS tus sesiones (revoca todos tus refresh tokens, en todos tus dispositivos), incluida la desde la que lo pides. Sin parámetros: siempre habla de quien la pide. Responde 204. Desde la spec 015 los access tokens de todas esas sesiones dejan de valer al instante (401), no solo su renovación.")
             .RequireRateLimiting(RateLimiting.AccountSessions);
     }
 }

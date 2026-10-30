@@ -118,7 +118,10 @@ public sealed class RolesFixture : IAsyncLifetime
         var claims = new List<Claim>
         {
             new("sub", userId.ToString()),
-            new("tenant_id", tenantId.ToString())
+            new("tenant_id", tenantId.ToString()),
+
+            // Desde la spec 015 la API rechaza un token cuya sesión no esté activa: se abre una de verdad.
+            new("sid", TestSessions.OpenSessionId(Factory, userId, tenantId))
         };
         if (role is not null)
         {

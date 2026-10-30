@@ -76,7 +76,7 @@ public static class AuthEndpoints
                 return Results.NoContent();
             })
             .WithName("Logout")
-            .WithSummary("Cierra la sesión del Refresh Token recibido (revocándolo). Anónimo: no pide access token, para poder salir con la sesión caducada. Responde 204 exista el token o no.")
+            .WithSummary("Cierra la sesión del Refresh Token recibido (revocándolo). Anónimo: no pide access token, para poder salir con la sesión caducada. Responde 204 exista el token o no. Desde la spec 015 el access token de esa sesión también deja de valer al instante.")
             .RequireRateLimiting(RateLimiting.Logout);
 
         group.MapPost("/accept-invitation", async (AcceptInvitationCommand command, ISender sender, CancellationToken cancellationToken) =>

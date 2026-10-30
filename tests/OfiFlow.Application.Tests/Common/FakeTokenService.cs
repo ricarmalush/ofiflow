@@ -49,6 +49,9 @@ public sealed class FakeTokenService : ITokenService
         return Task.FromResult(3);
     }
 
+    // La comprobación de la sesión (spec 015) la usa JwtBearer, no ningún caso de uso: aquí no hace falta simular nada.
+    public Task<bool> IsSessionActiveAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken) => Task.FromResult(true);
+
     public Task<AuthResultDto?> RotateRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken) =>
         Task.FromResult(refreshToken == ValidRefreshToken
             ? new AuthResultDto("new-access-token", "new-refresh-token", DateTime.UtcNow.AddMinutes(30))
