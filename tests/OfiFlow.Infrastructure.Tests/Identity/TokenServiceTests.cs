@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OfiFlow.Application.Common.Logging;
+using OfiFlow.Application.Identity;
 using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Identity;
 using OfiFlow.Infrastructure.Persistence;
@@ -230,7 +231,7 @@ public class TokenServiceTests
         var tenantId = Guid.NewGuid();
         var value = "token-caducado";
         var hash = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
-        db.RefreshTokens.Add(new RefreshToken(userId, tenantId, hash, DateTime.UtcNow.AddMinutes(-1)));
+        db.RefreshTokens.Add(new RefreshToken(userId, tenantId, Guid.NewGuid(), hash, DateTime.UtcNow.AddMinutes(-1)));
         await db.SaveChangesAsync(CancellationToken.None);
 
         var closed = await service.RevokeRefreshTokenAsync(value, CancellationToken.None);
@@ -355,7 +356,7 @@ public class TokenServiceTests
     {
         var (db, service) = CreateSut();
         var userId = Guid.NewGuid();
-        db.RefreshTokens.Add(new RefreshToken(userId, Guid.NewGuid(), "hash-caducado", DateTime.UtcNow.AddMinutes(-1)));
+        db.RefreshTokens.Add(new RefreshToken(userId, Guid.NewGuid(), Guid.NewGuid(), "hash-caducado", DateTime.UtcNow.AddMinutes(-1)));
         await db.SaveChangesAsync(CancellationToken.None);
 
         var closed = await service.RevokeAllRefreshTokensAsync(userId, CancellationToken.None);
@@ -482,5 +483,222 @@ public class TokenServiceTests
         var rotated = await service.RotateRefreshTokenAsync(active.RefreshToken, CancellationToken.None);
 
         Assert.NotNull(rotated);
+    }
+
+    // ---- El Id de sesión (spec 015, bloque 1) ----
+
+    private static Guid SidOf(string accessToken) =>
+        Guid.Parse(new JwtSecurityTokenHandler().ReadJwtToken(accessToken).Claims.Single(c => c.Type == "sid").Value);
+
+    [Fact]
+    public async Task IssueTokens_WritesTheSidClaim_AndItIsTheSessionIdOfTheRefreshToken()
+    {
+        // El nombre "sid" es contrato con quien valida el token (spec 015 R1), como "tenant_id" y "role".
+        var (db, service) = CreateSut();
+
+        var issued = await service.IssueTokensAsync(Guid.NewGuid(), Guid.NewGuid(), TenantRole.Owner, CancellationToken.None);
+
+        var row = await db.RefreshTokens.SingleAsync();
+        Assert.Equal(row.SessionId, SidOf(issued.AccessToken));
+        Assert.NotEqual(Guid.Empty, row.SessionId);
+    }
+
+    [Fact]
+    public async Task IssueTokens_EveryLoginIsANewSession_EvenForTheSameAccountAndCompany()
+    {
+        var (db, service) = CreateSut();
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        var first = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+        var second = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+
+        Assert.NotEqual(SidOf(first.AccessToken), SidOf(second.AccessToken));
+        Assert.Equal(2, (await db.RefreshTokens.Select(rt => rt.SessionId).Distinct().ToListAsync()).Count);
+    }
+
+    [Fact]
+    public async Task Rotate_KeepsTheSession_TheNewAccessTokenAndTheNewRefreshTokenCarryTheSameId()
+    {
+        var (db, service) = CreateSut();
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        db.TenantUsers.Add(TenantUser.CreateOwner(tenantId, userId));
+        await db.SaveChangesAsync(CancellationToken.None);
+        var issued = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+
+        var rotated = await service.RotateRefreshTokenAsync(issued.RefreshToken, CancellationToken.None);
+
+        Assert.NotNull(rotated);
+        var original = SidOf(issued.AccessToken);
+        Assert.Equal(original, SidOf(rotated!.AccessToken));
+        Assert.All(await db.RefreshTokens.ToListAsync(), rt => Assert.Equal(original, rt.SessionId));
+    }
+
+    [Fact]
+    public async Task Rotate_ManyTimes_StillTheSameSession()
+    {
+        var (db, service) = CreateSut();
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        db.TenantUsers.Add(TenantUser.CreateOwner(tenantId, userId));
+        await db.SaveChangesAsync(CancellationToken.None);
+        var current = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+        var original = SidOf(current.AccessToken);
+
+        for (var i = 0; i < 3; i++)
+        {
+            current = (await service.RotateRefreshTokenAsync(current.RefreshToken, CancellationToken.None))!;
+            Assert.Equal(original, SidOf(current.AccessToken));
+        }
+
+        Assert.Equal(4, await db.RefreshTokens.CountAsync());
+        Assert.Equal(original, (await db.RefreshTokens.Select(rt => rt.SessionId).Distinct().SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Rotate_OneDevice_DoesNotChangeTheSessionOfTheOtherDevice()
+    {
+        var (db, service) = CreateSut();
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        db.TenantUsers.Add(TenantUser.CreateOwner(tenantId, userId));
+        await db.SaveChangesAsync(CancellationToken.None);
+        var phone = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+        var laptop = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+
+        var rotatedPhone = await service.RotateRefreshTokenAsync(phone.RefreshToken, CancellationToken.None);
+
+        Assert.Equal(SidOf(phone.AccessToken), SidOf(rotatedPhone!.AccessToken));
+        Assert.NotEqual(SidOf(laptop.AccessToken), SidOf(rotatedPhone.AccessToken));
+    }
+
+    // ---- ¿Sigue activa la sesión? (spec 015 R2, bloque 2) ----
+
+    private static async Task<(Guid UserId, Guid TenantId, AuthResultDto Issued)> OpenSessionAsync(ApplicationDbContext db, TokenService service)
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        db.TenantUsers.Add(TenantUser.CreateOwner(tenantId, userId));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        return (userId, tenantId, await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_ForAFreshSession_IsTrue()
+    {
+        var (db, service) = CreateSut();
+        var (userId, _, issued) = await OpenSessionAsync(db, service);
+
+        Assert.True(await service.IsSessionActiveAsync(userId, SidOf(issued.AccessToken), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_AfterTheSessionIsClosedWithLogout_IsFalse()
+    {
+        var (db, service) = CreateSut();
+        var (userId, _, issued) = await OpenSessionAsync(db, service);
+
+        await service.RevokeRefreshTokenAsync(issued.RefreshToken, CancellationToken.None);
+
+        Assert.False(await service.IsSessionActiveAsync(userId, SidOf(issued.AccessToken), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_AfterCloseAll_IsFalseForEverySession()
+    {
+        var (db, service) = CreateSut();
+        var (userId, tenantId, first) = await OpenSessionAsync(db, service);
+        var second = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+
+        await service.RevokeAllRefreshTokensAsync(userId, CancellationToken.None);
+
+        Assert.False(await service.IsSessionActiveAsync(userId, SidOf(first.AccessToken), CancellationToken.None));
+        Assert.False(await service.IsSessionActiveAsync(userId, SidOf(second.AccessToken), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_AfterTheTokensAreDeleted_IsFalse()
+    {
+        // La baja de un miembro y el segundo factor BORRAN los refresh tokens (no los revocan): también cierran la sesión.
+        var (db, service) = CreateSut();
+        var (userId, _, issued) = await OpenSessionAsync(db, service);
+
+        await service.DeleteRefreshTokensAsync(userId, CancellationToken.None);
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        Assert.False(await service.IsSessionActiveAsync(userId, SidOf(issued.AccessToken), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_AfterARotation_StaysTrue_BecauseTheNewRowIsOfTheSameSession()
+    {
+        // R5: la renovación revoca el token anterior, pero el nuevo es de la MISMA sesión, así que la sesión (y el access token anterior,
+        // que lleva su Id) sigue activa.
+        var (db, service) = CreateSut();
+        var (userId, _, issued) = await OpenSessionAsync(db, service);
+
+        await service.RotateRefreshTokenAsync(issued.RefreshToken, CancellationToken.None);
+
+        Assert.True(await service.IsSessionActiveAsync(userId, SidOf(issued.AccessToken), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_WhenTheOnlyRowIsExpired_IsFalse()
+    {
+        var (db, service) = CreateSut();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        db.RefreshTokens.Add(new RefreshToken(userId, Guid.NewGuid(), sessionId, "hash-caducado", DateTime.UtcNow.AddMinutes(-1)));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        Assert.False(await service.IsSessionActiveAsync(userId, sessionId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_ForAnotherAccountsSessionId_IsFalse()
+    {
+        // El Id de sesión de una cuenta no vale en el token de otra: sin el UserId en la pregunta, serviría.
+        var (db, service) = CreateSut();
+        var (_, _, issued) = await OpenSessionAsync(db, service);
+
+        Assert.False(await service.IsSessionActiveAsync(Guid.NewGuid(), SidOf(issued.AccessToken), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_ForAnUnknownSession_IsFalse()
+    {
+        var (db, service) = CreateSut();
+        var (userId, _, _) = await OpenSessionAsync(db, service);
+
+        Assert.False(await service.IsSessionActiveAsync(userId, Guid.NewGuid(), CancellationToken.None));
+        Assert.False(await service.IsSessionActiveAsync(userId, Guid.Empty, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_ClosingOneSession_LeavesTheOtherOfTheSameAccountActive()
+    {
+        var (db, service) = CreateSut();
+        var (userId, tenantId, laptop) = await OpenSessionAsync(db, service);
+        var phone = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+
+        await service.RevokeRefreshTokenAsync(laptop.RefreshToken, CancellationToken.None);
+
+        Assert.False(await service.IsSessionActiveAsync(userId, SidOf(laptop.AccessToken), CancellationToken.None));
+        Assert.True(await service.IsSessionActiveAsync(userId, SidOf(phone.AccessToken), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsSessionActive_OnlyReads_ItChangesNothing()
+    {
+        var (db, service) = CreateSut();
+        var (userId, _, issued) = await OpenSessionAsync(db, service);
+        var before = await db.RefreshTokens.AsNoTracking().Select(rt => new { rt.Id, rt.RevokedAt }).ToListAsync();
+
+        await service.IsSessionActiveAsync(userId, SidOf(issued.AccessToken), CancellationToken.None);
+
+        Assert.Equal(before, await db.RefreshTokens.AsNoTracking().Select(rt => new { rt.Id, rt.RevokedAt }).ToListAsync());
+        Assert.Empty(db.ChangeTracker.Entries().Where(e => e.State is not EntityState.Unchanged and not EntityState.Detached));
     }
 }

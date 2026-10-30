@@ -43,11 +43,12 @@ public class MfaEndToEndTests(MfaFlowFixture fixture) : IClassFixture<MfaFlowFix
         Assert.All(recoveryCodes, code => Assert.Matches(MfaFlowFixture.RecoveryCodePattern, code));
         fixture.Clock.Advance(TimeSpan.FromMinutes(1));
 
-        // 2. Activar cierra las sesiones: la renovación anterior ya no sirve; el token de acceso ya emitido sigue valiendo (límite conocido, 30 min).
+        // 2. Activar cierra las sesiones: la renovación anterior ya no sirve y, desde la spec 015, tampoco el token de acceso ya emitido
+        // (antes valía hasta 30 min).
         var oldRefresh = await fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = firstRefreshToken });
         Assert.Equal(HttpStatusCode.Unauthorized, oldRefresh.StatusCode);
         var oldAccess = await fixture.SendAsync(HttpMethod.Get, "/api/v1/account/mfa", bearer: account.AccessToken);
-        Assert.Equal(HttpStatusCode.OK, oldAccess.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, oldAccess.StatusCode);
 
         // 3. Login en dos pasos: la contraseña da un desafío, NO una sesión.
         var loginResponse = await fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/login", new { email = account.Email, password = account.Password });

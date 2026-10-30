@@ -189,13 +189,20 @@ public sealed class MembersFixture : IAsyncLifetime
         return client;
     }
 
-    /// <summary>Un token firmado con el secreto de la API. El rol del token no autoriza nada: decide la base de datos.</summary>
+    /// <summary>
+    /// Un token firmado con el secreto de la API. El rol del token no autoriza nada: decide la base de datos. Lleva el «sid» de una sesión
+    /// abierta de verdad (spec 015): sin ella la API lo rechazaría con 401.
+    /// </summary>
     public string MintToken(Guid userId, Guid tenantId, string role) =>
         new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = Factory.JwtIssuer,
             Audience = Factory.JwtAudience,
-            Subject = new ClaimsIdentity([new Claim("sub", userId.ToString()), new Claim("tenant_id", tenantId.ToString()), new Claim("role", role)]),
+            Subject = new ClaimsIdentity([
+                new Claim("sub", userId.ToString()),
+                new Claim("tenant_id", tenantId.ToString()),
+                new Claim("role", role),
+                new Claim("sid", TestSessions.OpenSessionId(Factory, userId, tenantId))]),
             Expires = DateTime.UtcNow.AddMinutes(5),
             SigningCredentials = new SigningCredentials(
                 new SymmetricSecurityKey(Convert.FromBase64String(Factory.JwtSecret)), SecurityAlgorithms.HmacSha256)

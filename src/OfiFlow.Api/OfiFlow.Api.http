@@ -64,8 +64,8 @@ Content-Type: application/json
 
 ### Cerrar sesión (spec 013): revoca el refresh token recibido, solo el de ESA sesión (los demás dispositivos siguen).
 ### Es anónimo a propósito: no pide access token, para poder salir con la sesión caducada. Responde 204 exista el token o no
-### (no sirve para comprobar tokens). Después, /auth/refresh con ese token da 401. Ojo: el access token ya emitido sigue
-### valiendo hasta que caduque (30 min); lo que se corta es poder renovarlo. Ejecútala al final: invalida {{refreshA}}.
+### (no sirve para comprobar tokens). Después, /auth/refresh con ese token da 401, y desde la spec 015 también el access token de ESA
+### sesión: la API lo rechaza con 401 al instante (el de otro dispositivo sigue valiendo). Ejecútala al final: invalida {{refreshA}}.
 POST {{host}}/api/v1/auth/logout
 Content-Type: application/json
 
@@ -81,8 +81,8 @@ GET {{host}}/api/v1/account/me
 Authorization: Bearer {{tokenA}}
 
 ### Cerrar TODAS mis sesiones (spec 014): revoca todos tus refresh tokens, en todos tus dispositivos, incluido este.
-### Es el caso de «perdí el móvil». Sin cuerpo ni parámetros: siempre habla de quien la pide. Responde 204 aunque no hubiera sesiones.
-### Límite conocido: el access token que ya tengas sigue valiendo hasta 30 min (pero ya no se podrá renovar). Úsala al FINAL de la
+### Es el caso de «perdí el móvil». Sin cuerpo ni parámetros: siempre habla de quien la pide. Responde 204.
+### Desde la spec 015 el access token de TODAS tus sesiones (también el tuyo) deja de valer al instante. Úsala al FINAL de la
 ### sesión de pruebas: después de esto, {{refreshA}} deja de servir. Máximo 10 por hora y por IP.
 DELETE {{host}}/api/v1/account/sessions
 Authorization: Bearer {{tokenA}}
