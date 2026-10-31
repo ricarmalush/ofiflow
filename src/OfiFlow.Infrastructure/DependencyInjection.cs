@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Persistence;
@@ -23,10 +24,33 @@ public static class DependencyInjection
         // La clave JWT se valida primero, como siempre: si faltan las dos, el mensaje es el de Jwt:Secret.
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         AddJwtAuthentication(services, configuration);
-        services.AddScoped<ITokenService, TokenService>();
+
+        // Una sola instancia por petición, vista por sus dos contratos: el de Application (ITokenService) y el de la purga (IRefreshTokenPurger,
+        // interno: ningún caso de uso lo necesita). TokenService sigue siendo el único fichero que lee la tabla de refresh tokens.
+        services.AddScoped<TokenService>();
+        services.AddScoped<ITokenService>(provider => provider.GetRequiredService<TokenService>());
+        services.AddScoped<IRefreshTokenPurger>(provider => provider.GetRequiredService<TokenService>());
         services.AddScoped<IPlatformTokenService, PlatformTokenService>();
 
         return services.AddAccountStore(configuration);
+    }
+
+    /// <summary>
+    /// El servicio en segundo plano que purga los refresh tokens caducados (spec 016, ADR-019). Lo llama <b>solo la API</b>: la consola de
+    /// administración es interactiva y de un solo uso, y no debe lanzar tareas periódicas. La configuración se valida al arrancar: un valor que
+    /// no vale (intervalo de cero, margen de cero días...) impide arrancar en vez de fallar luego en silencio.
+    /// </summary>
+    public static IServiceCollection AddRefreshTokenPurge(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<RefreshTokenPurgeOptions>()
+            .Bind(configuration.GetSection(RefreshTokenPurgeOptions.SectionName))
+            .Validate(options => options.Validate() is null, "La sección RefreshTokenPurge no vale: revisa Interval, StartupDelay, PauseBetweenBatches, RetentionDays y BatchSize.")
+            .ValidateOnStart();
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddHostedService<RefreshTokenPurgeService>();
+
+        return services;
     }
 
     /// <summary>

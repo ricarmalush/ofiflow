@@ -18,7 +18,7 @@ namespace OfiFlow.Infrastructure.Identity;
 public sealed partial class TokenService(
     ApplicationDbContext dbContext,
     IOptions<JwtOptions> jwtOptions,
-    ILogger<TokenService> logger) : ITokenService
+    ILogger<TokenService> logger) : ITokenService, IRefreshTokenPurger
 {
     private readonly JwtOptions _options = jwtOptions.Value;
 
@@ -158,6 +158,17 @@ public sealed partial class TokenService(
             .AsNoTracking()
             .AnyAsync(rt => rt.SessionId == sessionId && rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now, cancellationToken);
     }
+
+    public Task<int> PurgeBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken) =>
+        // Set-based y en LINQ (no SQL a mano: ADR-009 R1 limita el SQL fuera de LINQ a AccountLockout). Lo MÁS antiguo primero y con tope de
+        // lote: un solo DELETE gigante bloquearía una tabla que se consulta en cada petición. Solo mira ExpiresAt (índice IX_RefreshTokens_ExpiresAt):
+        // revocada o no da igual, porque una fila caducada hace más del margen ya no puede usarse (R1). Una sesión activa tiene su fila sin
+        // caducar, así que nunca cumple esta condición (R2).
+        dbContext.RefreshTokens
+            .Where(rt => rt.ExpiresAt < cutoff)
+            .OrderBy(rt => rt.ExpiresAt)
+            .Take(batchSize)
+            .ExecuteDeleteAsync(cancellationToken);
 
     public async Task DeleteRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {

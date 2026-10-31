@@ -75,6 +75,10 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:PlatformSecret", PlatformSecret);
         builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
         builder.UseSetting("Jwt:Issuer", JwtIssuer);
+
+        // La purga de refresh tokens (spec 016) es un servicio en segundo plano: en los tests de la API no debe ponerse a borrar a mitad de una prueba.
+        // Se prueba aparte, contra SQL Server real, llamando al ciclo directamente.
+        builder.UseSetting("RefreshTokenPurge:Enabled", "false");
         builder.UseSetting("Jwt:Audience", JwtAudience);
 
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));

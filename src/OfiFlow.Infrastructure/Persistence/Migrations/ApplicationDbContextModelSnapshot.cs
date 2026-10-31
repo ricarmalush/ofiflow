@@ -512,6 +512,8 @@ namespace OfiFlow.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ExpiresAt");
+
                     b.HasIndex("SessionId");
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("SessionId"), new[] { "UserId", "RevokedAt", "ExpiresAt" });
