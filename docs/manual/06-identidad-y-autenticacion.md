@@ -367,6 +367,37 @@ Hasta aquí, cerrar una sesión revocaba su **refresh token**: nadie podía reno
 
 **Lo que no cierra.** Un token robado **mientras nadie cierra la sesión** sigue valiendo: esto cierra el robo *después* de cerrar sesión (el móvil perdido), no detecta que lo use otra persona. Una petición que ya pasó la comprobación cuando se cierra la sesión se completa; la siguiente falla.
 
+
+### El final del ciclo de vida: la purga (spec 016)
+
+Cada renovación de sesión **revoca una fila y crea otra**, y hasta ahora no se borraba ninguna. Con la spec 015 la tabla de refresh tokens pasó a **consultarse en cada petición** (¿sigue activa la sesión de este token?), así que lo que era una acumulación inofensiva se convirtió en una tabla caliente que crece sin parar: quien trabaja ocho horas al día renueva unas 16 veces, es decir, 16 filas nuevas al día, para siempre.
+
+La solución es el **primer servicio en segundo plano de OfiFlow**: [`RefreshTokenPurgeService`](../../src/OfiFlow.Infrastructure/Identity/RefreshTokenPurgeService.cs), un `BackgroundService` que vive **dentro de la API** y cada 6 horas borra, por lotes, las filas cuya caducidad pasó hace más de 7 días. Las decisiones, y el porqué de cada una:
+
+| Decisión | Por qué |
+|---|---|
+| **Una sola regla: `ExpiresAt` anterior a «ahora − 7 días», revocada o no** | Toda fila caduca como mucho 7 días después de crearse, así que esa regla cubre las revocadas por rotación y las **abandonadas** (sesiones que nunca se volvieron a renovar, que son justo las que se acumulan). Un 7 es «el tiempo que el token pudo usarse más una semana para investigar un incidente» |
+| **Nunca toca una sesión activa** | Una sesión activa tiene una fila sin revocar y sin caducar: no cumple la regla. Sí se borran las renovaciones viejas de una sesión que lleva semanas activa, y no cambia nada, porque `IsSessionActiveAsync` solo mira filas activas. Un test lo comprueba con una sesión de verdad |
+| **El margen se queda con el corte exacto** | `ExpiresAt < corte`, estricto: lo que caduca justo en el corte no se borra |
+| **Por lotes (1000) con una pausa de 200 ms entre ellos** | Un solo `DELETE` enorme bloquearía una tabla que se consulta en cada petición. Cada lote es un `DELETE` con `TOP(@p)` ordenado por `ExpiresAt` (lo más antiguo primero) |
+| **Escrito en LINQ, no en SQL a mano** | Un test de arquitectura limita el SQL fuera de LINQ a `AccountLockout.cs`. `ExecuteDeleteAsync` con `OrderBy` y `Take` se traduce a un único `DELETE` parametrizado, y un test captura el comando y lo fija: no se puede volver, sin que falle, a cargar las filas una a una |
+| **Un índice en `ExpiresAt`** | Sin él, cada ciclo leería la tabla entera. El plan es un `Index Seek` con `ExpiresAt < @cutoff` |
+| **Un ciclo que falla no tumba la API** | Se registra la excepción (no es un evento de seguridad) y el ciclo siguiente reintenta. Un test inyecta un fallo en el primer ciclo y comprueba que el servicio sigue ejecutando los siguientes |
+| **No arranca de golpe** | Espera 2 minutos para no competir con el arranque de la API ni con las migraciones, y se detiene limpiamente con ella (un test lo para durante la espera) |
+| **Seguro con varias instancias** | Cada instancia de la API tiene su servicio; borrar lo que otra ya borró no hace nada ni falla. Un test lanza dos a la vez sobre 600 filas: cada fila la borra una sola |
+| **Un evento `1011` por ciclo, solo si borró algo** | Con el recuento y la fecha de corte; un ciclo sin nada no deja evento (sería ruido cada 6 horas) |
+| **Se valida al arrancar** | Un intervalo de cero haría girar el bucle sin descanso; un margen de cero borraría tokens que aún pueden usarse. Una sección inválida impide arrancar |
+| **La consola de administración no lo recibe** | `OfiFlow.Admin` es interactiva y de un solo uso: no debe lanzar tareas periódicas. Un test lo comprueba. Y los tests de la API lo desactivan por configuración |
+
+**Lo que se perdió al borrar, y por qué no importa.** Una fila revocada que se borra deja de servir para la detección de reutilización (ADR-007): usar después ese token pasa de «reutilización de un token revocado» (`1003`, que revoca la cadena) a «token desconocido» (`1004`, que no revoca nada). Eso solo ocurre cuando el token ya caducó hace más de una semana, es decir, cuando no podría usarse de todos modos; y **evita un abuso**: hasta ahora, presentar un token viejo ya caducado y revocado revocaba la cadena activa de su dueño.
+
+**Lo que cuesta, medido** (API real, base desechable, 100 000 filas envejecidas por SQL):
+
+- **32 segundos** para purgar las 100 000 con la configuración por defecto (61 s con lotes de 500; 131 s con lotes de 100). El plan es un `Index Seek` en `IX_RefreshTokens_ExpiresAt` con `Top` y `Clustered Index Delete`; un lote de 1000 filas cuesta unas **19 000 lecturas lógicas** (unas 19 por fila: es el mantenimiento de los cinco índices de la tabla, con claves GUID aleatorias).
+- **Sin escalado de bloqueos**: un lote de 1000 filas toma 5000 bloqueos de fila repartidos en los 5 índices (1000 por índice) y el bloqueo de la tabla se queda en intención; se midió hasta 2000 filas por lote.
+- **Efecto sobre las peticiones.** La mediana de una petición autenticada no cambia (≈ 12 ms), pero durante una purga grande entre el 1 % y el 5 % de las peticiones se quedan 500-700 ms, **sea cual sea el tamaño del lote**; sin purga, ninguna pasaba de 200 ms. Parecía una cuestión de bloqueos y **no lo era**: las peticiones lentas aparecían cada ~5 segundos con el intervalo acortándose (7,8 → 2,7 s) y su duración bajando conforme la tabla se encogía. Es la firma de la **actualización automática de estadísticas síncrona** de SQL Server: cada `√(1000 × filas)` modificaciones, la siguiente consulta sobre la tabla espera a que se recalculen. Se confirmó activando `AUTO_UPDATE_STATISTICS_ASYNC` en la base: solo 2 peticiones de 2771 pasaron de 150 ms (máximo 268 ms). Es un ajuste de la base de datos, no del código, y está en la ADR-019 como recomendación de despliegue. Con la purga rutinaria (miles de filas, no cien mil) el efecto es mucho menor, y el mismo mecanismo se dispara ya con el uso normal (cada renovación modifica filas).
+- **Una lección de método:** la primera explicación (bloqueos de lectura) era razonable y **estaba equivocada**. Se descartó con un experimento (la base ya tenía `READ_COMMITTED_SNAPSHOT`, así que los lectores no se bloquean) y se encontró la causa mirando **cuándo** ocurrían las peticiones lentas, no solo cuántas había.
+
 ---
 
 ## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)

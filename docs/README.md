@@ -54,6 +54,7 @@
 | [013-server-logout](./specs/013-server-logout/spec.md) | Cierre de sesión en el servidor: `POST /auth/logout` revoca el refresh token (amplía ADR-007) | Implementada (API; el frontend es el bloque 5) |
 | [014-logout-all](./specs/014-logout-all/spec.md) | Cerrar todas mis sesiones: `DELETE /account/sessions` revoca todos los refresh tokens de la cuenta (amplía ADR-007 y ADR-012) | Implementada (API; el frontend es el bloque 5) |
 | [015-access-token-session](./specs/015-access-token-session/spec.md) | El access token deja de valer en cuanto se cierra su sesión: `sid` en el token, comprobado en cada petición (401); `RefreshToken.SessionId` con migración (cambia ADR-007, crea ADR-018) | Implementada (API y frontend) |
+| [016-sessions-purge-and-list](./specs/016-sessions-purge-and-list/spec.md) | Purga de refresh tokens caducados (servicio en segundo plano) y ver y cerrar mis sesiones concretas: `GET` y `DELETE /account/sessions/{id}`, con datos del dispositivo (amplía ADR-007 y ADR-018, crea ADR-019) | En implementación |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 
