@@ -38,7 +38,7 @@ public class MemberManagementIntegrationTests(SqlServerContainerFixture fixture)
     private static IdentityService Identity(ApplicationDbContext db) => new(db, NullLogger<IdentityService>.Instance);
 
     private static TokenService Tokens(ApplicationDbContext db) =>
-        new(db, Options.Create(Jwt), NullLogger<TokenService>.Instance);
+        new(db, Options.Create(Jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance);
 
     /// <summary>Una empresa con su Owner (con cuenta real) y los miembros indicados. Devuelve los datos para actuar y comprobar.</summary>
     private async Task<(Guid TenantId, Guid OwnerUserId, Dictionary<string, TenantUser> Members)> SeedTenantAsync(params (string Name, TenantRole Role)[] members)

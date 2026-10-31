@@ -71,7 +71,7 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
     private async Task<int> PurgeBatchAsync(int batchSize)
     {
         await using var db = Open();
-        return await new TokenService(db, Options.Create(Jwt), NullLogger<TokenService>.Instance).PurgeBatchAsync(Cutoff, batchSize, CancellationToken.None);
+        return await new TokenService(db, Options.Create(Jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance).PurgeBatchAsync(Cutoff, batchSize, CancellationToken.None);
     }
 
     // ===== Un lote (TokenService.PurgeBatchAsync) =====
@@ -162,7 +162,7 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
 
         Assert.Equal(3, deleted);
         await using var db = Open();
-        var service = new TokenService(db, Options.Create(Jwt), NullLogger<TokenService>.Instance);
+        var service = new TokenService(db, Options.Create(Jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance);
         Assert.True(await service.IsSessionActiveAsync(userId, sessionId, CancellationToken.None));
         Assert.Equal(1, await CountAsync());
     }
@@ -195,7 +195,7 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
         var statements = new List<string>();
         await using var db = _fixture.CreateDbContext(Guid.NewGuid(), builder => builder.AddInterceptors(new StatementRecorder(statements)));
 
-        await new TokenService(db, Options.Create(Jwt), NullLogger<TokenService>.Instance).PurgeBatchAsync(Cutoff, 3, CancellationToken.None);
+        await new TokenService(db, Options.Create(Jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance).PurgeBatchAsync(Cutoff, 3, CancellationToken.None);
 
         var sql = Assert.Single(statements);
         Assert.StartsWith("DELETE", sql);                                   // un DELETE, no un SELECT para cargar filas
@@ -214,6 +214,7 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
         services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(_fixture.ConnectionString));
         services.AddSingleton<IOptions<JwtOptions>>(Options.Create(Jwt));
         services.AddSingleton<ILogger<TokenService>>(NullLogger<TokenService>.Instance);
+        services.AddSingleton<IClientInfo>(new FakeClientInfo()); // TokenService lo necesita (spec 016, bloque 2); la purga no lo usa
         services.AddScoped<TokenService>();
         services.AddScoped<IRefreshTokenPurger>(provider => provider.GetRequiredService<TokenService>());
 

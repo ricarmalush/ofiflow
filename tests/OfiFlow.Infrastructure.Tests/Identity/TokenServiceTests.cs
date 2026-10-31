@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Identity;
 using OfiFlow.Domain.Tenancy;
@@ -23,7 +24,7 @@ public class TokenServiceTests
         RefreshTokenDays = 7
     };
 
-    private static (ApplicationDbContext Db, TokenService Service) CreateSut(ILogger<TokenService>? logger = null)
+    private static (ApplicationDbContext Db, TokenService Service) CreateSut(ILogger<TokenService>? logger = null, IClientInfo? client = null)
     {
         var dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -33,6 +34,7 @@ public class TokenServiceTests
         var service = new TokenService(
             db,
             Microsoft.Extensions.Options.Options.Create(Options),
+            client ?? new FakeClientInfo(),
             logger ?? NullLogger<TokenService>.Instance);
 
         return (db, service);
@@ -700,5 +702,150 @@ public class TokenServiceTests
 
         Assert.Equal(before, await db.RefreshTokens.AsNoTracking().Select(rt => new { rt.Id, rt.RevokedAt }).ToListAsync());
         Assert.Empty(db.ChangeTracker.Entries().Where(e => e.State is not EntityState.Unchanged and not EntityState.Detached));
+    }
+
+    // ---- Los datos de la sesión (spec 016, bloque 2) ----
+
+    private static async Task<Guid> SeedMemberAsync(ApplicationDbContext db)
+    {
+        var userId = Guid.NewGuid();
+        db.TenantUsers.Add(TenantUser.CreateOwner(Guid.NewGuid(), userId));
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        return userId;
+    }
+
+    [Fact]
+    public async Task Issue_StampsTheSessionData_FromTheClientOfTheRequest()
+    {
+        var client = new FakeClientInfo(ipAddress: "203.0.113.0", userAgent: "Chrome/120 (Windows)");
+        var (db, service) = CreateSut(client: client);
+        var before = DateTime.UtcNow;
+
+        await service.IssueTokensAsync(Guid.NewGuid(), Guid.NewGuid(), TenantRole.Owner, CancellationToken.None);
+
+        var row = await db.RefreshTokens.SingleAsync();
+        Assert.Equal("203.0.113.0", row.IpAddress);
+        Assert.Equal("Chrome/120 (Windows)", row.UserAgent);
+        Assert.InRange(row.CreatedAt, before, DateTime.UtcNow);
+        Assert.Equal(row.CreatedAt, row.SessionStartedAt); // un inicio de sesión: la fila y la sesión nacen a la vez
+    }
+
+    [Fact]
+    public async Task Issue_WithoutClientData_StoresNulls_AndStillStartsTheSession()
+    {
+        var (db, service) = CreateSut(client: new FakeClientInfo());
+
+        await service.IssueTokensAsync(Guid.NewGuid(), Guid.NewGuid(), TenantRole.Owner, CancellationToken.None);
+
+        var row = await db.RefreshTokens.SingleAsync();
+        Assert.Null(row.IpAddress);
+        Assert.Null(row.UserAgent);
+        Assert.NotEqual(default, row.SessionStartedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_Inherits_WhenTheSessionStarted_ItsBrowserAndItsNetwork_AndOnlyTakesItsOwnCreatedAt()
+    {
+        var client = new FakeClientInfo("203.0.113.0", "Chrome/120 (Windows)");
+        var (db, service) = CreateSut(client: client);
+        var userId = await SeedMemberAsync(db);
+        var tenantId = (await db.TenantUsers.IgnoreQueryFilters().SingleAsync()).TenantId;
+        var issued = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+        var first = await db.RefreshTokens.SingleAsync();
+        await Task.Delay(30);
+
+        // R8: la renovación llega desde OTRO navegador y OTRA red. La sesión conserva el dispositivo con el que empezó.
+        client.UserAgent = "Firefox/121 (Linux)";
+        client.IpAddress = "198.51.100.0";
+        await service.RotateRefreshTokenAsync(issued.RefreshToken, CancellationToken.None);
+
+        var rows = await db.RefreshTokens.OrderBy(rt => rt.CreatedAt).ToListAsync();
+        var renewed = rows[1];
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(first.SessionStartedAt, renewed.SessionStartedAt); // cuándo empezó: heredado
+        Assert.Equal("Chrome/120 (Windows)", renewed.UserAgent);        // el navegador de siempre
+        Assert.Equal("203.0.113.0", renewed.IpAddress);                  // la red de siempre
+        Assert.True(renewed.CreatedAt > first.CreatedAt);                 // la última actividad: la suya
+    }
+
+    [Fact]
+    public async Task Rotate_ManyTimes_KeepsTheSameStartAndDevice()
+    {
+        var client = new FakeClientInfo("203.0.113.0", "Chrome/120 (Windows)");
+        var (db, service) = CreateSut(client: client);
+        var userId = await SeedMemberAsync(db);
+        var tenantId = (await db.TenantUsers.IgnoreQueryFilters().SingleAsync()).TenantId;
+        var current = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+        var startedAt = (await db.RefreshTokens.SingleAsync()).SessionStartedAt;
+
+        for (var i = 0; i < 4; i++)
+        {
+            client.UserAgent = $"Otro/{i}";
+            current = (await service.RotateRefreshTokenAsync(current.RefreshToken, CancellationToken.None))!;
+        }
+
+        var rows = await db.RefreshTokens.ToListAsync();
+        Assert.Equal(5, rows.Count);
+        Assert.All(rows, rt =>
+        {
+            Assert.Equal(startedAt, rt.SessionStartedAt);
+            Assert.Equal("Chrome/120 (Windows)", rt.UserAgent);
+            Assert.Equal("203.0.113.0", rt.IpAddress);
+        });
+    }
+
+    [Fact]
+    public async Task Rotate_OfASessionWithoutDeviceData_StaysUnknown_AndDoesNotInventOne()
+    {
+        // Una sesión anterior a esta spec (o de un cliente sin User-Agent): la renovación no le pone el navegador de quien renueva.
+        var client = new FakeClientInfo();
+        var (db, service) = CreateSut(client: client);
+        var userId = await SeedMemberAsync(db);
+        var tenantId = (await db.TenantUsers.IgnoreQueryFilters().SingleAsync()).TenantId;
+        var issued = await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+
+        client.UserAgent = "Chrome/120";
+        client.IpAddress = "203.0.113.0";
+        await service.RotateRefreshTokenAsync(issued.RefreshToken, CancellationToken.None);
+
+        Assert.All(await db.RefreshTokens.ToListAsync(), rt =>
+        {
+            Assert.Null(rt.UserAgent);
+            Assert.Null(rt.IpAddress);
+        });
+    }
+
+    [Fact]
+    public async Task EveryLogin_HasItsOwnStartAndItsOwnDevice()
+    {
+        var client = new FakeClientInfo("203.0.113.0", "Chrome/120 (Windows)");
+        var (db, service) = CreateSut(client: client);
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+        await Task.Delay(30);
+        client.UserAgent = "Safari/17 (iPhone)";
+        client.IpAddress = "198.51.100.0";
+        await service.IssueTokensAsync(userId, tenantId, TenantRole.Owner, CancellationToken.None);
+
+        var rows = await db.RefreshTokens.OrderBy(rt => rt.SessionStartedAt).ToListAsync();
+        Assert.Equal("Chrome/120 (Windows)", rows[0].UserAgent);
+        Assert.Equal("Safari/17 (iPhone)", rows[1].UserAgent);
+        Assert.Equal("198.51.100.0", rows[1].IpAddress);
+        Assert.True(rows[1].SessionStartedAt > rows[0].SessionStartedAt);
+        Assert.NotEqual(rows[0].SessionId, rows[1].SessionId);
+    }
+
+    [Fact]
+    public void ARefreshTokenBuiltWithoutSessionData_StillGetsAStartDate_NotTheYearOne()
+    {
+        // Los tests (y nada más) crean filas con los parámetros opcionales sin dar: la fecha por defecto es ahora, no 0001-01-01, que es lo que
+        // pondría la columna si la migración no rellenara las filas existentes.
+        var row = new RefreshToken(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "h", DateTime.UtcNow.AddDays(7));
+
+        Assert.InRange(row.CreatedAt, DateTime.UtcNow.AddSeconds(-5), DateTime.UtcNow);
+        Assert.Equal(row.CreatedAt, row.SessionStartedAt);
     }
 }

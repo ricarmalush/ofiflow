@@ -23,6 +23,30 @@ public sealed class RefreshToken
 
     public string TokenHash { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Cuándo se creó <b>esta fila</b> (spec 016 R7). Cada renovación crea una fila nueva, así que la de la fila <b>activa</b> es la <b>última
+    /// actividad</b> de la sesión: se actualiza con cada renovación, es decir, como mucho cada 30 minutos de uso.
+    /// </summary>
+    public DateTime CreatedAt { get; private set; }
+
+    /// <summary>
+    /// Cuándo empezó la <b>sesión</b> (spec 016 R7): el instante del inicio de sesión. La heredan todas las filas de la cadena de renovaciones
+    /// (R8): se muestra <i>cómo empezó</i> la sesión, que es lo que su dueño reconoce.
+    /// </summary>
+    public DateTime SessionStartedAt { get; private set; }
+
+    /// <summary>
+    /// El navegador con el que se inició la sesión (spec 016 R7), saneado y recortado; nulo si el cliente no lo envió o la sesión es anterior a
+    /// esta spec. Se hereda al renovar (R8): una renovación desde otro navegador no cambia el dispositivo de la sesión.
+    /// </summary>
+    public string? UserAgent { get; private set; }
+
+    /// <summary>
+    /// La IP <b>truncada</b> desde la que se inició la sesión (spec 016 R7 y R9): nunca la completa. Nula si no se conoce o la sesión es
+    /// anterior a esta spec. Se hereda al renovar. Vive lo que vive la fila (se borra con ella en la purga).
+    /// </summary>
+    public string? IpAddress { get; private set; }
+
     public DateTime ExpiresAt { get; private set; }
 
     public DateTime? RevokedAt { get; private set; }
@@ -32,7 +56,18 @@ public sealed class RefreshToken
         // Requerido por EF Core.
     }
 
-    public RefreshToken(Guid userId, Guid tenantId, Guid sessionId, string tokenHash, DateTime expiresAt)
+    /// <param name="createdAt">Cuándo se crea la fila; por defecto, ahora.</param>
+    /// <param name="sessionStartedAt">Cuándo empezó la sesión; por defecto, <paramref name="createdAt"/> (un inicio de sesión nuevo). Al renovar se pasa el de la fila anterior.</param>
+    public RefreshToken(
+        Guid userId,
+        Guid tenantId,
+        Guid sessionId,
+        string tokenHash,
+        DateTime expiresAt,
+        DateTime? createdAt = null,
+        DateTime? sessionStartedAt = null,
+        string? userAgent = null,
+        string? ipAddress = null)
     {
         Id = Guid.NewGuid();
         UserId = userId;
@@ -40,6 +75,10 @@ public sealed class RefreshToken
         SessionId = sessionId;
         TokenHash = tokenHash;
         ExpiresAt = expiresAt;
+        CreatedAt = createdAt ?? DateTime.UtcNow;
+        SessionStartedAt = sessionStartedAt ?? CreatedAt;
+        UserAgent = userAgent;
+        IpAddress = ipAddress;
     }
 
     public bool IsActive => RevokedAt is null && ExpiresAt > DateTime.UtcNow;

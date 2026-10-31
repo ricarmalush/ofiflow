@@ -18,6 +18,7 @@ namespace OfiFlow.Infrastructure.Identity;
 public sealed partial class TokenService(
     ApplicationDbContext dbContext,
     IOptions<JwtOptions> jwtOptions,
+    IClientInfo clientInfo,
     ILogger<TokenService> logger) : ITokenService, IRefreshTokenPurger
 {
     private readonly JwtOptions _options = jwtOptions.Value;
@@ -27,7 +28,13 @@ public sealed partial class TokenService(
         // Iniciar sesión crea una sesión NUEVA (spec 015 R1): dos dispositivos, dos Id, y cerrar uno no toca al otro.
         var sessionId = Guid.NewGuid();
         var accessToken = GenerateAccessToken(userId, tenantId, role, sessionId);
-        var (refreshTokenValue, refreshToken) = CreateRefreshToken(userId, tenantId, sessionId);
+
+        // Los datos de la sesión (spec 016 R7): cuándo empieza y con qué navegador y desde qué red (truncada). Es el ÚNICO sitio donde se estampan:
+        // renovar los hereda, no los vuelve a leer.
+        // Un único instante: al iniciar sesión, la fila y la sesión nacen a la vez.
+        var startedAt = DateTime.UtcNow;
+        var (refreshTokenValue, refreshToken) = CreateRefreshToken(
+            userId, tenantId, sessionId, createdAt: startedAt, sessionStartedAt: startedAt, clientInfo.UserAgent, clientInfo.IpAddress);
 
         dbContext.RefreshTokens.Add(refreshToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -95,7 +102,12 @@ public sealed partial class TokenService(
         // Renovar NO crea una sesión: es la misma (spec 015 R1), así que el token nuevo hereda el SessionId del anterior. El token anterior se
         // revoca y el nuevo se inserta en este mismo SaveChanges (R5): la sesión nunca se queda sin un refresh token activo.
         var accessToken = GenerateAccessToken(existing.UserId, existing.TenantId, tenantUser.Role, existing.SessionId);
-        var (newRefreshTokenValue, newRefreshToken) = CreateRefreshToken(existing.UserId, existing.TenantId, existing.SessionId);
+
+        // R8: la fila nueva HEREDA cuándo empezó la sesión, su navegador y su red, y solo toma su propio CreatedAt (la última actividad). Una renovación
+        // desde otro navegador o desde otra red NO cambia el dispositivo de la sesión: lo que su dueño reconoce es cómo empezó.
+        var (newRefreshTokenValue, newRefreshToken) = CreateRefreshToken(
+            existing.UserId, existing.TenantId, existing.SessionId, createdAt: DateTime.UtcNow, sessionStartedAt: existing.SessionStartedAt,
+            existing.UserAgent, existing.IpAddress);
 
         dbContext.RefreshTokens.Add(newRefreshToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -203,10 +215,13 @@ public sealed partial class TokenService(
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private (string Value, RefreshToken Entity) CreateRefreshToken(Guid userId, Guid tenantId, Guid sessionId)
+    private (string Value, RefreshToken Entity) CreateRefreshToken(
+        Guid userId, Guid tenantId, Guid sessionId, DateTime createdAt, DateTime sessionStartedAt, string? userAgent, string? ipAddress)
     {
         var value = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
-        var entity = new RefreshToken(userId, tenantId, sessionId, Hash(value), DateTime.UtcNow.AddDays(_options.RefreshTokenDays));
+        var entity = new RefreshToken(
+            userId, tenantId, sessionId, Hash(value), createdAt.AddDays(_options.RefreshTokenDays),
+            createdAt: createdAt, sessionStartedAt: sessionStartedAt, userAgent: userAgent, ipAddress: ipAddress);
 
         return (value, entity);
     }

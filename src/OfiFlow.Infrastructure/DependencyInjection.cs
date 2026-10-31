@@ -27,6 +27,8 @@ public static class DependencyInjection
 
         // Una sola instancia por petición, vista por sus dos contratos: el de Application (ITokenService) y el de la purga (IRefreshTokenPurger,
         // interno: ningún caso de uso lo necesita). TokenService sigue siendo el único fichero que lee la tabla de refresh tokens.
+        // Lo que se guarda del cliente al iniciar sesión (spec 016): navegador y red truncada, saneados. Solo lo lee TokenService.
+        services.AddScoped<IClientInfo, ClientInfo>();
         services.AddScoped<TokenService>();
         services.AddScoped<ITokenService>(provider => provider.GetRequiredService<TokenService>());
         services.AddScoped<IRefreshTokenPurger>(provider => provider.GetRequiredService<TokenService>());

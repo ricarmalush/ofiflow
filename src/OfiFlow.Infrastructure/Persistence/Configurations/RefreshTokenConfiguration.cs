@@ -12,6 +12,10 @@ public sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refresh
 
         builder.Property(rt => rt.TokenHash).HasMaxLength(200).IsRequired();
 
+        // Los datos de la sesión (spec 016): el navegador recortado y la IP truncada. Las longitudes son las de los saneadores de ClientInfo, que recortan antes de guardar.
+        builder.Property(rt => rt.UserAgent).HasMaxLength(ClientInfo.MaxUserAgentLength);
+        builder.Property(rt => rt.IpAddress).HasMaxLength(ClientInfo.MaxIpLength);
+
         builder.HasIndex(rt => rt.TokenHash).IsUnique();
         builder.HasIndex(rt => rt.UserId);
 
