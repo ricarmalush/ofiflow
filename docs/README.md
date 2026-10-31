@@ -11,6 +11,7 @@
 
 - [ProyectoOFIFLOW.txt](./producto/ProyectoOFIFLOW.txt): prompt maestro, unas 105 secciones
 - [Calendario del Proyecto.txt](./producto/Calendario%20del%20Proyecto.txt): roadmap 2027-2028
+- [ideas.md](./ideas.md): ideas de producto que aún no son una spec (hoy: el chatbot que prepara un presupuesto cuando el profesional no contesta)
 
 ## ADRs
 
