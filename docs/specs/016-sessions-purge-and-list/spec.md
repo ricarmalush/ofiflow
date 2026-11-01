@@ -1,6 +1,6 @@
 # Spec — 016-sessions-purge-and-list
 
-**Estado:** En implementación. Decisiones D1–D12 aprobadas el 2026-10-30 tal como estaban escritas
+**Estado:** Implementada (2026-11-01). Decisiones D1–D12 aprobadas el 2026-10-30 tal como estaban escritas
 **Fecha:** 2026-10-30
 **Bounded Context:** Identity (sesiones)
 **Depende de:** spec 015 (el Id de sesión, `SessionId`, y que el access token solo vale mientras su sesión esté activa), specs 013 y 014 (cerrar una sesión y todas), ADR-007 (refresh token con rotación), ADR-009 (eventos de seguridad, límite de peticiones, datos personales), ADR-018 (el access token ligado a su sesión)

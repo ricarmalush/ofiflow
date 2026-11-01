@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-007](../../adr/ADR-007-identity-refresh-token.md), [ADR-009](../../adr/ADR-009-seguridad-base.md) y [ADR-018](../../adr/ADR-018-sesion-ligada-al-access-token.md) (se anotan) y la **ADR-019** nueva (D11)
-**Estado general:** En implementación (decisiones D1–D12 aprobadas el 2026-10-30).
+**Estado general:** Implementada, 2026-11-01 (decisiones D1–D12 aprobadas el 2026-10-30).
 
 ---
 
