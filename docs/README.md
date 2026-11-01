@@ -33,6 +33,7 @@
 | [015](./adr/ADR-015-logs-a-fichero-con-serilog.md) | Logs a fichero con Serilog | Aceptado |
 | [016](./adr/ADR-016-panel-de-operador-de-la-plataforma.md) | Panel de operador de la plataforma (identidad aparte, sesión propia, suspensión de empresas) | Aceptado |
 | [017](./adr/ADR-017-cors-para-el-frontend-web.md) | CORS para el frontend web (lista cerrada de orígenes, en Program.cs) | Propuesto |
+| [018](./adr/ADR-018-sesion-ligada-al-access-token.md) | El access token queda ligado a su sesión (`sid`, comprobado en cada petición; cambia ADR-007) | Aceptado |
 
 ## Specs
 
@@ -52,6 +53,7 @@
 | [012-account-me](./specs/012-account-me/spec.md) | «Quién soy»: `GET /account/me` con los datos de la propia cuenta, su empresa, su rol efectivo y sus permisos (amplía ADR-012) | Implementada |
 | [013-server-logout](./specs/013-server-logout/spec.md) | Cierre de sesión en el servidor: `POST /auth/logout` revoca el refresh token (amplía ADR-007) | Implementada (API; el frontend es el bloque 5) |
 | [014-logout-all](./specs/014-logout-all/spec.md) | Cerrar todas mis sesiones: `DELETE /account/sessions` revoca todos los refresh tokens de la cuenta (amplía ADR-007 y ADR-012) | Implementada (API; el frontend es el bloque 5) |
+| [015-access-token-session](./specs/015-access-token-session/spec.md) | El access token deja de valer en cuanto se cierra su sesión: `sid` en el token, comprobado en cada petición (401); `RefreshToken.SessionId` con migración (cambia ADR-007, crea ADR-018) | Implementada (API y frontend) |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

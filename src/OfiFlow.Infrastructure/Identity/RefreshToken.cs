@@ -14,6 +14,13 @@ public sealed class RefreshToken
 
     public Guid TenantId { get; private set; }
 
+    /// <summary>
+    /// La sesión a la que pertenece (spec 015): un inicio de sesión y toda la cadena de renovaciones que sale de él comparten el mismo.
+    /// Renovar crea una fila nueva con el SessionId de la anterior; iniciar sesión otra vez crea uno nuevo. El access token lo lleva
+    /// como claim «sid» y la API solo lo acepta mientras exista una fila activa de esta sesión.
+    /// </summary>
+    public Guid SessionId { get; private set; }
+
     public string TokenHash { get; private set; } = string.Empty;
 
     public DateTime ExpiresAt { get; private set; }
@@ -25,11 +32,12 @@ public sealed class RefreshToken
         // Requerido por EF Core.
     }
 
-    public RefreshToken(Guid userId, Guid tenantId, string tokenHash, DateTime expiresAt)
+    public RefreshToken(Guid userId, Guid tenantId, Guid sessionId, string tokenHash, DateTime expiresAt)
     {
         Id = Guid.NewGuid();
         UserId = userId;
         TenantId = tenantId;
+        SessionId = sessionId;
         TokenHash = tokenHash;
         ExpiresAt = expiresAt;
     }

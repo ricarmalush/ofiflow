@@ -173,8 +173,10 @@ public sealed class AccountMeEndToEndTests(PlatformFlowFixture fixture) : IClass
     }
 
     [Fact]
-    public async Task AMemberWhoWasRemoved_WithAStillValidToken_GetsNothing()
+    public async Task AMemberRemovedThroughTheApi_WithAStillUnexpiredToken_GetsNothing()
     {
+        // Hasta la spec 015 daba un 403. La baja borra los refresh tokens de la persona, y ahora un token sin sesión activa se rechaza
+        // ANTES de la autorización: 401.
         var owner = await _fixture.RegisterOwnerAsync();
         var member = await _fixture.InviteAndJoinAsync(owner, TenantRole.Employee);
         var membershipId = await _fixture.TenantUserIdOfAsync(owner, member);
@@ -183,6 +185,21 @@ public sealed class AccountMeEndToEndTests(PlatformFlowFixture fixture) : IClass
         Assert.Equal(HttpStatusCode.NoContent, (await _fixture.SendAsync(HttpMethod.Delete, $"/api/v1/users/{membershipId}", bearer: owner.AccessToken)).StatusCode);
 
         var response = await GetMe(member.AccessToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.DoesNotContain(member.Email, await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task AMembershipRemovedButTheSessionAlive_StillGetsA403_AndNothing()
+    {
+        // La revalidación de la pertenencia (ADR-013) sigue siendo la segunda barrera: sesión activa, persona que ya no es miembro.
+        var owner = await _fixture.RegisterOwnerAsync();
+        var member = await _fixture.InviteAndJoinAsync(owner, TenantRole.Employee);
+        Assert.Equal(HttpStatusCode.OK, (await GetMe(member.AccessToken)).StatusCode);
+        await _fixture.RemoveMembershipKeepingSessionsAsync(member);
+
+        var response = await GetMe(member.AccessToken);
+
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.DoesNotContain(member.Email, await response.Content.ReadAsStringAsync());
     }
@@ -192,8 +209,9 @@ public sealed class AccountMeEndToEndTests(PlatformFlowFixture fixture) : IClass
     [Fact]
     public async Task TheAnswer_IsNeverCached_AndHasExactlyTheEightFields_WithNothingSensitive()
     {
-        var owner = await _fixture.RegisterOwnerAsync();
-        await _fixture.EnableMfaAsync(owner); // con el segundo factor activo hay secretos en la base de datos: ninguno debe salir
+        // Con el segundo factor activo hay secretos en la base de datos: ninguno debe salir. Activarlo cierra las sesiones (también la de
+        // este token, spec 015), así que se entra de nuevo con el segundo paso para tener un token válido.
+        var owner = await _fixture.NewMfaAccountAsync();
 
         var response = await GetMe(owner.AccessToken);
 

@@ -11,6 +11,13 @@ public static class OfiFlowClaimTypes
 {
     public const string TenantId = "tenant_id";
 
+    /// <summary>
+    /// El Id de la sesión de un token de empresa (spec 015): un inicio de sesión y todas sus renovaciones comparten el mismo. La API solo
+    /// acepta el token mientras esa sesión tenga un refresh token activo, así que cerrar la sesión lo invalida al instante. Es el claim
+    /// estándar <c>sid</c> (el mismo valor que <c>JwtRegisteredClaimNames.Sid</c>).
+    /// </summary>
+    public const string SessionId = "sid";
+
     /// <summary>El rol del usuario en el tenant activo (nombre de un TenantRole). Lo escribe TokenService y lo lee CurrentUser.</summary>
     public const string Role = "role";
 

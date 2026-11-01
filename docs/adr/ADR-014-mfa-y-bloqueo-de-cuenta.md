@@ -102,7 +102,7 @@ El servidor tiene que **calcular** el código, así que no puede guardar solo un
 - **Bloqueo malicioso:** se puede dejar sin acceso a una cuenta conocida fallando a propósito.
 - **Un `Owner` sin móvil ni códigos** queda fuera hasta que intervenga el operador de la plataforma.
 - **Un secreto más** (`Mfa:EncryptionKey`): perderla deja sin MFA a todas las cuentas que lo usan; filtrarla junto con la base de datos permite descifrar los secretos.
-- **El token de acceso ya emitido** sigue valiendo hasta 30 minutos tras cerrar las sesiones.
+- ~~**El token de acceso ya emitido** sigue valiendo hasta 30 minutos tras cerrar las sesiones.~~ **Resuelto por la spec 015 / ADR-018:** activar, desactivar o reiniciar el MFA cierra las sesiones y su access token cae en la petición siguiente.
 - Una consulta atómica más por intento de login.
 
 ### Qué queda cerrado
@@ -127,7 +127,7 @@ Implementada por la spec 010 (bloques 1 a 7), con 1192 tests en verde. Lo que la
 - **El cifrado ata el secreto al Id de la cuenta** (dato asociado de GCM): un secreto copiado a la fila de otra cuenta no se descifra. Refuerza la decisión 2.C.
 - **El desafío no cuenta contra la cuenta si no sirve** (desconocido o caducado): si contara, cualquiera podría bloquear cuentas ajenas inventando desafíos. Un desafío erróneo gasta uno de sus 5 intentos; un código erróneo, además, suma al contador de la cuenta.
 - **Solo dos sitios emiten sesiones** (el login sin MFA y el canje del desafío), fijado por un test de arquitectura que también comprueba que, en el login, la rama del segundo factor termina antes de la emisión.
-- **Riesgos aceptados que se mantienen:** el TOTP no resiste al *phishing*; se puede mantener bloqueada una cuenta ajena fallando a propósito cada 15 minutos; un `Owner` sin móvil ni códigos queda fuera hasta que intervenga el operador de la plataforma; el token de acceso ya emitido vale hasta 30 minutos tras cerrar las sesiones; y el `catch` de `DbUpdateException` de *activar* no tiene un test que garantice su ejecución.
+- **Riesgos aceptados que se mantienen:** el TOTP no resiste al *phishing*; se puede mantener bloqueada una cuenta ajena fallando a propósito cada 15 minutos; un `Owner` sin móvil ni códigos queda fuera hasta que intervenga el operador de la plataforma; ~~el token de acceso ya emitido vale hasta 30 minutos tras cerrar las sesiones~~ (resuelto por la spec 015 / ADR-018); y el `catch` de `DbUpdateException` de *activar* no tiene un test que garantice su ejecución.
 
 ---
 

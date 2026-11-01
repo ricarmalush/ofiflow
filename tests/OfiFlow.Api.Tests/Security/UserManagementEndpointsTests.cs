@@ -293,8 +293,9 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
         var members = (await fixture.OwnerClient.GetFromJsonAsync<List<TenantUserDto>>("/api/v1/users"))!;
         Assert.DoesNotContain(members, m => m.Id == target.TenantUserId);
 
-        // El mismo token, sin caducar, ya no sirve: la revalidación lo detecta en la siguiente petición.
-        Assert.Equal(HttpStatusCode.Forbidden, (await target.Client.GetAsync("/api/v1/customers")).StatusCode);
+        // El mismo token, sin caducar, ya no sirve. Hasta la spec 015 lo detectaba la revalidación de la pertenencia (403); ahora la baja
+        // borra sus refresh tokens y el token se rechaza antes de la autorización (401).
+        Assert.Equal(HttpStatusCode.Unauthorized, (await target.Client.GetAsync("/api/v1/customers")).StatusCode);
     }
 
     [Fact]

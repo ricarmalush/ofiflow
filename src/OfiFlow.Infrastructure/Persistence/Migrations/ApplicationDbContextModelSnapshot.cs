@@ -496,6 +496,9 @@ namespace OfiFlow.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RevokedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -508,6 +511,10 @@ namespace OfiFlow.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SessionId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("SessionId"), new[] { "UserId", "RevokedAt", "ExpiresAt" });
 
                     b.HasIndex("TokenHash")
                         .IsUnique();

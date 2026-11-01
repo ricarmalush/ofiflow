@@ -241,7 +241,8 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         var relogin = await fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
         Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, relogin.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await memberClient.GetAsync("/api/v1/customers")).StatusCode);
+        // El token no sirve: hasta la spec 015 daba 403 (revalidación de la pertenencia); ahora la baja borra sus sesiones y es un 401.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await memberClient.GetAsync("/api/v1/customers")).StatusCode);
 
         // Su cuenta y sus datos ya no existen: el email está libre y se puede volver a invitar a esa persona.
         Assert.False(await fixture.EmailHasAnAccountAsync(email));

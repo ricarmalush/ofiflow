@@ -33,6 +33,13 @@ public static class SecurityEventIds
     /// </summary>
     public const int AllSessionsClosed = 1008;
 
+    /// <summary>
+    /// La API rechazó un access token por su <b>sesión</b> (spec 015): el token no lleva identificador de sesión o su sesión ya no está
+    /// activa (se cerró). Es normal que ocurra tras un cierre (una petición en vuelo, una pestaña que no se enteró), por eso es
+    /// informativo. Lleva el motivo y, si se conoce, el UserId; nunca el token ni el identificador de sesión.
+    /// </summary>
+    public const int SessionTokenRejected = 1009;
+
     // 1100-1199: abuso
     public const int RateLimitExceeded = 1101;
 

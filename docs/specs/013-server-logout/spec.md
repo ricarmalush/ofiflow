@@ -22,7 +22,7 @@ Que **cerrar la sesión** deje de ser solo «el navegador se olvida de sus token
 ## Alcance — Qué NO incluye
 
 - **NEXT:** **«cerrar todas mis sesiones»** (`POST /auth/logout-all`, autenticada): útil tras perder un móvil. Hoy ya existe el efecto por otras vías (activar o desactivar el segundo factor, quitar un miembro).
-- **NEXT:** **invalidar el access token** al cerrar sesión. Es un JWT sin estado y vive hasta 30 minutos; revocarlo exige llevar un identificador de sesión (`sid`) en el token y comprobarlo en cada petición (la consulta de pertenencia de ADR-013 ya está ahí y podría hacerlo). **Esta spec no lo hace y lo dice:** tras cerrar sesión, un access token copiado sigue sirviendo hasta que caduque, pero **ya no se puede renovar**.
+- **NEXT:** **invalidar el access token** al cerrar sesión. Es un JWT sin estado y vive hasta 30 minutos; revocarlo exige llevar un identificador de sesión (`sid`) en el token y comprobarlo en cada petición (la consulta de pertenencia de ADR-013 ya está ahí y podría hacerlo). **Esta spec no lo hace y lo dice:** tras cerrar sesión, un access token copiado sigue sirviendo hasta que caduque, pero **ya no se puede renovar**. **Actualización (spec 015, 2026-10-30): resuelto.** El token de acceso lleva el `sid` de su sesión y la API lo rechaza (`401`) en cuanto esa sesión se cierra; ver ADR-018 y la spec 015.
 - **NEXT:** purgar los refresh tokens caducados o revocados (hoy se acumulan filas; no hay tarea de limpieza).
 - **NEVER:** que el logout necesite que el access token siga vivo (cerrar sesión con la sesión caducada tiene que poder hacerse), ni que revele si un token existía.
 
@@ -84,7 +84,7 @@ Api
 - **Datos personales:** ninguno en la respuesta; el log lleva solo Ids.
 - **Abuso:** límite por IP propio (R8). Es una operación barata (una consulta por índice y, como mucho, una escritura).
 - **Sin oráculo (R4):** el atacante que prueba tokens no distingue «inexistente» de «cerrado» de «caducado».
-- **Lo que esta spec NO protege:** el **access token** ya emitido sigue valiendo hasta 30 min (ver «Qué NO incluye»). Un atacante que haya copiado el access token (no solo el refresh) mantiene ese margen. Es la razón del NEXT del `sid`.
+- **Lo que esta spec NO protege:** el **access token** ya emitido sigue valiendo hasta 30 min (ver «Qué NO incluye»). Un atacante que haya copiado el access token (no solo el refresh) mantiene ese margen. Es la razón del NEXT del `sid`. **Actualización (spec 015, 2026-10-30): ya no aplica**, ver el NEXT de arriba.
 
 ## Decisiones técnicas relevantes (aprobadas el 2026-10-27, tal como se recomendaban)
 

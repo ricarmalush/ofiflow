@@ -106,6 +106,9 @@ public static class DependencyInjection
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
                 };
+
+                // Spec 015: además de la firma y la caducidad, la sesión del token debe seguir activa. Un fallo es un 401.
+                options.Events = new JwtBearerEvents { OnTokenValidated = SessionTokenValidation.ValidateAsync };
             })
             // El esquema de la plataforma: otra clave y otra audiencia. Un token de empresa no pasa aquí y uno de plataforma no
             // pasa en el esquema por defecto (el de las empresas), aunque la firma sea correcta en su propio mundo.

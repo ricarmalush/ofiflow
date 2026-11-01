@@ -45,8 +45,10 @@
 - [ ] [externo] Commit, push de la rama, PR y merge (con `--merge`, como los PR anteriores), cada uno con confirmación explícita
 
 ### Bloque 5 — Frontend (repositorio `ofiflow-frontend`)
-- [ ] El permiso `Account.CloseSessions` en el tipo `Permission` del frontend (contrato con los nombres de la API)
-- [ ] `AuthService.closeAllSessions()` (o servicio de cuenta) que llama a `DELETE /account/sessions` y, al terminar con éxito, cierra la sesión local con el aviso «Se cerraron todas tus sesiones»; con error NO cierra lo local y lo dice
-- [ ] Botón «Cerrar todas mis sesiones» en la pantalla de Seguridad, con confirmación, visible solo con el permiso
-- [ ] Tests: éxito, error del servidor, sin permiso (no hay botón), el botón sigue un cambio de rol, la confirmación cancelada no llama
-- [ ] Comprobación en vivo contra la API y commit (con orden explícita)
+- [x] El permiso `Account.CloseSessions` en el tipo `Permission` del frontend (contrato con los nombres de la API) y en las listas de roles de `fake-account.ts` (solo tests)
+- [x] `AuthService.closeAllSessions()` que llama a `DELETE /account/sessions` y, al terminar con éxito, cierra la sesión local con el aviso «Se cerraron todas tus sesiones. Vuelve a entrar.»; con error (sin red, 403, 429, 500) NO cierra lo local y lo dice. A diferencia de `logout()` espera la respuesta y no llama después a `/auth/logout` (el mismo `DELETE` ya revocó el refresh token de esa pestaña)
+- [x] Tarjeta «Sesiones» con el botón «Cerrar todas mis sesiones» en la pantalla de Seguridad, con confirmación, visible solo con el permiso (`computed` sobre `session.can`, sigue los cambios de rol)
+- [x] Tests (25 nuevos, 177 en total): servicio (método y sin cuerpo, éxito, no toca lo local hasta confirmar, no llama a `/auth/logout`, 500, sin red, 429, sin reintento) y pantalla (los cinco roles lo ven, sin permiso no hay botón ni sección, cuenta sin cargar, cambio de rol en ambos sentidos, la confirmación no envía nada, cancelar no llama, aceptar envía `DELETE`, éxito, error, reintento limpia el error, doble envío)
+- [x] Mutaciones sobre el código real: 12, todas detectadas (borrar lo local con error, URL, sin navegación, `GET` en vez de `DELETE`, sin guarda de reentrada, rechazar también cierra, error no limpiado, error nunca mostrado, permiso equivocado, siempre visible, sin estado ocupado, texto del aviso)
+- [x] Comprobación en vivo (base desechable, API y `ng serve` reales): el botón aparece; cancelar no envía nada; aceptar envía `DELETE` → `204`, borra los tokens, lleva al login con el aviso y no llama a `/auth/logout`; el «segundo dispositivo» recibe `401` al renovar; la API registra `1008` con 2 sesiones y ningún token en el log; con la API apagada el error se muestra y la persona sigue dentro
+- [ ] [externo] Commit y push del frontend (órdenes explícitas)

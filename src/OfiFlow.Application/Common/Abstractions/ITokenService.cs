@@ -34,6 +34,14 @@ public interface ITokenService
     Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// ¿Sigue activa esta sesión? (spec 015). Lo está si existe un refresh token <b>de esa sesión y de esa cuenta</b> que no esté revocado
+    /// ni caducado. Es lo que la API comprueba en cada petición de empresa para aceptar un access token: cerrar la sesión (por cualquier
+    /// vía) lo deja sin refresh token activo y el access token deja de valer al instante. Solo lee: no cambia nada.
+    /// </summary>
+    /// <remarks>El <paramref name="userId"/> es parte de la pregunta, no un adorno: sin él, el Id de sesión de una cuenta serviría en el token de otra.</remarks>
+    Task<bool> IsSessionActiveAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Borra todos los refresh tokens de un usuario, también los ya revocados, para que no pueda renovar la
     /// sesión ni queden filas huérfanas (spec 009 R14b). No confirma el cambio: lo hace el Handler en su
     /// único SaveChanges, junto con el resto del borrado.

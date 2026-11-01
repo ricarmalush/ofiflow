@@ -24,7 +24,7 @@ Hoy ese efecto solo existe como consecuencia de otras acciones (activar o desact
 
 ## Alcance — Qué NO incluye
 
-- **NEXT:** **invalidar los access tokens ya emitidos.** Son JWT sin estado y valen hasta 30 minutos. Tras cerrar todas las sesiones, quien tenga un access token copiado lo conserva hasta que caduque, pero **ya no puede renovarlo**. Es el mismo límite de la spec 013 y se resuelve con su propio NEXT (ver «Decisiones», D5).
+- **NEXT:** **invalidar los access tokens ya emitidos.** Son JWT sin estado y valen hasta 30 minutos. Tras cerrar todas las sesiones, quien tenga un access token copiado lo conserva hasta que caduque, pero **ya no puede renovarlo**. Es el mismo límite de la spec 013 y se resuelve con su propio NEXT (ver «Decisiones», D5). **Actualización (spec 015, 2026-10-30): resuelto.** Los access tokens de todas las sesiones cerradas dan `401` en la petición siguiente (ADR-018).
 - **NEXT:** **listar mis sesiones** («Chrome en Windows, hace 2 h») y cerrar **una concreta** que no sea la actual. Exige guardar datos de dispositivo en cada refresh token (agente, IP, fecha), con su propia decisión de privacidad.
 - **NEXT:** purgar los refresh tokens caducados o revocados (hoy se acumulan filas).
 - **NEVER:** que una persona pueda cerrar las sesiones **de otra** por esta ruta. No hay Id ni parámetro: la cuenta sale del token. (Cerrar las de otro miembro, si algún día hace falta, es una operación de gestión distinta, con la jerarquía de roles de la spec 009.)
@@ -72,7 +72,7 @@ Api
 ## Criterios de aceptación
 
 - Dada una cuenta con **tres sesiones** activas (tres dispositivos), cuando una de ellas pide cerrar todas, entonces `204` y **las tres** dejan de poder renovar (`/auth/refresh` da `401` con cada token).
-- Dada una cuenta **sin ninguna sesión activa** (todas cerradas o caducadas), entonces `204` y el evento `1008` lleva un recuento de **cero**.
+- Dada una cuenta **sin ninguna sesión activa** (todas cerradas o caducadas), entonces `204` y el evento `1008` lleva un recuento de **cero**. **Actualización (spec 015, 2026-10-30):** por HTTP ya no se alcanza (quien llama siempre tiene al menos su propia sesión activa, porque su access token solo vale si esa sesión sigue viva; una segunda llamada con el mismo token da `401`). El recuento cero sigue existiendo en el servicio y lo cubren los tests de `TokenService`.
 - Dadas **dos cuentas** distintas con sesiones, cuando la A cierra todas, entonces las de B **siguen renovando** (R1).
 - Dada una cuenta con una sesión **ya revocada** (rotada o cerrada con la spec 013), entonces su `RevokedAt` **no cambia** y no cuenta en el recuento.
 - Dado un token cerrado con esta operación, cuando alguien lo usa en `/auth/refresh`, entonces `401` y evento `1003` (R3).
@@ -94,7 +94,7 @@ Api
 - **Entrada:** ninguna (ni cuerpo ni parámetros): nada que validar ni que falsificar.
 - **Datos personales:** ninguno en la respuesta; el log lleva solo el `UserId` y un número.
 - **Abuso:** límite por IP (R7). Es barata (una consulta por `UserId` y una escritura). Un atacante con un access token robado **podría** cerrar las sesiones de la víctima (denegación, no escalada: le quita acceso, no se lo da; la víctima vuelve a entrar con su contraseña). Es un coste aceptado y no se mitiga pidiendo contraseña (ver D4).
-- **Lo que esta spec NO protege:** el **access token** ya emitido sigue valiendo hasta 30 min. Es el caso de «perdí el móvil»: el ladrón conserva ese margen, aunque ya no puede renovar. Ver D5.
+- **Lo que esta spec NO protege:** el **access token** ya emitido sigue valiendo hasta 30 min. Es el caso de «perdí el móvil»: el ladrón conserva ese margen, aunque ya no puede renovar. Ver D5. **Actualización (spec 015, 2026-10-30): ya no aplica**: el ladrón pierde también el access token en cuanto se cierran las sesiones.
 - **Carrera conocida (riesgo aceptado):** si en el mismo instante hay un `/auth/refresh` en vuelo para esa cuenta, puede crear un token **nuevo** justo después de que esta operación revoque los que había, y ese sobrevive. La ventana es de milisegundos y repetir la operación lo cierra. No se añade bloqueo (coste y complejidad desproporcionados para el riesgo); queda escrito.
 
 ## Decisiones técnicas relevantes (aprobadas el 2026-10-28)
