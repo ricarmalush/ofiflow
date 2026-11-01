@@ -290,6 +290,18 @@ Cada campo de texto tiene una longitud máxima, definida **una sola vez** y comp
 
 La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni datos personales** en el registro (ni emails, teléfonos o direcciones de clientes). Se registran **identificadores** (de usuario, de empresa) y la IP de origen. Hay tests que envían un dato reconocible y comprueban que no aparece en ningún registro.
 
+
+### Lo que se guarda del cliente (spec 016)
+
+Desde la spec 016 cada sesión guarda **desde qué navegador y desde qué red aproximada se inició**, para que su dueño la reconozca en una lista. Es el único sitio donde OfiFlow guarda algo del dispositivo de una persona, y por eso es una decisión de privacidad, no un detalle.
+
+- **Se guarda lo mínimo.** La **IP truncada** (IPv4 sin el último octeto, IPv6 a 48 bits: una red aproximada, no una persona) y el **navegador** saneado y recortado a 256 caracteres. **Nunca** la IP completa. Lo hace un único componente, `ClientInfo`, que es la única puerta: nada más lee el `RemoteIpAddress` para guardarlo.
+- **Vive lo que vive su fila.** Se borra con ella en la purga: 7 días de vida del refresh token más 7 de margen. No hay una copia aparte.
+- **Solo lo ve su dueño.** La lista (bloque 3) devuelve las sesiones de la cuenta del token, y nunca el navegador crudo ni la IP completa.
+- **Es lo que el cliente dice, no una prueba.** Quien tenga una sesión robada puede mentir sobre su navegador. Sirve para reconocer, no para acusar.
+- **Lo que NO cubre:** el contexto de registro (`SourceIp`, ADR-009 R5) ya lleva la **IP completa** de cada petición en los registros de la API. Truncar en la base de datos **no** hace que desaparezca de los ficheros de log, que son otro almacén con su propia retención. Y la IP viene de `RemoteIpAddress`, la misma fuente que el límite de peticiones: detrás de un proxy inverso todas las sesiones mostrarían la IP del proxy hasta configurar `UseForwardedHeaders` con proxies de confianza.
+- **Por qué es seguro con datos hostiles.** El `User-Agent` lo controla el cliente: se le quitan los caracteres de control, se recorta sin partir un emoji, no se interpreta y la columna rechaza lo que se pase. Detalle y pruebas en el capítulo 6.
+
 ---
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad

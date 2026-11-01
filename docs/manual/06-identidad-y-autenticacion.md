@@ -398,6 +398,39 @@ La solución es el **primer servicio en segundo plano de OfiFlow**: [`RefreshTok
 - **Efecto sobre las peticiones.** La mediana de una petición autenticada no cambia (≈ 12 ms), pero durante una purga grande entre el 1 % y el 5 % de las peticiones se quedan 500-700 ms, **sea cual sea el tamaño del lote**; sin purga, ninguna pasaba de 200 ms. Parecía una cuestión de bloqueos y **no lo era**: las peticiones lentas aparecían cada ~5 segundos con el intervalo acortándose (7,8 → 2,7 s) y su duración bajando conforme la tabla se encogía. Es la firma de la **actualización automática de estadísticas síncrona** de SQL Server: cada `√(1000 × filas)` modificaciones, la siguiente consulta sobre la tabla espera a que se recalculen. Se confirmó activando `AUTO_UPDATE_STATISTICS_ASYNC` en la base: solo 2 peticiones de 2771 pasaron de 150 ms (máximo 268 ms). Es un ajuste de la base de datos, no del código, y está en la ADR-019 como recomendación de despliegue. Con la purga rutinaria (miles de filas, no cien mil) el efecto es mucho menor, y el mismo mecanismo se dispara ya con el uso normal (cada renovación modifica filas).
 - **Una lección de método:** la primera explicación (bloqueos de lectura) era razonable y **estaba equivocada**. Se descartó con un experimento (la base ya tenía `READ_COMMITTED_SNAPSHOT`, así que los lectores no se bloquean) y se encontró la causa mirando **cuándo** ocurrían las peticiones lentas, no solo cuántas había.
 
+
+### Qué se guarda de cada sesión (spec 016)
+
+Para que una persona pueda **reconocer sus sesiones** en una lista («Chrome en Windows, desde hace dos horas») y cerrar la sospechosa, cada refresh token guarda ahora cuatro datos más, y la sesión los conserva mientras se renueva:
+
+| Dato | Qué es | Detalle |
+|---|---|---|
+| `SessionStartedAt` | Cuándo empezó la **sesión** | El instante del inicio de sesión. **Lo heredan** todas las filas de la cadena de renovaciones |
+| `CreatedAt` | Cuándo se creó **esa fila** | Cada renovación crea una fila nueva, así que la de la fila **activa** es la **última actividad** de la sesión. Como mucho se actualiza cada 30 minutos de uso: es la última *renovación*, no la última petición |
+| `UserAgent` | El navegador | Saneado y recortado a 256 caracteres. Se hereda |
+| `IpAddress` | La red desde la que se inició | **Truncada**, nunca completa. Se hereda |
+
+**La regla que hay que saber defender: renovar hereda, no vuelve a leer.** Iniciar sesión estampa los cuatro datos desde la petición ([`TokenService.IssueTokensAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)); renovar copia el inicio, el navegador y la red de la fila anterior y solo toma su propio `CreatedAt`. La razón es que lo que su dueño reconoce es **cómo empezó** la sesión. Si renovar volviera a leer el navegador, una renovación desde otro sitio (un token copiado, o simplemente un cambio de red) **reescribiría el dispositivo** de la sesión y la lista mentiría justo cuando importa. Un test renueva desde otro navegador y otra red y comprueba que el dispositivo no cambia; otro lo repite cuatro veces.
+
+Las decisiones, y el porqué de cada una:
+
+| Decisión | Por qué |
+|---|---|
+| **`ClientInfo` es la única puerta** de la IP y del navegador | Application y el resto de Infrastructure solo ven lo que sale saneado de ahí. Así no hay un segundo sitio que pueda leer el `RemoteIpAddress` y guardarlo entero por error |
+| **IPv4: el último octeto a cero** (`203.0.113.77` → `203.0.113.0`) | Se reconoce «esa red no es la mía» sin identificar a la persona. Un test comprueba 500 direcciones aleatorias: el resultado nunca es la dirección completa y solo cambia el último octeto |
+| **IPv6: solo los primeros 48 bits** | Es lo que suele asignarse a un sitio, no a un dispositivo. Otro test comprueba 500 direcciones: lo que sigue a los 48 bits es siempre cero |
+| **IPv4 mapeada en IPv6 (`::ffff:1.2.3.4`) se trata como IPv4** | Un servidor de doble pila ve así las conexiones IPv4. Sin tratarla aparte se conservarían los 48 bits de «::ffff:0102» y se perdería el octeto equivocado: la IP quedaría sin truncar de verdad |
+| **El identificador de zona IPv6 (`fe80::1%3`) se descarta** | No viaja en los bytes de la dirección; es un detalle de la máquina, no de la red |
+| **El loopback se guarda tal cual** (`127.0.0.1`, `::1`) | Es la propia máquina: desarrollo local, no una persona. Truncarlo dejaría `::` y no serviría para nada |
+| **El `User-Agent` pierde los caracteres de control y se recorta a 256** | Un salto de línea no debe poder colarse en nada que lo muestre o lo registre. El recorte no parte una pareja de sustitución (un emoji en el límite dejaría media pareja, que no es texto válido) |
+| **No se interpreta nunca** | Es un dato que manda el cliente. «Chrome en Windows» lo calculará un parser pequeño y propio (bloque 3) que reconoce familias conocidas y, ante cualquier otra cosa, dice «Dispositivo desconocido» sin reflejar el texto |
+| **`IClientInfo` es obligatorio en `TokenService`** | Que falte el registro en el contenedor de servicios debe fallar al arrancar, no guardar «nada» en silencio |
+| **Las columnas miden lo que los saneadores** (256 y 45) | La base de datos se niega a guardar más (un test lo comprueba): defensa en profundidad, no sustituto del saneado |
+
+**La migración, otra vez con cuidado.** EF generaba las dos fechas nuevas con `0001-01-01` por defecto: toda sesión anterior habría «empezado en el año 1». Se crean **anulables**, se rellenan (`CreatedAt = ExpiresAt − 7 días`, que es la duración por defecto del refresh token) y solo entonces pasan a `NOT NULL`, **sin valor por defecto**. Las sesiones anteriores quedan sin navegador ni red y se mostrarán como «dispositivo desconocido». Se verificó con la API real: la versión anterior creó dos sesiones sobre el esquema anterior, se aplicó la migración encima y la versión nueva renovó una de ellas **sin inventarle un dispositivo** (el cliente que renovaba decía «Curl» y no se guardó) y **conservando cuándo había empezado**. El `Down` deshace las columnas sin perder filas.
+
+**Cuánto vive y qué NO cubre.** Estos datos viven lo que vive su fila: se borran con ella en la purga (7 días de vida del token más 7 de margen). Son lo que el cliente **dice** (un atacante con una sesión robada puede mentir sobre su navegador), así que sirven para que su dueño reconozca las suyas, no como prueba de nada. Y **no es la única IP que guarda el sistema**: el contexto de registro de ADR-009 lleva la IP de origen **completa** de cada petición en los registros de la API (otro almacén, con otra retención). La IP truncada que se guarda por sesión es una decisión sobre la base de datos, no sobre los ficheros de log.
+
 ---
 
 ## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)
