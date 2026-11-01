@@ -27,6 +27,9 @@ public sealed class SqlServerContainerFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
+    /// <summary>La conexión del contenedor, para los tests que montan servicios reales (por ejemplo, el de la purga) en vez de un contexto suelto.</summary>
+    public string ConnectionString => _container.GetConnectionString();
+
     /// <summary>Igual que <see cref="CreateDbContext(Guid)"/>, pero permitiendo configurar el contexto (por ejemplo, añadir un interceptor que cuente las consultas).</summary>
     public ApplicationDbContext CreateDbContext(Guid tenantId, Action<DbContextOptionsBuilder<ApplicationDbContext>> configure)
     {

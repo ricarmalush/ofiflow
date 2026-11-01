@@ -11,6 +11,7 @@
 
 - [ProyectoOFIFLOW.txt](./producto/ProyectoOFIFLOW.txt): prompt maestro, unas 105 secciones
 - [Calendario del Proyecto.txt](./producto/Calendario%20del%20Proyecto.txt): roadmap 2027-2028
+- [ideas.md](./ideas.md): ideas de producto que aún no son una spec (hoy: el chatbot que prepara un presupuesto cuando el profesional no contesta)
 
 ## ADRs
 
@@ -34,6 +35,7 @@
 | [016](./adr/ADR-016-panel-de-operador-de-la-plataforma.md) | Panel de operador de la plataforma (identidad aparte, sesión propia, suspensión de empresas) | Aceptado |
 | [017](./adr/ADR-017-cors-para-el-frontend-web.md) | CORS para el frontend web (lista cerrada de orígenes, en Program.cs) | Propuesto |
 | [018](./adr/ADR-018-sesion-ligada-al-access-token.md) | El access token queda ligado a su sesión (`sid`, comprobado en cada petición; cambia ADR-007) | Aceptado |
+| [019](./adr/ADR-019-purga-de-sesiones-y-datos-del-dispositivo.md) | Purga de refresh tokens caducados en segundo plano (primer servicio de fondo) y datos del dispositivo de cada sesión (IP truncada, navegador como etiqueta fija) | Aceptado |
 
 ## Specs
 
@@ -54,6 +56,7 @@
 | [013-server-logout](./specs/013-server-logout/spec.md) | Cierre de sesión en el servidor: `POST /auth/logout` revoca el refresh token (amplía ADR-007) | Implementada (API; el frontend es el bloque 5) |
 | [014-logout-all](./specs/014-logout-all/spec.md) | Cerrar todas mis sesiones: `DELETE /account/sessions` revoca todos los refresh tokens de la cuenta (amplía ADR-007 y ADR-012) | Implementada (API; el frontend es el bloque 5) |
 | [015-access-token-session](./specs/015-access-token-session/spec.md) | El access token deja de valer en cuanto se cierra su sesión: `sid` en el token, comprobado en cada petición (401); `RefreshToken.SessionId` con migración (cambia ADR-007, crea ADR-018) | Implementada (API y frontend) |
+| [016-sessions-purge-and-list](./specs/016-sessions-purge-and-list/spec.md) | Purga de refresh tokens caducados (servicio en segundo plano) y ver y cerrar mis sesiones concretas: `GET` y `DELETE /account/sessions/{id}`, con datos del dispositivo (amplía ADR-007 y ADR-018, crea ADR-019) | Implementada |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

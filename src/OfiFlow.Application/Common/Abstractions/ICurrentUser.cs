@@ -15,6 +15,13 @@ public interface ICurrentUser
     Guid? TenantId { get; }
 
     /// <summary>
+    /// La <b>sesión</b> de este token (el claim <c>sid</c>, spec 015). Sirve para saber cuál de las sesiones de la cuenta es <b>esta</b> (spec 016 R11): la
+    /// lista la marca como actual. Cuando una operación llega a un handler, la API ya comprobó que esa sesión sigue activa. Nulo si el token no la trae
+    /// (un token de plataforma) o no es un Guid.
+    /// </summary>
+    Guid? SessionId { get; }
+
+    /// <summary>
     /// El rol <b>efectivo</b>: el de la pertenencia en la base de datos. Es nulo hasta que se llama a
     /// <see cref="VerifyMembershipAsync"/> (lo hace el AuthorizationBehavior antes que nada) y también si la persona ya no
     /// pertenece a la empresa. Fail-closed: quien lo lea sin verificar no ve ningún rol.

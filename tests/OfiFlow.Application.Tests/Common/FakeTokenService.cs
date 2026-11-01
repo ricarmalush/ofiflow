@@ -49,6 +49,28 @@ public sealed class FakeTokenService : ITokenService
         return Task.FromResult(3);
     }
 
+    /// <summary>Las sesiones activas que devuelve «listar» (spec 016), las que el test quiera; y para qué cuentas se pidió.</summary>
+    public List<ActiveSession> ActiveSessions { get; } = [];
+
+    public List<Guid> UsersWhoseSessionsWereListed { get; } = [];
+
+    public Task<IReadOnlyList<ActiveSession>> ListActiveSessionsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        UsersWhoseSessionsWereListed.Add(userId);
+        return Task.FromResult<IReadOnlyList<ActiveSession>>([.. ActiveSessions]);
+    }
+
+    /// <summary>Qué cerrar (cuenta, sesión y si era la actual) se pidió, en orden; y si el doble encuentra la sesión (por defecto sí).</summary>
+    public List<(Guid UserId, Guid SessionId, bool IsCurrent)> SessionsClosed { get; } = [];
+
+    public bool CloseSessionFindsTheSession { get; set; } = true;
+
+    public Task<bool> CloseSessionAsync(Guid userId, Guid sessionId, bool isCurrentSession, CancellationToken cancellationToken)
+    {
+        SessionsClosed.Add((userId, sessionId, isCurrentSession));
+        return Task.FromResult(CloseSessionFindsTheSession);
+    }
+
     // La comprobación de la sesión (spec 015) la usa JwtBearer, no ningún caso de uso: aquí no hace falta simular nada.
     public Task<bool> IsSessionActiveAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken) => Task.FromResult(true);
 

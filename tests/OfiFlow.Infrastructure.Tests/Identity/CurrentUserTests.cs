@@ -138,7 +138,7 @@ public class CurrentUserTests
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
 
-        var issued = await new TokenService(db, jwtOptions, NullLogger<TokenService>.Instance)
+        var issued = await new TokenService(db, jwtOptions, new FakeClientInfo(), NullLogger<TokenService>.Instance)
             .IssueTokensAsync(userId, tenantId, role, CancellationToken.None);
 
         var handler = bearer.TokenHandlers.OfType<JsonWebTokenHandler>().Single();

@@ -19,6 +19,9 @@ public sealed class OfiFlowApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:PlatformSecret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
         builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
 
+        // Spec 016: la purga es un servicio en segundo plano y los tests de la API no deben tenerla activa.
+        builder.UseSetting("RefreshTokenPurge:Enabled", "false");
+
         // Solo en tests: cada petición puede declarar su IP (ver TestClientIpStartupFilter). Sin la cabecera no cambia nada.
         builder.ConfigureServices(services => services.AddTransient<IStartupFilter, TestClientIpStartupFilter>());
     }

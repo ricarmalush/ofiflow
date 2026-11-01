@@ -56,6 +56,8 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
 
     public Guid? TenantId => ParseGuid(OfiFlowClaimTypes.TenantId);
 
+    public Guid? SessionId => ParseGuid(OfiFlowClaimTypes.SessionId);
+
     /// <summary>Fail-closed: hasta verificar la pertenencia, no hay ningún rol.</summary>
     public TenantRole? Role => _verified ? _effectiveRole : null;
 

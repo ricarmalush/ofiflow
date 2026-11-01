@@ -290,6 +290,18 @@ Cada campo de texto tiene una longitud máxima, definida **una sola vez** y comp
 
 La regla es estricta: **ni contraseñas, ni tokens, ni cuerpos de petición, ni datos personales** en el registro (ni emails, teléfonos o direcciones de clientes). Se registran **identificadores** (de usuario, de empresa) y la IP de origen. Hay tests que envían un dato reconocible y comprueban que no aparece en ningún registro.
 
+
+### Lo que se guarda del cliente (spec 016)
+
+Desde la spec 016 cada sesión guarda **desde qué navegador y desde qué red aproximada se inició**, para que su dueño la reconozca en una lista. Es el único sitio donde OfiFlow guarda algo del dispositivo de una persona, y por eso es una decisión de privacidad, no un detalle.
+
+- **Se guarda lo mínimo.** La **IP truncada** (IPv4 sin el último octeto, IPv6 a 48 bits: una red aproximada, no una persona) y el **navegador** saneado y recortado a 256 caracteres. **Nunca** la IP completa. Lo hace un único componente, `ClientInfo`, que es la única puerta: nada más lee el `RemoteIpAddress` para guardarlo.
+- **Vive lo que vive su fila.** Se borra con ella en la purga: 7 días de vida del refresh token más 7 de margen. No hay una copia aparte.
+- **Solo lo ve su dueño.** La lista (bloque 3) devuelve las sesiones de la cuenta del token, y nunca el navegador crudo ni la IP completa.
+- **Es lo que el cliente dice, no una prueba.** Quien tenga una sesión robada puede mentir sobre su navegador. Sirve para reconocer, no para acusar.
+- **Lo que NO cubre:** el contexto de registro (`SourceIp`, ADR-009 R5) ya lleva la **IP completa** de cada petición en los registros de la API. Truncar en la base de datos **no** hace que desaparezca de los ficheros de log, que son otro almacén con su propia retención. Y la IP viene de `RemoteIpAddress`, la misma fuente que el límite de peticiones: detrás de un proxy inverso todas las sesiones mostrarían la IP del proxy hasta configurar `UseForwardedHeaders` con proxies de confianza.
+- **Por qué es seguro con datos hostiles.** El `User-Agent` lo controla el cliente: se le quitan los caracteres de control, se recorta sin partir un emoji, no se interpreta y la columna rechaza lo que se pase. Detalle y pruebas en el capítulo 6.
+
 ---
 
 ## Parte 4 — Ver lo que pasa: los eventos de seguridad
@@ -307,6 +319,8 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **treinta y dos event
 | `1007` | **Sesión cerrada** (spec 013) | Alguien cerró una sesión: se revocó su refresh token (con el `UserId` y el `TenantId`, nunca el token ni su hash). Solo se registra cuando se cierra algo de verdad; cerrar con un token desconocido, caducado o ya revocado no deja evento. Un `1003` justo después del `1007` del mismo usuario es alguien usando el token que acaba de cerrarse: una copia |
 | `1008` | **Todas las sesiones cerradas** (spec 014) | Una persona pidió cerrar todas sus sesiones: lleva el `UserId` y **cuántas** cerró (nunca tokens ni hashes). Se registra en **cada** petición, también con cero: «alguien pidió cerrar todo y no había nada» es información. Un `1008` seguido de `1003` del mismo usuario es alguien usando una copia de un token que acaba de cerrarse |
 | `1009` | **Access token rechazado por su sesión** (spec 015) | La API recibió un token firmado y vigente cuya **sesión ya no está activa** (se cerró) o que no lleva identificador de sesión. Lleva el **motivo** (`SessionNotActive` o `MissingSessionId`) y el `UserId` si se conoce; nunca el token ni el `sid`. Nivel `Information`: tras un cierre es normal que llegue alguna petición en vuelo. Una ráfaga sobre el mismo `UserId` después de un `1007` o `1008` es alguien usando una copia de un token que acaba de cerrarse |
+| `1010` | **Una sesión cerrada por su dueño** (spec 016) | Una persona cerró **una sesión concreta** suya (`DELETE /account/sessions/{id}`), distinta de «cerrar todas» (`1008`) y de salir de la propia (`1007`). Solo se registra cuando de verdad cerró algo (un 404 no deja evento). Lleva el `UserId` y **si era la sesión actual**; **el mensaje nunca** lleva el Id de la sesión cerrada, ni tokens ni hashes (ojo: el ámbito `RequestPath` que ASP.NET Core añade a cada línea de la petición sí contiene la URL y por tanto ese Id; no es un secreto, ya viaja en el token, y los tokens no aparecen en ningún sitio del log). Nivel `Warning`: una ráfaga de estos del mismo usuario seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño (acotada por el límite compartido de 10 por hora) |
+| `1011` | **Purga de refresh tokens** (spec 016) | El servicio en segundo plano borró refresh tokens caducados hace más del margen (7 días por defecto). Lleva el **recuento** y la fecha de corte; nunca tokens, hashes ni cuentas (es mantenimiento de la tabla, no una acción de nadie). Se registra **una vez por ciclo y solo si borró algo**; un ciclo sin nada no deja evento. Un fallo del ciclo no es un evento de seguridad: va al registro normal con su excepción y se reintenta en el ciclo siguiente |
 | `1101` | Límite de peticiones superado | Alguien se pasa en `login`, `register`, `refresh`, `logout` o `account/sessions` |
 | `1201` | Excepción no controlada | Un 500; se registra con el detalle interno completo |
 | `1301` | **Acceso denegado** | Un rol intenta algo para lo que no tiene permiso, o intenta gestionar a un rol que no le corresponde (la jerarquía de roles) |

@@ -10,6 +10,8 @@ public sealed class TestCurrentUser(TenantRole? role, Guid? userId, Guid? tenant
 
     public Guid? TenantId { get; } = tenantId;
 
+    public Guid? SessionId { get; init; }
+
     public TenantRole? Role { get; } = role;
 
     public bool TenantSuspended => false;

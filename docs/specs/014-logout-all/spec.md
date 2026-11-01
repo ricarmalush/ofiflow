@@ -25,8 +25,8 @@ Hoy ese efecto solo existe como consecuencia de otras acciones (activar o desact
 ## Alcance — Qué NO incluye
 
 - **NEXT:** **invalidar los access tokens ya emitidos.** Son JWT sin estado y valen hasta 30 minutos. Tras cerrar todas las sesiones, quien tenga un access token copiado lo conserva hasta que caduque, pero **ya no puede renovarlo**. Es el mismo límite de la spec 013 y se resuelve con su propio NEXT (ver «Decisiones», D5). **Actualización (spec 015, 2026-10-30): resuelto.** Los access tokens de todas las sesiones cerradas dan `401` en la petición siguiente (ADR-018).
-- **NEXT:** **listar mis sesiones** («Chrome en Windows, hace 2 h») y cerrar **una concreta** que no sea la actual. Exige guardar datos de dispositivo en cada refresh token (agente, IP, fecha), con su propia decisión de privacidad.
-- **NEXT:** purgar los refresh tokens caducados o revocados (hoy se acumulan filas).
+- **NEXT:** **listar mis sesiones** («Chrome en Windows, hace 2 h») y cerrar **una concreta** que no sea la actual. Exige guardar datos de dispositivo en cada refresh token (agente, IP, fecha), con su propia decisión de privacidad. **Actualización (spec 016, 2026-11-01): resuelto.** `GET /account/sessions` y `DELETE /account/sessions/{id}` (ADR-019). La ruta `/{id}` que esta spec fijaba como `404` de ruta ahora existe: el `404` lo da el caso de uso, con el mismo cuerpo para una sesión inexistente, ajena o ya cerrada.
+- **NEXT:** purgar los refresh tokens caducados o revocados (hoy se acumulan filas). **Actualización (spec 016, 2026-11-01): resuelto.** Una purga en segundo plano borra las filas caducadas hace más de 7 días (ADR-019).
 - **NEVER:** que una persona pueda cerrar las sesiones **de otra** por esta ruta. No hay Id ni parámetro: la cuenta sale del token. (Cerrar las de otro miembro, si algún día hace falta, es una operación de gestión distinta, con la jerarquía de roles de la spec 009.)
 
 ## Reglas de negocio / invariantes

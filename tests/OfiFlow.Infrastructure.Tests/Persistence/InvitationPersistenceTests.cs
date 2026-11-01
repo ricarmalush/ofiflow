@@ -178,7 +178,7 @@ public class InvitationPersistenceTests(SqlServerContainerFixture fixture) : ICl
             seed.TenantUsers.Add(TenantUser.Create(tenantId, userId, TenantRole.Technician));
             await seed.SaveChangesAsync(CancellationToken.None);
 
-            var tokens = new TokenService(seed, Microsoft.Extensions.Options.Options.Create(jwt), NullLogger<TokenService>.Instance);
+            var tokens = new TokenService(seed, Microsoft.Extensions.Options.Options.Create(jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance);
             await tokens.IssueTokensAsync(userId, tenantId, TenantRole.Technician, CancellationToken.None);
         }
 
@@ -197,7 +197,7 @@ public class InvitationPersistenceTests(SqlServerContainerFixture fixture) : ICl
 
         // La baja intenta borrar todo y además tocar la invitación desfasada: la base lo rechaza entero.
         var identityForRemoval = new IdentityService(removal, NullLogger<IdentityService>.Instance);
-        var tokensForRemoval = new TokenService(removal, Microsoft.Extensions.Options.Options.Create(jwt), NullLogger<TokenService>.Instance);
+        var tokensForRemoval = new TokenService(removal, Microsoft.Extensions.Options.Options.Create(jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance);
         await identityForRemoval.DeleteUserAsync(userId, CancellationToken.None);
         await tokensForRemoval.DeleteRefreshTokensAsync(userId, CancellationToken.None);
         removal.TenantUsers.Remove(await removal.TenantUsers.SingleAsync(tu => tu.UserId == userId));
@@ -237,7 +237,7 @@ public class InvitationPersistenceTests(SqlServerContainerFixture fixture) : ICl
             seed.TenantUsers.Add(TenantUser.Create(tenantId, userId, TenantRole.Technician));
             await seed.SaveChangesAsync(CancellationToken.None);
 
-            var tokens = new TokenService(seed, Microsoft.Extensions.Options.Options.Create(jwt), NullLogger<TokenService>.Instance);
+            var tokens = new TokenService(seed, Microsoft.Extensions.Options.Options.Create(jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance);
             var issued = await tokens.IssueTokensAsync(userId, tenantId, TenantRole.Technician, CancellationToken.None);
             await tokens.RotateRefreshTokenAsync(issued.RefreshToken, CancellationToken.None); // deja un token revocado y otro activo
         }
@@ -245,7 +245,7 @@ public class InvitationPersistenceTests(SqlServerContainerFixture fixture) : ICl
         await using (var removal = _fixture.CreateDbContext(tenantId))
         {
             await new IdentityService(removal, NullLogger<IdentityService>.Instance).DeleteUserAsync(userId, CancellationToken.None);
-            await new TokenService(removal, Microsoft.Extensions.Options.Options.Create(jwt), NullLogger<TokenService>.Instance)
+            await new TokenService(removal, Microsoft.Extensions.Options.Options.Create(jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance)
                 .DeleteRefreshTokensAsync(userId, CancellationToken.None);
             removal.TenantUsers.Remove(await removal.TenantUsers.SingleAsync(tu => tu.UserId == userId));
             removal.Users.Remove(await removal.Users.SingleAsync(u => u.Id == userId));

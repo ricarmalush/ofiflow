@@ -367,6 +367,106 @@ Hasta aquí, cerrar una sesión revocaba su **refresh token**: nadie podía reno
 
 **Lo que no cierra.** Un token robado **mientras nadie cierra la sesión** sigue valiendo: esto cierra el robo *después* de cerrar sesión (el móvil perdido), no detecta que lo use otra persona. Una petición que ya pasó la comprobación cuando se cierra la sesión se completa; la siguiente falla.
 
+
+### El final del ciclo de vida: la purga (spec 016)
+
+Cada renovación de sesión **revoca una fila y crea otra**, y hasta ahora no se borraba ninguna. Con la spec 015 la tabla de refresh tokens pasó a **consultarse en cada petición** (¿sigue activa la sesión de este token?), así que lo que era una acumulación inofensiva se convirtió en una tabla caliente que crece sin parar: quien trabaja ocho horas al día renueva unas 16 veces, es decir, 16 filas nuevas al día, para siempre.
+
+La solución es el **primer servicio en segundo plano de OfiFlow**: [`RefreshTokenPurgeService`](../../src/OfiFlow.Infrastructure/Identity/RefreshTokenPurgeService.cs), un `BackgroundService` que vive **dentro de la API** y cada 6 horas borra, por lotes, las filas cuya caducidad pasó hace más de 7 días. Las decisiones, y el porqué de cada una:
+
+| Decisión | Por qué |
+|---|---|
+| **Una sola regla: `ExpiresAt` anterior a «ahora − 7 días», revocada o no** | Toda fila caduca como mucho 7 días después de crearse, así que esa regla cubre las revocadas por rotación y las **abandonadas** (sesiones que nunca se volvieron a renovar, que son justo las que se acumulan). Un 7 es «el tiempo que el token pudo usarse más una semana para investigar un incidente» |
+| **Nunca toca una sesión activa** | Una sesión activa tiene una fila sin revocar y sin caducar: no cumple la regla. Sí se borran las renovaciones viejas de una sesión que lleva semanas activa, y no cambia nada, porque `IsSessionActiveAsync` solo mira filas activas. Un test lo comprueba con una sesión de verdad |
+| **El margen se queda con el corte exacto** | `ExpiresAt < corte`, estricto: lo que caduca justo en el corte no se borra |
+| **Por lotes (1000) con una pausa de 200 ms entre ellos** | Un solo `DELETE` enorme bloquearía una tabla que se consulta en cada petición. Cada lote es un `DELETE` con `TOP(@p)` ordenado por `ExpiresAt` (lo más antiguo primero) |
+| **Escrito en LINQ, no en SQL a mano** | Un test de arquitectura limita el SQL fuera de LINQ a `AccountLockout.cs`. `ExecuteDeleteAsync` con `OrderBy` y `Take` se traduce a un único `DELETE` parametrizado, y un test captura el comando y lo fija: no se puede volver, sin que falle, a cargar las filas una a una |
+| **Un índice en `ExpiresAt`** | Sin él, cada ciclo leería la tabla entera. El plan es un `Index Seek` con `ExpiresAt < @cutoff` |
+| **Un ciclo que falla no tumba la API** | Se registra la excepción (no es un evento de seguridad) y el ciclo siguiente reintenta. Un test inyecta un fallo en el primer ciclo y comprueba que el servicio sigue ejecutando los siguientes |
+| **No arranca de golpe** | Espera 2 minutos para no competir con el arranque de la API ni con las migraciones, y se detiene limpiamente con ella (un test lo para durante la espera) |
+| **Seguro con varias instancias** | Cada instancia de la API tiene su servicio; borrar lo que otra ya borró no hace nada ni falla. Un test lanza dos a la vez sobre 600 filas: cada fila la borra una sola |
+| **Un evento `1011` por ciclo, solo si borró algo** | Con el recuento y la fecha de corte; un ciclo sin nada no deja evento (sería ruido cada 6 horas) |
+| **Se valida al arrancar** | Un intervalo de cero haría girar el bucle sin descanso; un margen de cero borraría tokens que aún pueden usarse. Una sección inválida impide arrancar |
+| **La consola de administración no lo recibe** | `OfiFlow.Admin` es interactiva y de un solo uso: no debe lanzar tareas periódicas. Un test lo comprueba. Y los tests de la API lo desactivan por configuración |
+
+**Lo que se perdió al borrar, y por qué no importa.** Una fila revocada que se borra deja de servir para la detección de reutilización (ADR-007): usar después ese token pasa de «reutilización de un token revocado» (`1003`, que revoca la cadena) a «token desconocido» (`1004`, que no revoca nada). Eso solo ocurre cuando el token ya caducó hace más de una semana, es decir, cuando no podría usarse de todos modos; y **evita un abuso**: hasta ahora, presentar un token viejo ya caducado y revocado revocaba la cadena activa de su dueño.
+
+**Lo que cuesta, medido** (API real, base desechable, 100 000 filas envejecidas por SQL):
+
+- **32 segundos** para purgar las 100 000 con la configuración por defecto (61 s con lotes de 500; 131 s con lotes de 100). El plan es un `Index Seek` en `IX_RefreshTokens_ExpiresAt` con `Top` y `Clustered Index Delete`; un lote de 1000 filas cuesta unas **19 000 lecturas lógicas** (unas 19 por fila: es el mantenimiento de los cinco índices de la tabla, con claves GUID aleatorias).
+- **Sin escalado de bloqueos**: un lote de 1000 filas toma 5000 bloqueos de fila repartidos en los 5 índices (1000 por índice) y el bloqueo de la tabla se queda en intención; se midió hasta 2000 filas por lote.
+- **Efecto sobre las peticiones.** La mediana de una petición autenticada no cambia (≈ 12 ms), pero durante una purga grande entre el 1 % y el 5 % de las peticiones se quedan 500-700 ms, **sea cual sea el tamaño del lote**; sin purga, ninguna pasaba de 200 ms. Parecía una cuestión de bloqueos y **no lo era**: las peticiones lentas aparecían cada ~5 segundos con el intervalo acortándose (7,8 → 2,7 s) y su duración bajando conforme la tabla se encogía. Es la firma de la **actualización automática de estadísticas síncrona** de SQL Server: cada `√(1000 × filas)` modificaciones, la siguiente consulta sobre la tabla espera a que se recalculen. Se confirmó activando `AUTO_UPDATE_STATISTICS_ASYNC` en la base: solo 2 peticiones de 2771 pasaron de 150 ms (máximo 268 ms). Es un ajuste de la base de datos, no del código, y está en la ADR-019 como recomendación de despliegue. Con la purga rutinaria (miles de filas, no cien mil) el efecto es mucho menor, y el mismo mecanismo se dispara ya con el uso normal (cada renovación modifica filas).
+- **Una lección de método:** la primera explicación (bloqueos de lectura) era razonable y **estaba equivocada**. Se descartó con un experimento (la base ya tenía `READ_COMMITTED_SNAPSHOT`, así que los lectores no se bloquean) y se encontró la causa mirando **cuándo** ocurrían las peticiones lentas, no solo cuántas había.
+
+
+### Qué se guarda de cada sesión (spec 016)
+
+Para que una persona pueda **reconocer sus sesiones** en una lista («Chrome en Windows, desde hace dos horas») y cerrar la sospechosa, cada refresh token guarda ahora cuatro datos más, y la sesión los conserva mientras se renueva:
+
+| Dato | Qué es | Detalle |
+|---|---|---|
+| `SessionStartedAt` | Cuándo empezó la **sesión** | El instante del inicio de sesión. **Lo heredan** todas las filas de la cadena de renovaciones |
+| `CreatedAt` | Cuándo se creó **esa fila** | Cada renovación crea una fila nueva, así que la de la fila **activa** es la **última actividad** de la sesión. Como mucho se actualiza cada 30 minutos de uso: es la última *renovación*, no la última petición |
+| `UserAgent` | El navegador | Saneado y recortado a 256 caracteres. Se hereda |
+| `IpAddress` | La red desde la que se inició | **Truncada**, nunca completa. Se hereda |
+
+**La regla que hay que saber defender: renovar hereda, no vuelve a leer.** Iniciar sesión estampa los cuatro datos desde la petición ([`TokenService.IssueTokensAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)); renovar copia el inicio, el navegador y la red de la fila anterior y solo toma su propio `CreatedAt`. La razón es que lo que su dueño reconoce es **cómo empezó** la sesión. Si renovar volviera a leer el navegador, una renovación desde otro sitio (un token copiado, o simplemente un cambio de red) **reescribiría el dispositivo** de la sesión y la lista mentiría justo cuando importa. Un test renueva desde otro navegador y otra red y comprueba que el dispositivo no cambia; otro lo repite cuatro veces.
+
+Las decisiones, y el porqué de cada una:
+
+| Decisión | Por qué |
+|---|---|
+| **`ClientInfo` es la única puerta** de la IP y del navegador | Application y el resto de Infrastructure solo ven lo que sale saneado de ahí. Así no hay un segundo sitio que pueda leer el `RemoteIpAddress` y guardarlo entero por error |
+| **IPv4: el último octeto a cero** (`203.0.113.77` → `203.0.113.0`) | Se reconoce «esa red no es la mía» sin identificar a la persona. Un test comprueba 500 direcciones aleatorias: el resultado nunca es la dirección completa y solo cambia el último octeto |
+| **IPv6: solo los primeros 48 bits** | Es lo que suele asignarse a un sitio, no a un dispositivo. Otro test comprueba 500 direcciones: lo que sigue a los 48 bits es siempre cero |
+| **IPv4 mapeada en IPv6 (`::ffff:1.2.3.4`) se trata como IPv4** | Un servidor de doble pila ve así las conexiones IPv4. Sin tratarla aparte se conservarían los 48 bits de «::ffff:0102» y se perdería el octeto equivocado: la IP quedaría sin truncar de verdad |
+| **El identificador de zona IPv6 (`fe80::1%3`) se descarta** | No viaja en los bytes de la dirección; es un detalle de la máquina, no de la red |
+| **El loopback se guarda tal cual** (`127.0.0.1`, `::1`) | Es la propia máquina: desarrollo local, no una persona. Truncarlo dejaría `::` y no serviría para nada |
+| **El `User-Agent` pierde los caracteres de control y se recorta a 256** | Un salto de línea no debe poder colarse en nada que lo muestre o lo registre. El recorte no parte una pareja de sustitución (un emoji en el límite dejaría media pareja, que no es texto válido) |
+| **No se interpreta nunca** | Es un dato que manda el cliente. «Chrome en Windows» lo calculará un parser pequeño y propio (bloque 3) que reconoce familias conocidas y, ante cualquier otra cosa, dice «Dispositivo desconocido» sin reflejar el texto |
+| **`IClientInfo` es obligatorio en `TokenService`** | Que falte el registro en el contenedor de servicios debe fallar al arrancar, no guardar «nada» en silencio |
+| **Las columnas miden lo que los saneadores** (256 y 45) | La base de datos se niega a guardar más (un test lo comprueba): defensa en profundidad, no sustituto del saneado |
+
+**La migración, otra vez con cuidado.** EF generaba las dos fechas nuevas con `0001-01-01` por defecto: toda sesión anterior habría «empezado en el año 1». Se crean **anulables**, se rellenan (`CreatedAt = ExpiresAt − 7 días`, que es la duración por defecto del refresh token) y solo entonces pasan a `NOT NULL`, **sin valor por defecto**. Las sesiones anteriores quedan sin navegador ni red y se mostrarán como «dispositivo desconocido». Se verificó con la API real: la versión anterior creó dos sesiones sobre el esquema anterior, se aplicó la migración encima y la versión nueva renovó una de ellas **sin inventarle un dispositivo** (el cliente que renovaba decía «Curl» y no se guardó) y **conservando cuándo había empezado**. El `Down` deshace las columnas sin perder filas.
+
+**Cuánto vive y qué NO cubre.** Estos datos viven lo que vive su fila: se borran con ella en la purga (7 días de vida del token más 7 de margen). Son lo que el cliente **dice** (un atacante con una sesión robada puede mentir sobre su navegador), así que sirven para que su dueño reconozca las suyas, no como prueba de nada. Y **no es la única IP que guarda el sistema**: el contexto de registro de ADR-009 lleva la IP de origen **completa** de cada petición en los registros de la API (otro almacén, con otra retención). La IP truncada que se guarda por sesión es una decisión sobre la base de datos, no sobre los ficheros de log.
+
+
+### Ver y cerrar mis sesiones (spec 016)
+
+La spec 014 dio un martillo («cerrar todas»). Quien perdió el móvil o ve algo raro quiere ver **cuál** sesión es la sospechosa antes de tirar todas las suyas. Para eso hay dos rutas más, ambas en el grupo `/account`, que es autenticado.
+
+**`GET /api/v1/account/sessions`: mis sesiones activas.** Para cada una devuelve seis campos, y solo esos:
+
+| Campo | Qué es |
+|---|---|
+| `id` | El Id de la sesión (el `sid` de la spec 015). Es lo que se pasa para cerrarla. **No es un secreto**: ya viaja en el token, que cualquiera puede leer pero nadie puede firmar, y conocer el de otra persona no da nada (ver abajo) |
+| `device` | Una **etiqueta** («Chrome en Windows», «Safari en iPhone») o «Dispositivo desconocido» |
+| `startedAt` | Cuándo empezó la sesión (heredado en cada renovación) |
+| `lastActiveAt` | La última **renovación**, como mucho cada 30 minutos de uso: no la última petición |
+| `approximateIp` | La red aproximada (IP **truncada**) o nula |
+| `current` | Es la sesión del token de esta misma petición |
+
+Lo que **no** devuelve es tan importante como lo que devuelve: ni el refresh token, ni su hash, ni el `User-Agent` crudo, ni la IP completa. Un test comprueba que el objeto de respuesta tiene **exactamente** esas seis propiedades (si alguien añade una, falla y obliga a decidirlo), y otro que, con una respuesta real, ninguno de esos datos aparece en el texto.
+
+**La etiqueta del dispositivo y por qué nunca refleja el texto del cliente.** El `User-Agent` lo controla quien hace la petición: un atacante puede mandar HTML. [`DeviceLabel`](../../src/OfiFlow.Application/Identity/DeviceLabel.cs) es un parser **pequeño y propio**, sin dependencias, que solo reconoce familias conocidas de navegador (Edge, Opera, Samsung Internet, Firefox, Chrome, Safari) y de sistema (iPhone, iPad, Android, Windows, ChromeOS, macOS, Linux) y devuelve **siempre una cadena fija**. Ante cualquier otra cosa (`curl`, Postman, una app de Android, un texto raro, HTML), «Dispositivo desconocido». El **orden** de las comprobaciones es lo delicado: Edge, Opera y Samsung llevan «Chrome/» y «Safari/» dentro de su texto, y iPhone e iPad llevan «like Mac OS X» (y Android lleva «Linux»), así que se reconocen antes. Está probado con 17 navegadores reales, 12 entradas que no son navegadores (`curl`, Postman, una app de Android, HTML, SQL…) y, aparte, con **3000 cadenas aleatorias y hostiles** que comprueban que el resultado pertenece siempre a un conjunto cerrado.
+
+**`DELETE /api/v1/account/sessions/{id}`: cerrar una.** Las decisiones, y el porqué de cada una:
+
+| Decisión | Por qué |
+|---|---|
+| **La cuenta sale del token; el `{id}` solo elige cuál de MIS sesiones** | `TokenService.CloseSessionAsync` busca por el Id de sesión **Y por el `UserId` del token**. Sin esa segunda condición, adivinar el Id de una sesión ajena la cerraría. Un test lo intenta (con el Id real de la sesión de la víctima y hasta con el `userId` de la víctima en la consulta y en el cuerpo): `404`, y la víctima no pierde nada |
+| **El mismo `404` para tres casos distintos** | «No existe», «es de otra cuenta» y «ya estaba cerrada» dan la misma respuesta (mismo código `session.not_found`, mismo texto, mismas cabeceras). Si se distinguieran, la ruta serviría de **oráculo**: «¿existe esta sesión de otra persona?». Un test provoca los tres casos y compara lo observable de las tres respuestas |
+| **Un Id que no es un Guid, o es el vacío, da `404`** | La ruta lleva la restricción `{id:guid}`: lo que no es un Guid no llega ni al caso de uso |
+| **Se puede cerrar la sesión actual** | `204`, y su token deja de valer en la petición siguiente (spec 015). Es coherente: cerrar una sesión corta su token |
+| **Revoca, no borra** | Como en las specs 013 y 014. El coste conocido sigue ahí: **usar después el refresh token de la sesión cerrada es una reutilización** y revoca el resto de sesiones de la cuenta (falla hacia cerrar). Un test lo deja escrito, porque yo mismo caí en esa trampa al escribir otro |
+| **Sin permisos nuevos** | Listar es leer la propia cuenta (`Account.Read`); cerrar una usa `Account.CloseSessions`, el mismo que cerrar todas. «Cerrar sesiones» es una sola cosa, en singular o en plural. La matriz sigue en 13 permisos y 65 celdas; las operaciones pasan de 38 a **40** |
+| **Comparte el cubo de límite con «cerrar todas»** (10 por hora y por IP) | El abuso posible es el mismo. Un test gasta nueve «cerrar una» y una «cerrar todas» y comprueba que la undécima, sea cual sea, da `429`. **Listar no tiene límite propio** y no gasta ese cubo (otro test hace 15 listados y después sigue pudiendo cerrar) |
+| **El evento `1010` solo si de verdad cerró algo** | Con el `UserId` y si era la sesión actual; el **mensaje** nunca lleva el Id de la sesión cerrada, ni tokens ni hashes (el ámbito `RequestPath` que ASP.NET Core añade a las líneas de la petición sí contiene la URL, y con ella ese Id: no es un secreto, ya viaja en el token). Un `404` no deja evento. Nivel `Warning`: una ráfaga de estos del mismo usuario seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño |
+
+**Un matiz que conviene saber explicar.** «Quién soy» (`/me`) y la lista de sesiones leen cosas distintas de la misma cuenta, y las dos usan `Account.Read`. Pero **`current` depende del `sid` del token**: ese dato lo lee `CurrentUser.SessionId`, que devuelve nulo (no una excepción) si el token no lo trae o está roto, y entonces ninguna sesión sale marcada como actual.
+
+**Lo que esta lista no es.** Es lo que la API **sabe**, y el navegador y la red los manda el cliente: sirve para que su dueño reconozca las suyas, no como prueba de nada. La «última actividad» es la de la última renovación, no la de la última petición. Y una sesión anterior a la spec 016 se muestra como «Dispositivo desconocido» y sin red.
 ---
 
 ## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)

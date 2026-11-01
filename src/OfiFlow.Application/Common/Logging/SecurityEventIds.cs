@@ -40,6 +40,20 @@ public static class SecurityEventIds
     /// </summary>
     public const int SessionTokenRejected = 1009;
 
+    /// <summary>
+    /// El servicio de purga borró refresh tokens caducados hace más del margen (spec 016). Se registra una vez por ciclo y <b>solo si borró algo</b>:
+    /// una ejecución que no encuentra nada no deja evento (sería ruido cada pocas horas). Lleva el recuento y la fecha de corte; nunca tokens,
+    /// hashes ni Ids de cuenta (no hay una cuenta: es mantenimiento de la tabla).
+    /// </summary>
+    public const int RefreshTokensPurged = 1011;
+
+    /// <summary>
+    /// Una persona cerró <b>una sesión concreta</b> suya (spec 016 R17), distinta de «cerrar todas» (<see cref="AllSessionsClosed"/>) y de salir de la
+    /// propia (<see cref="SessionClosed"/>). Solo se registra cuando de verdad cerró algo. Lleva el UserId y si era la sesión actual; <b>nunca</b> el Id de la
+    /// sesión cerrada, ni tokens ni hashes (una ráfaga de estos del mismo UserId seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño).
+    /// </summary>
+    public const int SessionClosedByOwner = 1010;
+
     // 1100-1199: abuso
     public const int RateLimitExceeded = 1101;
 

@@ -34,7 +34,7 @@ public class IdentityDeletionTests
     private static IdentityService Identity(ApplicationDbContext db) => new(db, NullLogger<IdentityService>.Instance);
 
     private static TokenService Tokens(ApplicationDbContext db) =>
-        new(db, Microsoft.Extensions.Options.Options.Create(Jwt), NullLogger<TokenService>.Instance);
+        new(db, Microsoft.Extensions.Options.Options.Create(Jwt), new FakeClientInfo(), NullLogger<TokenService>.Instance);
 
     private static async Task<Guid> RegisterAsync(ApplicationDbContext db, string email)
     {

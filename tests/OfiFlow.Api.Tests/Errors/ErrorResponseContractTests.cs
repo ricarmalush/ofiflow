@@ -82,7 +82,7 @@ public class ValidationErrorContractTests(OfiFlowApiFactory factory) : IClassFix
 /// <summary>
 /// Traducción de cada tipo de excepción a HTTP + código + mensaje, sin base de datos: el ISender
 /// de MediatR se sustituye por uno que lanza la excepción que indica cada test. Se usa
-/// /auth/refresh porque es anónimo y su límite (20/min) admite todas las peticiones de la clase.
+/// /auth/refresh porque es anónimo; cada petición lleva su propia IP de prueba, así que su límite (20/min por IP) no cuenta las filas de la tabla.
 /// </summary>
 public class ExceptionMappingContractTests(ExceptionMappingContractTests.ConfigurableSenderFactory factory)
     : IClassFixture<ExceptionMappingContractTests.ConfigurableSenderFactory>
@@ -100,6 +100,7 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new BusinessRuleException(InvitationErrors.LimitReached), HttpStatusCode.BadRequest, "invitation.limit_reached" },
         { new NotFoundException(InvitationErrors.NotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "invitation.not_found" },
         { new NotFoundException(TenancyErrors.TenantUserNotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "tenant_user.not_found" },
+        { new NotFoundException(IdentityErrors.SessionNotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "session.not_found" },
         { new ForbiddenException(TenancyErrors.RoleNotManageable), HttpStatusCode.Forbidden, "tenant_user.role_not_manageable" },
         { new ForbiddenException(TenancyErrors.CannotManageSelf), HttpStatusCode.Forbidden, "tenant_user.cannot_manage_self" },
         // Spec 010: el segundo factor.
@@ -168,6 +169,7 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         {
             Content = JsonContent.Create(new { refreshToken = "x" })
         };
+        request.Headers.Add(TestClientIpStartupFilter.HeaderName, TestClientIpStartupFilter.NewIp());
         if (acceptLanguage is not null)
         {
             request.Headers.AcceptLanguage.ParseAdd(acceptLanguage);
@@ -185,7 +187,18 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
             builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting("Jwt:PlatformSecret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
             builder.UseSetting("Mfa:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
-            builder.ConfigureTestServices(services => services.AddSingleton<ISender>(new ThrowingSender(this)));
+
+            // Spec 016: la purga es un servicio en segundo plano y este servidor no tiene base de datos que purgar.
+            builder.UseSetting("RefreshTokenPurge:Enabled", "false");
+
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddSingleton<ISender>(new ThrowingSender(this));
+
+                // Cada petición declara su propia IP (ver TestClientIpStartupFilter): el límite de /auth/refresh es de 20 por minuto y por IP, y esta tabla ya
+                // tiene más filas. Contar peticiones («el límite admite todas las de la clase») era frágil: añadir una fila al contrato rompía otro test.
+                services.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, TestClientIpStartupFilter>();
+            });
         }
     }
 

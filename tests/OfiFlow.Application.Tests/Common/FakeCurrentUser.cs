@@ -15,7 +15,8 @@ public sealed class FakeCurrentUser(
     TenantRole? tokenRole = null,
     bool tenantSuspended = false,
     bool platformSession = false,
-    bool platformOperatorActive = false) : ICurrentUser
+    bool platformOperatorActive = false,
+    Guid? sessionId = null) : ICurrentUser
 {
     /// <summary>El token es una sesión de plataforma (spec 011 R7).</summary>
     public bool IsPlatformSession { get; } = platformSession;
@@ -32,6 +33,9 @@ public sealed class FakeCurrentUser(
     public Guid? UserId { get; } = userId;
 
     public Guid? TenantId { get; } = tenantId;
+
+    /// <summary>La sesión del token (el «sid», spec 015): la que la lista marca como actual (spec 016).</summary>
+    public Guid? SessionId { get; } = sessionId;
 
     public TenantRole? Role { get; } = role;
 

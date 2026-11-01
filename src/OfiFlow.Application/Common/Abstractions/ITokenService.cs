@@ -34,6 +34,24 @@ public interface ITokenService
     Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Las sesiones <b>activas</b> de una cuenta (spec 016 R10): las que tienen un refresh token sin revocar y sin caducar, en todas sus empresas, de la más
+    /// reciente a la más antigua por última actividad. Una sesión que renovó varias veces sale <b>una vez</b>. Solo lee. Devuelve los datos tal como están
+    /// guardados (el navegador sin interpretar, la IP ya truncada): convertirlos para mostrarlos es cosa de Application, que nunca los devuelve crudos.
+    /// </summary>
+    Task<IReadOnlyList<ActiveSession>> ListActiveSessionsAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cierra <b>una sesión concreta</b> de una cuenta (spec 016 R13): revoca (no borra, como en las specs 013 y 014) las filas activas que sean <b>de esa
+    /// sesión y de esa cuenta</b>. El <paramref name="userId"/> forma parte de la condición: sin él, adivinar el Id de una sesión ajena la cerraría.
+    /// Confirma el cambio por sí mismo y deja el evento <c>1010</c> solo si cerró algo.
+    /// </summary>
+    /// <param name="isCurrentSession">Si es la sesión del token de esta petición; solo para el evento.</param>
+    /// <returns>
+    /// true si había una sesión activa y se cerró; false si no existe, es de otra cuenta o ya estaba cerrada (el llamante no debe distinguirlos hacia fuera, R14).
+    /// </returns>
+    Task<bool> CloseSessionAsync(Guid userId, Guid sessionId, bool isCurrentSession, CancellationToken cancellationToken);
+
+    /// <summary>
     /// ¿Sigue activa esta sesión? (spec 015). Lo está si existe un refresh token <b>de esa sesión y de esa cuenta</b> que no esté revocado
     /// ni caducado. Es lo que la API comprueba en cada petición de empresa para aceptar un access token: cerrar la sesión (por cualquier
     /// vía) lo deja sin refresh token activo y el access token deja de valer al instante. Solo lee: no cambia nada.

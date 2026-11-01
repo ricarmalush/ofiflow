@@ -127,6 +127,9 @@
   <data name="auth.forbidden" xml:space="preserve">
     <value>No tienes permiso para realizar esta operación.</value>
   </data>
+  <data name="session.not_found" xml:space="preserve">
+    <value>No se ha encontrado la sesión.</value>
+  </data>
   <data name="tenant_user.not_found" xml:space="preserve">
     <value>No se ha encontrado el usuario en la empresa.</value>
   </data>

@@ -18,7 +18,8 @@ namespace OfiFlow.Infrastructure.Identity;
 public sealed partial class TokenService(
     ApplicationDbContext dbContext,
     IOptions<JwtOptions> jwtOptions,
-    ILogger<TokenService> logger) : ITokenService
+    IClientInfo clientInfo,
+    ILogger<TokenService> logger) : ITokenService, IRefreshTokenPurger
 {
     private readonly JwtOptions _options = jwtOptions.Value;
 
@@ -27,7 +28,13 @@ public sealed partial class TokenService(
         // Iniciar sesión crea una sesión NUEVA (spec 015 R1): dos dispositivos, dos Id, y cerrar uno no toca al otro.
         var sessionId = Guid.NewGuid();
         var accessToken = GenerateAccessToken(userId, tenantId, role, sessionId);
-        var (refreshTokenValue, refreshToken) = CreateRefreshToken(userId, tenantId, sessionId);
+
+        // Los datos de la sesión (spec 016 R7): cuándo empieza y con qué navegador y desde qué red (truncada). Es el ÚNICO sitio donde se estampan:
+        // renovar los hereda, no los vuelve a leer.
+        // Un único instante: al iniciar sesión, la fila y la sesión nacen a la vez.
+        var startedAt = DateTime.UtcNow;
+        var (refreshTokenValue, refreshToken) = CreateRefreshToken(
+            userId, tenantId, sessionId, createdAt: startedAt, sessionStartedAt: startedAt, clientInfo.UserAgent, clientInfo.IpAddress);
 
         dbContext.RefreshTokens.Add(refreshToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -95,7 +102,12 @@ public sealed partial class TokenService(
         // Renovar NO crea una sesión: es la misma (spec 015 R1), así que el token nuevo hereda el SessionId del anterior. El token anterior se
         // revoca y el nuevo se inserta en este mismo SaveChanges (R5): la sesión nunca se queda sin un refresh token activo.
         var accessToken = GenerateAccessToken(existing.UserId, existing.TenantId, tenantUser.Role, existing.SessionId);
-        var (newRefreshTokenValue, newRefreshToken) = CreateRefreshToken(existing.UserId, existing.TenantId, existing.SessionId);
+
+        // R8: la fila nueva HEREDA cuándo empezó la sesión, su navegador y su red, y solo toma su propio CreatedAt (la última actividad). Una renovación
+        // desde otro navegador o desde otra red NO cambia el dispositivo de la sesión: lo que su dueño reconoce es cómo empezó.
+        var (newRefreshTokenValue, newRefreshToken) = CreateRefreshToken(
+            existing.UserId, existing.TenantId, existing.SessionId, createdAt: DateTime.UtcNow, sessionStartedAt: existing.SessionStartedAt,
+            existing.UserAgent, existing.IpAddress);
 
         dbContext.RefreshTokens.Add(newRefreshToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -148,6 +160,50 @@ public sealed partial class TokenService(
         return active.Count;
     }
 
+    public async Task<IReadOnlyList<ActiveSession>> ListActiveSessionsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        // R10: solo la cuenta que llega del token (RefreshTokens no tiene filtro de empresa, así que este Where es lo único que separa una cuenta de otra) y solo
+        // las filas activas, con la misma definición de «activo» de las specs 013, 014 y 015. Por el índice de UserId.
+        var now = DateTime.UtcNow;
+        var rows = await dbContext.RefreshTokens
+            .AsNoTracking()
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now)
+            .OrderByDescending(rt => rt.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        // Una sesión que renovó varias veces tiene UNA fila activa; si una carrera de renovación dejara dos, sale una sola vez, con la más reciente (por el orden de arriba).
+        return [.. rows
+            .DistinctBy(rt => rt.SessionId)
+            .Select(rt => new ActiveSession(rt.SessionId, rt.SessionStartedAt, rt.CreatedAt, rt.UserAgent, rt.IpAddress))];
+    }
+
+    public async Task<bool> CloseSessionAsync(Guid userId, Guid sessionId, bool isCurrentSession, CancellationToken cancellationToken)
+    {
+        // R13: el Id de sesión elige CUÁL de las sesiones de esta cuenta; el UserId (del token, nunca de la petición) forma parte de la condición. Sin él, adivinar
+        // el Id de una sesión ajena la cerraría. Por el índice IX_RefreshTokens_SessionId, que ya contiene UserId, RevokedAt y ExpiresAt.
+        var now = DateTime.UtcNow;
+        var active = await dbContext.RefreshTokens
+            .Where(rt => rt.SessionId == sessionId && rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now)
+            .ToListAsync(cancellationToken);
+
+        // R14: no existe, es de otra cuenta o ya estaba cerrada: no se distingue, no se escribe nada y no hay evento.
+        if (active.Count == 0)
+        {
+            return false;
+        }
+
+        // Se revoca y no se borra, como en las specs 013 y 014: un token cerrado que alguien use después se detecta como reutilización (1003).
+        foreach (var token in active)
+        {
+            token.Revoke();
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        LogSessionClosedByOwner(logger, userId, isCurrentSession);
+        return true;
+    }
+
     public Task<bool> IsSessionActiveAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken)
     {
         // La misma definición de «activo» que RefreshToken.IsActive y que los cierres de las specs 013 y 014 (sin revocar y sin caducar).
@@ -158,6 +214,17 @@ public sealed partial class TokenService(
             .AsNoTracking()
             .AnyAsync(rt => rt.SessionId == sessionId && rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now, cancellationToken);
     }
+
+    public Task<int> PurgeBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken) =>
+        // Set-based y en LINQ (no SQL a mano: ADR-009 R1 limita el SQL fuera de LINQ a AccountLockout). Lo MÁS antiguo primero y con tope de
+        // lote: un solo DELETE gigante bloquearía una tabla que se consulta en cada petición. Solo mira ExpiresAt (índice IX_RefreshTokens_ExpiresAt):
+        // revocada o no da igual, porque una fila caducada hace más del margen ya no puede usarse (R1). Una sesión activa tiene su fila sin
+        // caducar, así que nunca cumple esta condición (R2).
+        dbContext.RefreshTokens
+            .Where(rt => rt.ExpiresAt < cutoff)
+            .OrderBy(rt => rt.ExpiresAt)
+            .Take(batchSize)
+            .ExecuteDeleteAsync(cancellationToken);
 
     public async Task DeleteRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {
@@ -192,10 +259,13 @@ public sealed partial class TokenService(
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private (string Value, RefreshToken Entity) CreateRefreshToken(Guid userId, Guid tenantId, Guid sessionId)
+    private (string Value, RefreshToken Entity) CreateRefreshToken(
+        Guid userId, Guid tenantId, Guid sessionId, DateTime createdAt, DateTime sessionStartedAt, string? userAgent, string? ipAddress)
     {
         var value = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
-        var entity = new RefreshToken(userId, tenantId, sessionId, Hash(value), DateTime.UtcNow.AddDays(_options.RefreshTokenDays));
+        var entity = new RefreshToken(
+            userId, tenantId, sessionId, Hash(value), createdAt.AddDays(_options.RefreshTokenDays),
+            createdAt: createdAt, sessionStartedAt: sessionStartedAt, userAgent: userAgent, ipAddress: ipAddress);
 
         return (value, entity);
     }
@@ -215,6 +285,11 @@ public sealed partial class TokenService(
     [LoggerMessage(EventId = SecurityEventIds.AllSessionsClosed, Level = LogLevel.Warning,
         Message = "Todas las sesiones cerradas a petición de su dueño. UserId {UserId}; sesiones cerradas {ClosedCount}")]
     private static partial void LogAllSessionsClosed(ILogger logger, Guid userId, int closedCount);
+
+    // R17: el UserId y si era la sesión actual. NUNCA el Id de la sesión cerrada, ni tokens ni hashes.
+    [LoggerMessage(EventId = SecurityEventIds.SessionClosedByOwner, Level = LogLevel.Warning,
+        Message = "Una sesión cerrada por su dueño. UserId {UserId}; era la sesión actual: {WasCurrent}")]
+    private static partial void LogSessionClosedByOwner(ILogger logger, Guid userId, bool wasCurrent);
 
     [LoggerMessage(EventId = SecurityEventIds.RefreshTokenRejected, Level = LogLevel.Warning,
         Message = "Refresh token rechazado. Motivo {Reason}, UserId {UserId}")]
