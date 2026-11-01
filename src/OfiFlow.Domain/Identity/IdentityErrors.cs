@@ -10,4 +10,10 @@ public static class IdentityErrors
     public const string UserNameRequired = "user.name_required";
 
     public const string EmailAlreadyRegistered = "user.email_already_registered";
+
+    /// <summary>
+    /// La sesión que se quiere cerrar no existe, es de otra cuenta o ya estaba cerrada (spec 016 R14). Son los tres casos a propósito: la respuesta
+    /// es idéntica para que la ruta no sirva de oráculo («¿existe esta sesión de otra persona?»).
+    /// </summary>
+    public const string SessionNotFound = "session.not_found";
 }

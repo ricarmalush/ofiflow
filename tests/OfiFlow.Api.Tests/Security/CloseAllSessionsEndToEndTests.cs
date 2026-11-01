@@ -123,18 +123,22 @@ public sealed class CloseAllSessionsEndToEndTests(PlatformFlowFixture fixture) :
     }
 
     [Fact]
-    public async Task APathWithAnId_DoesNotExist_ThereIsNoRouteToCloseSomeoneElsesSessions()
+    public async Task AnIdThatIsNotOneOfMySessions_IsA404_AndCloseAllStillHasNoIdToForge()
     {
+        // Hasta la spec 016 esta ruta con Id no existía (404 por ruta). Ahora existe, para cerrar UNA sesión PROPIA (DELETE /account/sessions/{id}), y el
+        // resultado para el Id de otra persona sigue siendo un 404: ahora porque esa sesión no es mía, no porque no haya ruta. «Cerrar todas», sin Id, no cambia.
         var attacker = await _fixture.RegisterOwnerAsync();
         var victim = await _fixture.RegisterOwnerAsync();
 
-        var response = await CloseAllAsync(attacker.AccessToken, query: string.Empty);
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode); // control: la ruta sin Id existe
-
+        // Primero el intento con un Id ajeno (el id de la CUENTA de la víctima no es el de ninguna sesión) y, DESPUÉS, el control: «cerrar todas» cierra
+        // también la sesión de quien la pide (spec 015), así que con ese mismo token ya no se podría hacer nada más (401).
         var withAnId = await _fixture.SendAsync(HttpMethod.Delete, $"{SessionsPath}/{UserIdOf(victim)}", bearer: attacker.AccessToken);
 
         Assert.Equal(HttpStatusCode.NotFound, withAnId.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await RefreshAsync(victim.RefreshToken)).StatusCode);
+
+        var response = await CloseAllAsync(attacker.AccessToken, query: string.Empty);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode); // control: la ruta sin Id existe y funciona
     }
 
     // ===== Idempotente, sin sesiones =====

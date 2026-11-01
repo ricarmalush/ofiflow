@@ -7,10 +7,12 @@ using OfiFlow.Application.Customers.Queries.GetCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomers;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.CloseAllSessions;
+using OfiFlow.Application.Identity.Commands.CloseSession;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Queries.GetCurrentAccount;
+using OfiFlow.Application.Identity.Queries.ListMySessions;
 using OfiFlow.Application.Identity.Commands.Register;
 using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
 using OfiFlow.Application.Identity.Mfa.Commands.DisableMfa;
@@ -44,7 +46,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 38 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 40 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -80,7 +82,10 @@ public class OperationPermissionsTests
         // Spec 012: ver los datos de la propia cuenta, su empresa y su rol (los cinco roles).
         (typeof(GetCurrentAccountQuery), Permission.AccountRead),
         // Spec 014: cerrar todas las sesiones de la propia cuenta (los cinco roles).
-        (typeof(CloseAllSessionsCommand), Permission.AccountCloseSessions)
+        (typeof(CloseAllSessionsCommand), Permission.AccountCloseSessions),
+        // Spec 016: ver mis sesiones (leer la propia cuenta: Account.Read) y cerrar una concreta mía (el mismo permiso que cerrarlas todas). Sin permisos nuevos (D7).
+        (typeof(ListMySessionsQuery), Permission.AccountRead),
+        (typeof(CloseSessionCommand), Permission.AccountCloseSessions)
     ];
 
     private static readonly Type[] AnonymousTable =
@@ -188,7 +193,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(38, inTheTable.Count);
+        Assert.Equal(40, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>
