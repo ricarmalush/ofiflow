@@ -104,3 +104,4 @@ Cada sesión (un inicio de sesión y todas sus renovaciones) tiene un Id estable
 - Amplía: ADR-013 (la pertenencia se sigue revalidando en cada petición; ahora hay una consulta más por petición, hecha antes, en la autenticación).
 - Amplía: ADR-009 (un evento de seguridad nuevo, `1009`; la lectura de `RefreshTokens` sigue dentro de la lista blanca).
 - Resuelve: el límite conocido de las specs 010 (R14), 013 y 014, y el de ADR-014.
+- Ampliada por: ADR-019 (cierra el pendiente de la **purga** y de listar y cerrar sesiones concretas; la lista usa este mismo `SessionId` como Id público, y la purga nunca toca una sesión activa).

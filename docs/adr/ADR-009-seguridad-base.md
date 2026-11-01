@@ -136,3 +136,4 @@ Se adopta la **Opción 3**, con estas reglas:
 - Afecta a: ADR-016 (panel de operador: eventos `1303` y `16xx`, `Jwt:PlatformSecret` entre los secretos de R8, lista blanca de `IgnoreQueryFilters()` ampliada con el listado de empresas y lista de lecturas de `Tenants` con los tres handlers del panel).
 - Depende de: ADR-007 (los logs de seguridad de R5 cubren la detección de reutilización de refresh token ya implementada).
 - Afecta a: ADR-001 (concreta las condiciones del uso excepcional de SQL crudo).
+- Ampliado por: ADR-019 (eventos `1010` —una sesión cerrada por su dueño— y `1011` —purga de refresh tokens—; la IP del cliente es un dato personal que se guarda **truncada** y con vida limitada en la base de datos, mientras que el ámbito `SourceIp` de los registros sigue llevando la IP completa: son dos almacenes distintos; el ámbito `RequestPath` lleva el Id de una sesión cerrada por su ruta).

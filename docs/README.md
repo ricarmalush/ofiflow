@@ -35,6 +35,7 @@
 | [016](./adr/ADR-016-panel-de-operador-de-la-plataforma.md) | Panel de operador de la plataforma (identidad aparte, sesión propia, suspensión de empresas) | Aceptado |
 | [017](./adr/ADR-017-cors-para-el-frontend-web.md) | CORS para el frontend web (lista cerrada de orígenes, en Program.cs) | Propuesto |
 | [018](./adr/ADR-018-sesion-ligada-al-access-token.md) | El access token queda ligado a su sesión (`sid`, comprobado en cada petición; cambia ADR-007) | Aceptado |
+| [019](./adr/ADR-019-purga-de-sesiones-y-datos-del-dispositivo.md) | Purga de refresh tokens caducados en segundo plano (primer servicio de fondo) y datos del dispositivo de cada sesión (IP truncada, navegador como etiqueta fija) | Aceptado |
 
 ## Specs
 
