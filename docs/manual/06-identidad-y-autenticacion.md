@@ -431,6 +431,42 @@ Las decisiones, y el porqué de cada una:
 
 **Cuánto vive y qué NO cubre.** Estos datos viven lo que vive su fila: se borran con ella en la purga (7 días de vida del token más 7 de margen). Son lo que el cliente **dice** (un atacante con una sesión robada puede mentir sobre su navegador), así que sirven para que su dueño reconozca las suyas, no como prueba de nada. Y **no es la única IP que guarda el sistema**: el contexto de registro de ADR-009 lleva la IP de origen **completa** de cada petición en los registros de la API (otro almacén, con otra retención). La IP truncada que se guarda por sesión es una decisión sobre la base de datos, no sobre los ficheros de log.
 
+
+### Ver y cerrar mis sesiones (spec 016)
+
+La spec 014 dio un martillo («cerrar todas»). Quien perdió el móvil o ve algo raro quiere ver **cuál** sesión es la sospechosa antes de tirar todas las suyas. Para eso hay dos rutas más, ambas en el grupo `/account`, que es autenticado.
+
+**`GET /api/v1/account/sessions`: mis sesiones activas.** Para cada una devuelve seis campos, y solo esos:
+
+| Campo | Qué es |
+|---|---|
+| `id` | El Id de la sesión (el `sid` de la spec 015). Es lo que se pasa para cerrarla. **No es un secreto**: ya viaja en el token, que cualquiera puede leer pero nadie puede firmar, y conocer el de otra persona no da nada (ver abajo) |
+| `device` | Una **etiqueta** («Chrome en Windows», «Safari en iPhone») o «Dispositivo desconocido» |
+| `startedAt` | Cuándo empezó la sesión (heredado en cada renovación) |
+| `lastActiveAt` | La última **renovación**, como mucho cada 30 minutos de uso: no la última petición |
+| `approximateIp` | La red aproximada (IP **truncada**) o nula |
+| `current` | Es la sesión del token de esta misma petición |
+
+Lo que **no** devuelve es tan importante como lo que devuelve: ni el refresh token, ni su hash, ni el `User-Agent` crudo, ni la IP completa. Un test comprueba que el objeto de respuesta tiene **exactamente** esas seis propiedades (si alguien añade una, falla y obliga a decidirlo), y otro que, con una respuesta real, ninguno de esos datos aparece en el texto.
+
+**La etiqueta del dispositivo y por qué nunca refleja el texto del cliente.** El `User-Agent` lo controla quien hace la petición: un atacante puede mandar HTML. [`DeviceLabel`](../../src/OfiFlow.Application/Identity/DeviceLabel.cs) es un parser **pequeño y propio**, sin dependencias, que solo reconoce familias conocidas de navegador (Edge, Opera, Samsung Internet, Firefox, Chrome, Safari) y de sistema (iPhone, iPad, Android, Windows, ChromeOS, macOS, Linux) y devuelve **siempre una cadena fija**. Ante cualquier otra cosa (`curl`, Postman, una app de Android, un texto raro, HTML), «Dispositivo desconocido». El **orden** de las comprobaciones es lo delicado: Edge, Opera y Samsung llevan «Chrome/» y «Safari/» dentro de su texto, y iPhone e iPad llevan «like Mac OS X» (y Android lleva «Linux»), así que se reconocen antes. Está probado con 17 navegadores reales, 12 entradas que no son navegadores (`curl`, Postman, una app de Android, HTML, SQL…) y, aparte, con **3000 cadenas aleatorias y hostiles** que comprueban que el resultado pertenece siempre a un conjunto cerrado.
+
+**`DELETE /api/v1/account/sessions/{id}`: cerrar una.** Las decisiones, y el porqué de cada una:
+
+| Decisión | Por qué |
+|---|---|
+| **La cuenta sale del token; el `{id}` solo elige cuál de MIS sesiones** | `TokenService.CloseSessionAsync` busca por el Id de sesión **Y por el `UserId` del token**. Sin esa segunda condición, adivinar el Id de una sesión ajena la cerraría. Un test lo intenta (con el Id real de la sesión de la víctima y hasta con el `userId` de la víctima en la consulta y en el cuerpo): `404`, y la víctima no pierde nada |
+| **El mismo `404` para tres casos distintos** | «No existe», «es de otra cuenta» y «ya estaba cerrada» dan la misma respuesta (mismo código `session.not_found`, mismo texto, mismas cabeceras). Si se distinguieran, la ruta serviría de **oráculo**: «¿existe esta sesión de otra persona?». Un test provoca los tres casos y compara lo observable de las tres respuestas |
+| **Un Id que no es un Guid, o es el vacío, da `404`** | La ruta lleva la restricción `{id:guid}`: lo que no es un Guid no llega ni al caso de uso |
+| **Se puede cerrar la sesión actual** | `204`, y su token deja de valer en la petición siguiente (spec 015). Es coherente: cerrar una sesión corta su token |
+| **Revoca, no borra** | Como en las specs 013 y 014. El coste conocido sigue ahí: **usar después el refresh token de la sesión cerrada es una reutilización** y revoca el resto de sesiones de la cuenta (falla hacia cerrar). Un test lo deja escrito, porque yo mismo caí en esa trampa al escribir otro |
+| **Sin permisos nuevos** | Listar es leer la propia cuenta (`Account.Read`); cerrar una usa `Account.CloseSessions`, el mismo que cerrar todas. «Cerrar sesiones» es una sola cosa, en singular o en plural. La matriz sigue en 13 permisos y 65 celdas; las operaciones pasan de 38 a **40** |
+| **Comparte el cubo de límite con «cerrar todas»** (10 por hora y por IP) | El abuso posible es el mismo. Un test gasta nueve «cerrar una» y una «cerrar todas» y comprueba que la undécima, sea cual sea, da `429`. **Listar no tiene límite propio** y no gasta ese cubo (otro test hace 15 listados y después sigue pudiendo cerrar) |
+| **El evento `1010` solo si de verdad cerró algo** | Con el `UserId` y si era la sesión actual; el **mensaje** nunca lleva el Id de la sesión cerrada, ni tokens ni hashes (el ámbito `RequestPath` que ASP.NET Core añade a las líneas de la petición sí contiene la URL, y con ella ese Id: no es un secreto, ya viaja en el token). Un `404` no deja evento. Nivel `Warning`: una ráfaga de estos del mismo usuario seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño |
+
+**Un matiz que conviene saber explicar.** «Quién soy» (`/me`) y la lista de sesiones leen cosas distintas de la misma cuenta, y las dos usan `Account.Read`. Pero **`current` depende del `sid` del token**: ese dato lo lee `CurrentUser.SessionId`, que devuelve nulo (no una excepción) si el token no lo trae o está roto, y entonces ninguna sesión sale marcada como actual.
+
+**Lo que esta lista no es.** Es lo que la API **sabe**, y el navegador y la red los manda el cliente: sirve para que su dueño reconozca las suyas, no como prueba de nada. La «última actividad» es la de la última renovación, no la de la última petición. Y una sesión anterior a la spec 016 se muestra como «Dispositivo desconocido» y sin red.
 ---
 
 ## Parte 6 — Invitaciones: entrar en una empresa que ya existe (spec 009)
