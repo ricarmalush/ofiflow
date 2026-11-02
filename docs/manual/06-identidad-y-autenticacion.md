@@ -473,7 +473,7 @@ Lo que **no** devuelve es tan importante como lo que devuelve: ni el refresh tok
 
 Hasta aquí, la única forma de tener cuenta es **registrarse**, y eso crea una empresa nueva donde eres el `Owner`. Para que un técnico o una persona de oficina entre en **la empresa de otro** hace falta otra puerta: la **invitación**.
 
-> **Estado.** Ya tiene endpoints: `POST /api/v1/invitations` (invitar), `GET` y `DELETE` sobre esa misma ruta (ver y revocar) y `POST /api/v1/auth/accept-invitation` (aceptar), además de los de miembros del capítulo 8. Puedes probarlos en Swagger o en la sección 6 de la colección `.http`.
+> **Estado.** Ya tiene endpoints: `POST /api/v1/invitations` (invitar), `GET` y `DELETE` sobre esa misma ruta (ver y revocar) y `POST /api/v1/auth/accept-invitation` (aceptar), además de los de miembros del capítulo 8. Puedes probarlos en Swagger o en la sección 6 de la colección `.http`. Desde la spec 017 la invitación también puede **enviarse por correo** (ver «El correo» más abajo).
 
 ### El recorrido
 
@@ -492,7 +492,24 @@ Hasta aquí, la única forma de tener cuenta es **registrarse**, y eso crea una 
      │                                  │ marca la invitación como usada      │
 ```
 
-Todavía no hay envío por email, así que el token se **devuelve a quien invita**, que se lo da a la persona. Lo importante es lo que **no** pasa: quien invita **nunca conoce ni elige la contraseña** de la otra persona (la elige ella al aceptar), y no puede cambiar el email ni el rol después.
+Hay **dos formas** de entregar el acceso, según haya o no correo configurado (`Email:Provider`, ADR-020):
+
+- **Sin correo** (el valor por defecto, y lo que usan los tests y el desarrollo): el token se **devuelve a quien invita**, que se lo da a la persona por su canal. Es el diagrama de arriba.
+- **Con correo** (spec 017): la API **envía el enlace** a la persona y la respuesta lleva `"token": null` y `"emailSent": true`. Quien invita **no conoce el token**.
+
+```
+ Owner/Admin                         La API                       Servidor de correo        La persona
+     │  "invita a ana@…"                │                                │                       │
+     │ ────────────────────────────────▶│ comprueba TODAS las reglas     │                       │
+     │                                  │ genera el token, guarda su HASH│                       │
+     │                                  │ ── el enlace con el token ────▶│                       │
+     │                                  │ ◀──────── "aceptado" ──────────│ ───── el correo ─────▶│
+     │                                  │ guarda la invitación           │                       │
+     │ ◀─ 201 · token: null · sent ─────│                                │                       │
+     │                                  │◀────── token + nombre + contraseña ───────────────────│
+```
+
+En las dos formas queda igual lo importante: quien invita **nunca conoce ni elige la contraseña** de la otra persona (la elige ella al aceptar), y no puede cambiar el email ni el rol después. Y con correo se gana algo más: quien invita **tampoco puede aceptar la invitación en su nombre**, porque nunca ve el token.
 
 ### El token: igual que el refresh token
 
@@ -515,6 +532,32 @@ Tener el permiso `Users.Manage` no basta: hay que poder gestionar **ese rol** (l
 - **No se invita a quien ya tiene cuenta**: hoy una cuenta pertenece a una sola empresa. (Esto revela a quien invita si un email tiene cuenta; es el mismo riesgo, aceptado, que ya tiene el registro.)
 - Una invitación caducada o revocada **deja de contar** para esos límites.
 
+### El correo (spec 017)
+
+Hasta la spec 017 la API no escribía a nadie. Lo que se construyó es pequeño a propósito, y se puede explicar en cinco ideas.
+
+**1. Un puerto y un transporte.** Los casos de uso solo conocen [`IEmailSender`](../../src/OfiFlow.Application/Common/Abstractions/IEmailSender.cs): «envía este mensaje» e «¿hay correo?». Quien habla SMTP de verdad es [`SmtpEmailSender`](../../src/OfiFlow.Infrastructure/Mail/SmtpEmailSender.cs), en Infrastructure, con la biblioteca MailKit. Es el mismo patrón que `ITokenService` o `IIdentityService`: Application define lo que necesita y Infrastructure lo cumple. Se eligió SMTP porque **todos los proveedores de correo lo hablan**: no hace falta decidir cuál usar para escribir ni para probar el código, y se cambia con configuración. Un test de arquitectura vigila que MailKit no se use fuera de su carpeta.
+
+**2. Un mensaje, deliberadamente pobre.** Un [`EmailMessage`](../../src/OfiFlow.Application/Common/Mail/EmailMessage.cs) tiene **un destinatario, un asunto y un cuerpo de texto plano**. Sin copias, sin copias ocultas, sin HTML, sin adjuntos: ningún uso previsto los necesita y cada uno sería una vía de fuga o de inyección. El asunto es **fijo** y el cuerpo ([`InvitationEmail`](../../src/OfiFlow.Application/Tenancy/InvitationEmail.cs), una función pura) lleva solo el nombre de la empresa, el rol y la caducidad: **nada que escriba quien invita**. Así un correo de OfiFlow no sirve para escribir un texto cualquiera a un tercero (*phishing*).
+
+**3. El enlace sale de la configuración, nunca de la petición.** Es la decisión más fácil de olvidar. Si el enlace se construyera con la cabecera `Host` o `Origin` de la petición, quien la envía decidiría adónde apunta el correo que recibe la víctima (*envenenamiento por cabecera Host*): un atacante invitaría a alguien con `Host: sitio-malo.example` y el correo, que sale de OfiFlow y es de fiar, llevaría a la víctima a otra web. Por eso [`EmailLinks`](../../src/OfiFlow.Infrastructure/Mail/EmailLinks.cs) usa solo `Email:LinkBaseUrl`, un valor que decide el despliegue y que se valida al arrancar (`https`, sin ruta, sin barra final). El token va en el **fragmento** (`#token=…`), igual que ya hacía el frontend: el navegador no envía el fragmento al servidor, así que no acaba en logs de servidores ni de proxies ni en la cabecera `Referer`. Un test envía una invitación con `Host`, `Origin`, `Referer` y `X-Forwarded-Host` de un tercero y comprueba que el enlace no cambia.
+
+**4. Se envía antes de guardar, y si falla no se crea nada.** El orden es: comprobar todas las reglas, generar el token, **enviar**, y solo entonces guardar. Si el envío falla (el servidor no contesta, rechaza las credenciales de OfiFlow…), la respuesta es **`502 invitation.email_not_sent`** y **no queda ninguna invitación**: no puede haber una invitación pendiente que nadie recibió. Si el envío sale bien y guardar falla después, la persona recibe un enlace a una invitación que no existe, que falla cerrado y es inofensivo, y quien invita ve el error y repite. La alternativa (guardar y luego enviar, deshaciendo si falla) exigía dos escrituras y dejaba una ventana en la que la invitación existe y nadie la recibirá. Es **502 y no 500** porque no es un fallo de OfiFlow, sino de un servicio del que depende, y **no 503** porque la API sí está funcionando.
+
+**5. Nada de lo que sale lleva datos que no deba.** La excepción del transporte trae solo una **categoría de una lista cerrada** (`Timeout`, `Authentication`, `Rejected`, `Unavailable`, `Unknown`) y un mensaje fijo: el texto que devuelve el servidor de correo suele repetir la dirección del destinatario, y los mensajes de excepción acaban en los logs. Los dos eventos nuevos (ver capítulo 8) llevan Ids, nunca la dirección, el token ni el enlace. Y se comprueba por HTTP, con la API real, que ninguno aparece en NINGÚN log.
+
+Un límite más, porque enviar correo es la vía clásica de abuso: **20 invitaciones por hora y por persona**. Sin él, un `Admin` podría llenar de correo a un tercero revocando y volviendo a invitar (el tope de 25 pendientes no lo frena: revocar libera cupo). El límite es **por persona y no por IP** (todos los clientes de una oficina comparten IP) y por eso no es una política más del limitador de peticiones: ese se evalúa *antes* de autenticar, y solo conoce la IP. El endpoint lo consulta justo antes de enviar la orden y responde el mismo `429` de siempre.
+
+**Para que el correo llegue de verdad (no es código).** Que el servidor de correo *acepte* el mensaje no significa que llegue a la bandeja de entrada. Hace falta, fuera del código:
+
+- **Un proveedor SMTP y un dominio propio** para el remitente (no una cuenta gratuita genérica).
+- **SPF, DKIM y DMARC** en el DNS de ese dominio. **SPF** dice qué servidores pueden enviar correo en nombre del dominio; **DKIM** firma cada mensaje con una clave cuya parte pública se publica en el DNS; **DMARC** dice qué hacer con lo que falle una de las dos y a dónde enviar los informes. Los registros exactos los da el proveedor elegido. Sin ellos, los correos acaban en spam o se rechazan.
+- **Los secretos SMTP** (`Email__Smtp__UserName`, `Email__Smtp__Password`) por variables de entorno, como `Jwt:Secret`; y `Email__LinkBaseUrl` con el origen público del frontend.
+- **Vigilar el evento `1408`**: varios seguidos con `Authentication` son credenciales mal puestas; con `Unavailable`, un proveedor caído.
+- **Una primera invitación real de punta a punta** con el proveedor elegido, antes de dar nada por hecho: hasta ahora el envío se ha probado contra un servidor de pruebas, no contra un proveedor concreto.
+
+**Y un tercero entra en juego.** La dirección del invitado ahora **sale hacia el proveedor de correo**. Ya se guardaba en la tabla de invitaciones; lo nuevo es que viaja a otra empresa, que pasa a ser un *encargado del tratamiento*. Al elegirlo habrá que resolver el contrato y dónde trata los datos, y anotarlo.
+
 ### Aceptar: la operación más delicada
 
 Es **anónima** (la persona aún no tiene cuenta) y por eso es la que más cuidado merece:
@@ -534,6 +577,15 @@ La corrección fue tratar ambos fallos de la confirmación como lo mismo (ambos 
 **Una tercera vuelta de la misma carrera (la cazó el CI, en la spec 011).** Hay una ventana más: las dos peticiones leen la invitación como pendiente, la primera confirma (cuenta y token consumido) y la segunda llega a *crear la cuenta* cuando el email ya existe. Eso salía como `user.email_already_registered`, no como `invitation.invalid`: la perdedora aprendía algo distinto de «este token ya no sirve». No es un fallo grave (el email es el de su propia invitación) pero rompe la regla de que todos los tokens que no sirven dan la misma respuesta (R7). Ahora, cuando la creación de la cuenta falla por email ocupado, el handler **vuelve a leer el estado actual de la invitación** (sin seguimiento: la que ya cargó sigue diciendo «pendiente»): si entre tanto se consumió, es `invitation.invalid`; si sigue pendiente, sí fue otra persona la que registró ese email y la invitación no se consume. Un test con un doble que consume la invitación justo antes de crear la cuenta lo fija (y falla sin la corrección).
 
 **Una segunda lección, más pequeña.** Un test intermitente de mi propia comprobación del formato del token destapó que la función de .NET que usé (`Base64Url.IsValid`) **ignora los espacios en blanco**: un token con un espacio dentro podía darse por bueno según el azar de su último carácter. No era una vulnerabilidad (ese texto daría otro hash y no se encontraría), pero la función prometía "solo caracteres de URL" y no lo cumplía. Ahora se comprueba el alfabeto carácter a carácter. La moraleja: **no confiar en que una función de la librería hace exactamente lo que su nombre sugiere**, y probar con muchos valores aleatorios, no con uno.
+
+### Lo que enseñó el correo (spec 017)
+
+Cuatro cosas que no estaban en el plan y que valen para el resto del proyecto:
+
+- **Un test de aislamiento parecía fuerte y no lo era.** Comprobaba que el correo nombra la empresa de quien invita y no una ajena, pero guardaba la propia *antes* que la ajena: una consulta que cogiera «la primera empresa» en vez de la del contexto habría dado el mismo resultado. Lo cazó una mutación (romper el código a propósito) y se arregló guardando primero la ajena. La regla: un test de aislamiento tiene que hacer que **la respuesta equivocada sea la más fácil de dar**.
+- **El dominio dejaba pasar un salto de línea.** Al probar que el transporte rechaza destinatarios con caracteres de control, `Email.Create("a@b.com\n")` resultó **válido**: la expresión regular terminaba en `$`, que en .NET también casa justo antes de un `\n` final. El transporte lo rechaza por su cuenta (defensa en profundidad: es el último sitio antes de la red), pero el origen estaba en el dominio y se corrige allí (`\z`). Un salto de línea en un email es exactamente lo que se usa para inyectar cabeceras.
+- **Un servidor de pruebas tardaba diez segundos por una búsqueda DNS.** Mailpit, dentro de Docker Desktop, hacía una búsqueda DNS inversa de cada cliente antes de saludar y la primera conexión tardaba unos 10 s: justo el tiempo máximo del transporte, así que daba fallos que no eran del código. Se vio con el registro del protocolo de MailKit (mostraba la conexión y ni una línea del servidor), no adivinando.
+- **Un antivirus puede interponerse en TLS.** En la máquina de desarrollo, AVG vuelve a firmar las conexiones TLS desde el primer byte con destino a puertos de correo, incluso en bucle local, y el cliente veía otro certificado. El test de TLS implícito no fija el certificado por eso; que el certificado se valida de verdad lo prueban los tests de STARTTLS, que el antivirus no toca, y un test que exige que un certificado distinto del esperado se rechace.
 
 ---
 
@@ -669,6 +721,12 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 | Adivinar o probar tokens de invitación | 256 bits aleatorios; forma validada antes de buscar; misma respuesta para los cuatro fallos; evento `1403` | `OpaqueToken.cs`, `AcceptInvitationCommandHandler.cs` | `UnknownExpiredRevokedAndUsedTokens_AllGiveTheSameCode_AndCreateNothing` |
 | Usar dos veces la misma invitación | Un solo uso + versión de fila: gana una | `Invitation.cs`, `InvitationConfiguration.cs` | `TwoSimultaneousAcceptances_OfTheSameToken_CreateExactlyOneAccount` |
 | Un invitante que se queda con la contraseña de otro | La persona elige la suya al aceptar; el invitante solo fija email y rol | `AcceptInvitationCommand.cs` | `ThePersonCanThenLogInWithTheirOwnPassword` |
+| **Un invitante que acepta la invitación en nombre de otro** | Con correo, el token no se devuelve: solo llega por el correo a la persona invitada | `InviteUserCommandHandler.cs` | `Inviting_SendsTheLink_AndTheResponseCarriesNoToken`, `TheInviterCannotAcceptWhatTheyDoNotKnow_TheTokenIsNowhereInTheirReach` |
+| **Envenenar el enlace del correo** con `Host`/`Origin` | El enlace sale solo de `Email:LinkBaseUrl`; token en el fragmento | `EmailLinks.cs` | `ARequestWithAnotherHostAndOrigin_DoesNotChangeWhereTheLinkPoints`, `InvitationLinks_AreBuiltInOnePlaceOnly_FromConfiguration` |
+| Usar OfiFlow para **llenar de correo** a un tercero | 20 invitaciones por hora y por persona; texto fijo; ningún texto libre en el cuerpo | `InvitationThrottle.cs`, `InvitationEmail.cs` | `OnePersonCanInviteTwentyTimesAnHour_AndTheNextOneIsRefused_...`, `NothingTheInviterTypedIsInTheBody_...` |
+| **Inyectar cabeceras** del correo (`Bcc:`…) | Asunto fijo; destinatario y asunto con caracteres de control se rechazan antes de tocar la red | `SmtpEmailSender.cs` | `ARecipientThatSlippedPastTheDomainWithControlCharacters_...`, `ABodyThatLooksLikeHeaders_StaysInsideTheBody` |
+| Correo y credenciales **en claro por la red** | Cifrado obligatorio (STARTTLS o TLS); sin cifrar solo en bucle local; certificado siempre validado | `SmtpEmailSender.cs`, `EmailOptions.cs` | `WhenEncryptionIsRequiredButTheServerDoesNotOffer...`, `NoEncryption_IsRejected_ForAServerThatIsNotOnThisMachine` |
+| Dirección, token o enlace **en los logs** | Los eventos `1407` y `1408` llevan solo Ids y la categoría del fallo | `InviteUserCommandHandler.cs` | `TheLogs_HaveTheEmailEvents_WithoutTheAddressTheTokenOrTheLink` |
 | Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:78-84` | **Sin test propio** (ver "Controles sin test") |
 | El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:96` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
 
@@ -686,7 +744,7 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **4. ✅ Cerrado (specs 013, 014 y 015): hay cierre de sesión en el servidor, de una o de todas, y corta también el token de acceso.** `POST /auth/logout` revoca el refresh token y `DELETE /account/sessions` los de todas las sesiones (Parte 5); desde la spec 015 el *token de acceso* de esas sesiones también deja de valer en la petición siguiente (lleva el Id de su sesión, `sid`; ver «El token muere con su sesión»). Siguen abiertos: listar mis sesiones y cerrar una concreta, y purgar los refresh tokens caducados o revocados (las filas se acumulan).
 
-**5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007).
+**5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007). Desde la spec 017 ya existe el **prerrequisito** (la API sabe enviar correo), pero ninguna de las dos está construida: serán la spec 018 y siguientes.
 
 **6. ✅ Resuelto (spec 015): un token de acceso se puede anular antes de caducar.** Por ser un JWT sin estado no se podía (valía hasta 30 minutos); ahora lleva el Id de su sesión y la API comprueba en cada petición que esa sesión siga activa (ADR-018). **Lo que sigue abierto:** un token robado *mientras nadie cierra la sesión* sigue valiendo hasta que caduque, y es una consulta más por petición (medida, ver «El token muere con su sesión»).
 
@@ -695,6 +753,8 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 **8. El login toma la primera empresa del usuario.** Hoy cada usuario tiene una sola, así que no hay ambigüedad (capítulo 5).
 
 **9. Los límites de peticiones viven en memoria**, por IP. Se reinician con cada despliegue y no se comparten entre instancias (ADR-009).
+
+**10. Hay correo de salida, pero no de entrada, ni cola, ni rebotes (spec 017).** La API puede enviar la invitación, pero: «el servidor lo aceptó» no es «llegó a la bandeja» (hace falta SPF, DKIM y DMARC); no hay cola ni reintentos (si el proveedor está caído, la invitación da `502` y se repite a mano); y un correo que el destino rechaza después de que el proveedor lo aceptara no vuelve a OfiFlow. Además, **quien lea el buzón del invitado puede aceptar su invitación**: es el modelo de amenazas de cualquier enlace por correo, y se mitiga con la caducidad a 7 días y el uso único. El límite de 20 invitaciones por hora vive, como los demás, en memoria y por instancia.
 
 ### Controles sin test propio
 
@@ -720,8 +780,10 @@ Son los tres candidatos más baratos para la próxima ronda de endurecimiento, c
 8. En una invitación, ¿qué se guarda en la base de datos del token y por qué no se le añade una sal como a las contraseñas?
 9. Un atacante prueba tokens de invitación al azar. ¿Por qué no le sirve, qué respuesta recibe y qué ve un analista?
 10. Dos personas aceptan la misma invitación exactamente a la vez. ¿Qué garantiza que solo nazca una cuenta y qué error inesperado cazó el test contra SQL Server real?
+11. Con el correo configurado, ¿qué lleva la respuesta de `POST /invitations`, y qué riesgo cierra eso?
+12. Alguien envía una petición de invitar con la cabecera `Host: sitio-malo.example`. ¿De dónde sale el enlace del correo y por qué importa?
 
-*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos). 8 = solo el hash SHA-256; no lleva sal porque el token ya es aleatorio de 256 bits (no hay diccionario que atacar) y hace falta un hash determinista para buscarlo en el índice. 9 = no puede adivinar 256 bits aleatorios; además la forma del token se valida antes de buscar y recibe siempre el mismo error (`invitation.invalid`) sea cual sea el motivo; el analista ve eventos `1403` con el motivo real (y la IP), sin el token ni el email. 10 = la invitación tiene una columna de versión de fila y, además, el índice único del email impide dos cuentas iguales: solo una confirma y la otra recibe `invitation.invalid`; el test con SQL real cazó que la perdedora recibía una violación del índice único (que acababa en un 500) y no el error de concurrencia esperado, porque una base en memoria no aplica índices únicos.)*
+*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos). 8 = solo el hash SHA-256; no lleva sal porque el token ya es aleatorio de 256 bits (no hay diccionario que atacar) y hace falta un hash determinista para buscarlo en el índice. 9 = no puede adivinar 256 bits aleatorios; además la forma del token se valida antes de buscar y recibe siempre el mismo error (`invitation.invalid`) sea cual sea el motivo; el analista ve eventos `1403` con el motivo real (y la IP), sin el token ni el email. 10 = la invitación tiene una columna de versión de fila y, además, el índice único del email impide dos cuentas iguales: solo una confirma y la otra recibe `invitation.invalid`; el test con SQL real cazó que la perdedora recibía una violación del índice único (que acababa en un 500) y no el error de concurrencia esperado, porque una base en memoria no aplica índices únicos. 11 = `"token": null` y `"emailSent": true`: quien invita no conoce el token, así que no puede aceptar la invitación en nombre de otra persona (el riesgo que ADR-013 había dejado aceptado). 12 = solo de `Email:LinkBaseUrl`, que fija el despliegue; si saliera de la petición, quien la envía decidiría adónde lleva el correo que recibe la víctima (envenenamiento por cabecera Host), y el correo, al salir de OfiFlow, sería de fiar.)*
 
 ## Siguiente capítulo
 

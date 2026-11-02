@@ -40,6 +40,8 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Domain** | La capa del centro: las reglas del negocio, sin depender de nada externo | 3 |
 | **DTO** (*Data Transfer Object*) | Un objeto que solo transporta datos hacia fuera (la respuesta de la API) | 3 |
 | **EF Core** | La herramienta que traduce C# a SQL y guarda los datos | 3 |
+| **Encargado del tratamiento** (*data processor*) | Una empresa que trata datos personales por cuenta de otra. Desde el correo (spec 017), el proveedor SMTP lo es: la dirección del invitado sale hacia él. Hay que resolver el contrato y dónde trata los datos | 6 |
+| **Envenenamiento por cabecera Host** (*Host header poisoning*) | Construir un enlace con la cabecera `Host` u `Origin` de la petición: quien la envía decide adónde apunta el enlace de un correo que sale de tu sistema y parece de fiar. Por eso el enlace sale solo de `Email:LinkBaseUrl` | 6 |
 | **Fail-closed** | Ante la duda, se deniega. Una operación sin permiso declarado no se ejecuta | 8 |
 | **FluentValidation** | La librería que valida los datos de entrada con reglas legibles | 7 |
 | **Filtro global de consultas** (*Global Query Filter*) | Una condición `TenantId == <empresa actual>` que EF Core añade a toda consulta de una entidad de empresa | 5 |
@@ -65,6 +67,7 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **OWASP** | Organización que publica listas de riesgos y herramientas de seguridad web (como ZAP) | 8, 10 |
 | **PBKDF2** | Función de hash lenta y con sal para contraseñas | 6 |
 | **Permiso** (*permission*) | Lo que se puede hacer, con el formato `Entidad.Acción` (`Jobs.Assign`) | 8 |
+| **Puerto** (*port*) | Una interfaz en Application que dice qué necesita un caso de uso (`IEmailSender`, `ITokenService`) sin decir cómo se hace; Infrastructure la cumple. Cambiar de proveedor es cambiar la implementación | 3, 6 |
 | **ProblemDetails** (RFC 9457) | El formato estándar de las respuestas de error de la API | 7 |
 | **PR** (*Pull Request*) | La petición de fusionar una rama en `master`, donde corren las comprobaciones | 10, 11 |
 | **Reserva atómica del intento** | Sumar el intento fallido y comprobar el límite en una sola sentencia SQL, antes de comprobar la contraseña. Es lo que impide que 50 peticiones simultáneas den 50 intentos | 6 |
@@ -75,6 +78,8 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Rol** (*role*) | Un conjunto de permisos con nombre: `Owner`, `Admin`, `Manager`, `Technician`, `Employee` | 8 |
 | **Segundo factor** (*MFA*, *2FA*) | Una segunda prueba de quién eres además de la contraseña: aquí, el código TOTP de la app del móvil. Opcional por ahora | 6, 8 |
 | **SAST** | Analizar el **código** sin ejecutarlo para buscar vulnerabilidades | 10 |
+| **SMTP / STARTTLS** | SMTP es el protocolo con el que se envía el correo y lo hablan todos los proveedores. STARTTLS empieza la conexión en claro y la cifra a continuación; en OfiFlow es obligatorio (si el servidor no lo ofrece, no se envía en claro) | 6 |
+| **SPF / DKIM / DMARC** | Tres registros del DNS de un dominio que hacen que su correo llegue a la bandeja y no a spam. SPF: qué servidores pueden enviar en su nombre. DKIM: la firma de cada mensaje. DMARC: qué hacer con lo que falle y a dónde mandar los informes | 6 |
 | **SCA** | Vigilar las **dependencias** por vulnerabilidades conocidas (NuGetAudit, Dependabot) | 10 |
 | **Spec-Driven Development** | Escribir la especificación antes que el código | 11 |
 | **STRIDE** | Seis tipos de amenaza (suplantación, manipulación, repudio, revelación, denegación de servicio, elevación de privilegios) | 8 |
@@ -119,7 +124,11 @@ Cada ADR está en [`docs/adr/`](../adr/). El manual **explica cómo funciona**; 
 | [013](../adr/ADR-013-gestion-de-usuarios.md) Gestión de usuarios | Invitación con token de un solo uso; jerarquía de roles como tabla; el rol se lee de la base de datos en cada petición | 6, 8 |
 | [014](../adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) Segundo factor y bloqueo de cuenta | TOTP opcional con el secreto cifrado (AES-GCM) y un desafío opaco de un solo uso para el login; bloqueo por cuenta con el intento reservado antes de comprobarlo | 6, 8 |
 | [015](../adr/ADR-015-logs-a-fichero-con-serilog.md) Logs a fichero | Serilog como un proveedor más (no sustituye la fábrica de loggers), en JSON para que nadie falsifique entradas con un salto de línea; 14 días de retención | 1, 8 |
+| [016](../adr/ADR-016-panel-de-operador-de-la-plataforma.md) Panel de operador | Una identidad aparte para el operador de la plataforma (otra tabla, otra clave, otra audiencia), con segundo factor obligatorio, y la suspensión de empresas | 6, 8 |
 | [017](../adr/ADR-017-cors-para-el-frontend-web.md) CORS | Lista cerrada de orígenes en `Program.cs`, sin comodines ni credenciales de navegador; un origen mal escrito impide arrancar | Capítulo 8 |
+| [018](../adr/ADR-018-sesion-ligada-al-access-token.md) Sesión ligada al token | El access token lleva el Id de su sesión (`sid`) y la API comprueba en cada petición que siga activa: cerrar una sesión corta también su token | 6 |
+| [019](../adr/ADR-019-purga-de-sesiones-y-datos-del-dispositivo.md) Purga y datos del dispositivo | El primer servicio en segundo plano (purga de refresh tokens caducados) y qué se guarda de cada sesión: IP truncada y el navegador como etiqueta de un conjunto cerrado | 6, 8 |
+| [020](../adr/ADR-020-correo-saliente.md) Correo saliente | Un puerto `IEmailSender` y un transporte SMTP (MailKit); la invitación se envía por correo y el token deja de devolverse; sin cola de momento porque el correo lleva un secreto; el enlace sale solo de la configuración | 6, 8 |
 
 ## Las especificaciones
 
@@ -137,6 +146,13 @@ Cada spec está en [`docs/specs/`](../specs/) con su `spec.md` y su `tasks.md`.
 | **008** RBAC | Los cinco roles se comprueban: permisos por operación y `AuthorizationBehavior` |
 | **009** Gestión de usuarios | Invitar, aceptar, listar, cambiar el rol y quitar; revalidación del rol en cada petición |
 | **010** Segundo factor y bloqueo de cuenta | TOTP opcional, login en dos pasos, códigos de recuperación, reinicio por un gestor y bloqueo de cuenta por intentos fallidos |
+| **011** Panel de operador | Listar, suspender y reactivar empresas con una identidad y una sesión aparte, y segundo factor obligatorio |
+| **012** Quién soy | `GET /account/me`: la cuenta, la empresa, el rol efectivo y los permisos |
+| **013** Cerrar sesión en el servidor | `POST /auth/logout` revoca el refresh token |
+| **014** Cerrar todas mis sesiones | `DELETE /account/sessions` revoca todos los refresh tokens de la cuenta |
+| **015** El token muere con su sesión | `sid` en el access token, comprobado en cada petición |
+| **016** Purga y sesiones | Purga de refresh tokens caducados en segundo plano; ver y cerrar mis sesiones concretas |
+| **017** Correo e invitaciones | Un puerto de correo con transporte SMTP; la invitación se envía por correo (sin token para quien invita), con límite de 20 por hora y por persona y eventos `1407`/`1408` |
 
 ## Lo que viene
 

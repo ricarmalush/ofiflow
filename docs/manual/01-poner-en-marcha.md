@@ -122,6 +122,35 @@ Por defecto usa el perfil `http` de [`launchSettings.json`](../../src/OfiFlow.Ap
 
 Verás en la consola `Now listening on: ...` y `Application started`. Ya está en marcha.
 
+## Probar el correo en local (opcional, spec 017)
+
+Por defecto el correo está **apagado** (`Email:Provider = None`): al invitar a alguien, la API te devuelve el token y tú se lo das a la persona, como antes. Para ver cómo sería con correo de verdad **sin enviar nada a internet**, levanta un servidor SMTP de pruebas, [Mailpit](https://mailpit.axllent.org/), que recibe los correos y te los enseña en una página:
+
+```bash
+docker run -d --name mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 -e MP_SMTP_DISABLE_RDNS=true axllent/mailpit:v1.33.0
+```
+
+Después dile a la API que lo use (son ajustes sin secreto, pero las *user-secrets* sirven igual y no ensucian el repositorio):
+
+```bash
+dotnet user-secrets set "Email:Provider" "Smtp" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:From" "no-reply@ofiflow.example" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:LinkBaseUrl" "http://localhost:4200" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:Smtp:Host" "127.0.0.1" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:Smtp:Port" "1025" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:Smtp:Security" "None" --project src/OfiFlow.Api
+```
+
+Con eso, `POST /api/v1/invitations` responde `201` con `"token": null` y `"emailSent": true`, y el correo aparece en <http://localhost:8025> con el enlace dentro. Abre ese enlace (o pégalo en `POST /api/v1/auth/accept-invitation`) y la invitación se acepta.
+
+Tres cosas que conviene saber:
+
+- **`Security = None` solo se admite con un servidor de esta misma máquina** (`localhost`, `127.0.0.1`, `::1`). Con cualquier otro servidor la API **no arranca** y te dice que el correo y las credenciales no pueden viajar sin cifrar. En un servidor de verdad se usa `StartTls` (puerto 587) o `SslOnConnect` (465).
+- **`Email:LinkBaseUrl` es adónde apuntan los enlaces de los correos**, y sale siempre de la configuración, nunca de la petición. Es el origen del frontend (aquí `http://localhost:4200`); en producción, `https://` y sin barra final.
+- **`MP_SMTP_DISABLE_RDNS=true`** evita que Mailpit, dentro de Docker Desktop, tarde unos 10 segundos en saludar a la primera conexión (hace una búsqueda DNS inversa). Sin él, el envío agota su tiempo máximo.
+
+Para apagarlo otra vez: `dotnet user-secrets remove "Email:Provider" --project src/OfiFlow.Api`. En producción el correo se configura por variables de entorno (`Email__Provider`, `Email__Smtp__Host`…) y los pasos para que llegue de verdad (proveedor, dominio, SPF, DKIM, DMARC) están en la [Parte 6 del capítulo 6](06-identidad-y-autenticacion.md) y en la [ADR-020](../adr/ADR-020-correo-saliente.md).
+
 ## Tu primera petición
 
 La API no tiene frontend, pero en `Development` incluye **Swagger UI**: una pantalla que lista todas las operaciones y permite probarlas desde el navegador, sin escribir peticiones a mano. Con la API en marcha, abre **`http://localhost:5279/swagger`** (con el perfil `https`, `https://localhost:7228/swagger`; en Visual Studio se abre sola).
@@ -243,6 +272,7 @@ Te pide que escribas `SI`. La baja deja una fila en la auditoría y surtirá efe
 
 | Lo que ves | Qué significa | Qué hacer |
 |---|---|---|
+| La API se detiene al arrancar con **"Email:..."** (por ejemplo "Falta Email:LinkBaseUrl" o "Email:Smtp:Security = None solo se admite con un servidor de esta misma máquina") | La sección `Email` no vale (spec 017). El mensaje nombra el ajuste y nunca repite su valor | Corrígelo, o quita `Email:Provider` para dejar el correo apagado |
 | La API se detiene al arrancar con **"Falta 'Mfa:EncryptionKey'..."** (o dice que no es Base64 o que mide otra cosa que 32 bytes) | Falta la segunda clave del paso 1, o tiene otro formato | Pon la clave con el comando del paso 1. El mensaje cuenta qué le pasa (falta, no es Base64, mide N bytes) pero nunca reproduce su valor |
 | La API se detiene al arrancar con **"Falta 'Jwt:PlatformSecret'..."** (o dice que no es Base64, que mide otra cosa que 32 bytes, que es igual que `Jwt:Secret` o que la audiencia coincide con la de las empresas) | Falta la tercera clave del paso 1, o se parece demasiado a la de las empresas. Si tu API funcionaba antes de la spec 011, te pasará una vez | Pon una clave **distinta** con el comando del paso 1. El mensaje cuenta qué le pasa, pero nunca reproduce una clave |
 | La API se detiene al arrancar con **"Falta 'Jwt:Secret'..."** | El paso 1 no está hecho (o lo hiciste para otro `UserSecretsId`) | Repite el paso 1. El mensaje es largo a propósito: lista **cada fuente de configuración que consultó** y qué longitud tiene el valor en cada una (nunca el valor), y la ruta exacta donde buscó `secrets.json` |

@@ -32,7 +32,7 @@ Es el requisito previo de la Fase 2 (agenda y asignación de técnicos): no se p
 
 - **NOW** (necesario ahora, pero fuera de esta spec concreta): nada pendiente.
 - **NEXT** (siguiente fase):
-  - **Envío del enlace por email.** Requiere un servicio de correo (nuevo proveedor externo y sus secretos). Se diseña el puerto para que sea un cambio pequeño, pero no se construye aquí. Mientras tanto el token se devuelve al invitante.
+  - **Envío del enlace por email.** Requiere un servicio de correo (nuevo proveedor externo y sus secretos). Se diseña el puerto para que sea un cambio pequeño, pero no se construye aquí. Mientras tanto el token se devuelve al invitante. *Actualización (spec 017, 2026-11-02): resuelto — con correo configurado el enlace se envía y el token ya no se devuelve (ver [spec 017](../017-email-invitations/spec.md) y [ADR-020](../../adr/ADR-020-correo-saliente.md)); sin correo configurado, esto sigue igual.*
   - **Pertenecer a varias empresas** y elegir empresa al hacer login (ADR-009). Esta spec mantiene una empresa por cuenta (D4).
   - **Restricción por recurso:** que el técnico vea solo sus trabajos (Fase 2).
   - **Recuperar contraseña**, confirmar email, bloqueo de cuenta tras intentos fallidos.

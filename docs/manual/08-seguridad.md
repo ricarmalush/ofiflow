@@ -144,6 +144,7 @@ Para frenar la **fuerza bruta** (probar contraseñas sin parar) y la saturación
 | `mfa/verify` | 10 por minuto (es anónima, toca la base de datos y es la vía obvia para probar códigos de 6 dígitos) |
 | Gestión del segundo factor (`setup`, `enable`, `disable`, `recovery-codes` y reiniciar el de un miembro) | 10 por hora (son operaciones raras) |
 | `DELETE account/sessions` (cerrar todas mis sesiones; spec 014) | 10 por hora, cubo propio (es una acción rara y explícita; el tope frena una sesión robada usada solo para molestar) |
+| Invitar (`POST /invitations`; spec 017) | **20 por hora y por persona** (no por IP). Enviar correo es la vía clásica de abuso. Lo consulta el endpoint, no el limitador de arriba: este se evalúa *antes* de autenticar y solo conoce la IP, y todos los clientes de una oficina comparten IP. La respuesta es el mismo `429` |
 
 Al pasarse, responde **429** (*demasiadas peticiones*) con la cabecera `Retry-After` (cuántos segundos esperar), en el mismo formato de error del capítulo 7. Cada rechazo genera el evento de seguridad `1101`.
 
@@ -285,6 +286,7 @@ Cada campo de texto tiene una longitud máxima, definida **una sola vez** y comp
 - **Nunca en el repositorio.** El secreto del token vive en `user-secrets` en local y en variables de entorno en producción.
 - Si falta, **la aplicación no arranca**: prefiere fallar antes que funcionar con una clave débil.
 - Un escáner (**gitleaks**) revisa **todo el historial** de commits en cada cambio, y GitHub bloquea el *push* si detecta un secreto con formato real. Una excepción, como un secreto antiguo ya rotado, se documenta con su huella exacta en `.gitleaksignore`, con la justificación al lado.
+- **Los secretos del correo (spec 017).** Si hay correo de verdad, hay **dos secretos más**: `Email:Smtp:UserName` y `Email:Smtp:Password`. Misma regla que `Jwt:Secret`: `user-secrets` en local y variables de entorno en producción (`Email__Smtp__Password`), nunca en el repositorio. La configuración del correo se valida al arrancar y **ningún mensaje de error repite un valor**, precisamente porque podría ser la contraseña (un test lo comprueba con una contraseña reconocible en cada camino de fallo). Además, el correo viaja **cifrado por obligación**: STARTTLS o TLS desde el primer byte, nunca oportunista; sin cifrar solo se admite hacia un servidor de esta misma máquina (desarrollo), y la validación del certificado no se desactiva en ningún sitio (un test de arquitectura lo vigila).
 
 ### Qué se registra
 
@@ -332,6 +334,8 @@ No se puede reaccionar a lo que no se ve. OfiFlow registra **treinta y dos event
 | `1404` | Invitación revocada | Se cancela una invitación pendiente |
 | `1405` | **Rol cambiado** | Se cambia el rol de un miembro (con el rol anterior y el nuevo, sin su nombre ni su email) |
 | `1406` | **Miembro quitado** | Se da de baja a un miembro: se borran su cuenta y sus datos (con el recuento de trabajos que quedaron sin asignar) |
+| `1407` | Correo de invitación entregado | La API entregó el correo de una invitación al servidor de correo (con el Id de la invitación, la empresa y quién invitó; **nunca** la dirección, el token ni el enlace). Que el servidor lo aceptara no garantiza que llegue a la bandeja |
+| `1408` | **Correo de invitación no enviado** | No se pudo enviar y por eso la invitación **no se creó**. Lleva la **categoría** del fallo (`Timeout`, `Authentication`, `Rejected`, `Unavailable`, `Unknown`), nunca el texto del servidor. Es un `Warning`: falla un servicio externo, no el código. Varios seguidos con `Authentication` o `Unavailable` son la señal de que el proveedor está mal configurado o caído |
 | `1501` | Secreto del segundo factor pedido | Alguien empieza a activar el MFA de su cuenta (sin el secreto) |
 | `1502` | **MFA activado** | Se confirmó el secreto con un código; se cierran las sesiones de la cuenta |
 | `1503` | **MFA desactivado** | Se desactivó con contraseña y código; se cierran las sesiones |
@@ -482,6 +486,12 @@ Esta es la tabla que reúne todo: cada riesgo, el control que lo frena, dónde e
 | **S** · Canjear dos veces (o a la vez) el mismo desafío | Un solo uso: el canje es una sentencia condicional atómica | `MfaService.cs` | `FourSimultaneousRedemptions_OfTheSameChallengeAndCode_ProduceExactlyOneSession` |
 | **E** · Presentar el desafío como token de acceso | No es un JWT: es un valor opaco que el middleware de tokens no acepta | `OpaqueToken.cs` | `ATokenIsNotAJwt_SoItCanNeverBePresentedAsAnAccessToken` |
 | **I** · Base de datos robada: invitaciones utilizables | Solo se guarda el hash del token | `OpaqueToken.cs` | `TheTokenIsReturnedOnce_AndOnlyItsHashIsStored` |
+| **S** · Aceptar una invitación en nombre de otro (quien invita) | Con correo, el token no se devuelve: solo llega por el correo a la persona invitada | `InviteUserCommandHandler.cs` | `TheInviterCannotAcceptWhatTheyDoNotKnow_TheTokenIsNowhereInTheirReach` |
+| **S** · Envenenar el enlace del correo con `Host`/`Origin` | El enlace sale solo de `Email:LinkBaseUrl`; token en el fragmento | `EmailLinks.cs` | `ARequestWithAnotherHostAndOrigin_DoesNotChangeWhereTheLinkPoints` |
+| **T** · Inyectar cabeceras del correo (`Bcc:`…) | Asunto fijo; destinatario y asunto con caracteres de control rechazados antes de la red | `SmtpEmailSender.cs` | `ARecipientThatSlippedPastTheDomainWithControlCharacters_...` |
+| **I** · Correo y credenciales en claro por la red | Cifrado obligatorio; sin cifrar solo en bucle local; certificado siempre validado | `SmtpEmailSender.cs`, `EmailOptions.cs` | `WhenEncryptionIsRequiredButTheServerDoesNotOfferIt_ItFailsInsteadOfSendingInTheClear` |
+| **I** · Dirección, token o enlace en los logs | Los eventos `1407`/`1408` llevan solo Ids y la categoría del fallo | `InviteUserCommandHandler.cs` | `TheLogs_HaveTheEmailEvents_WithoutTheAddressTheTokenOrTheLink` |
+| **D** · Llenar de correo a un tercero | 20 invitaciones por hora y por persona; texto fijo | `InvitationThrottle.cs`, `InvitationEmail.cs` | `OnePersonCanInviteTwentyTimesAnHour_AndTheNextOneIsRefused_...` |
 | **S** · Usar la API sin sesión | `RequireAuthorization()` en cada grupo | `JobEndpoints.cs:21` | `WithoutAToken_EveryRoute_Returns401` |
 | **T** · Alterar el token | La firma deja de coincidir | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | **T** · Datos mal formados o enormes | Validadores y longitudes máximas | `*CommandValidator.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
@@ -537,7 +547,7 @@ Una lista honesta de lo que **no** está cubierto, de más a menos preocupante:
 **Autorización**
 4. ✅ **Cerrado (spec 009): el rol y la pertenencia se revalidan en cada petición.** Antes viajaban en el token y un cambio no se notaba hasta renovar la sesión (hasta 30 minutos). El coste es una consulta indexada más por petición autenticada.
 5. **Un `Technician` puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
-6. **Las invitaciones envían el token a quien invita, no por email.** Hasta que exista un servicio de correo, el invitante recibe el token (una sola vez, con `Cache-Control: no-store`) y se lo pasa a la persona por su canal. Es una decisión consciente (D1 de la spec 009): el invitante nunca conoce ni elige la contraseña, pero **ve el token** y podría aceptarlo él mismo.
+6. **Las invitaciones envían el token a quien invita solo cuando no hay correo configurado (spec 017).** Con `Email:Provider = Smtp` el enlace se envía por correo y el token **no se devuelve** (`token: null`): el riesgo de que quien invita acepte en nombre de otro desaparece. Sin correo (el valor por defecto, y lo que usan el desarrollo y los tests) todo sigue como antes: el invitante recibe el token una sola vez, con `Cache-Control: no-store`, y se lo pasa a la persona por su canal. Un aviso al arrancar en `Production` recuerda que el correo está apagado. **Siguen abiertos con correo:** quien lea el buzón del invitado puede aceptar su invitación (se mitiga con la caducidad a 7 días y el uso único); «el servidor lo aceptó» no es «llegó» (hacen falta SPF, DKIM y DMARC, capítulo 6); y no hay cola, reintentos ni gestión de rebotes (ADR-020).
 
 **Abuso y red**
 7. **El límite de peticiones solo cubre `auth`.** Clientes y trabajos no tienen límite: alguien con un token válido puede crear datos sin freno.

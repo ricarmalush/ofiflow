@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) (se anota), [ADR-009](../../adr/ADR-009-seguridad-base.md), [ADR-011](../../adr/ADR-011-errores-codigos-diccionario.md) (error nuevo) y la **ADR-020** nueva (D12)
-**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloque 1 hecho y commiteado; bloque 2 hecho (sin commitear); bloques 3 y 4 sin empezar.
+**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloques 1 y 2 hechos y commiteados; bloque 3 (documentación) hecho, sin commitear; bloque 4 (frontend) sin empezar.
 
 ---
 
@@ -58,11 +58,15 @@
 - Dos limitaciones asumidas del límite por persona: es en memoria y por instancia (como los demás límites, ADR-009) y se reinicia al reiniciar la API.
 
 ### Bloque 3 — Documentación
-- [ ] ADR-020: el correo (puerto, SMTP/MailKit, por qué sin cola todavía, el proveedor como encargado del tratamiento, cómo reconocer un proveedor caído por el evento `1013`, versiones elegidas)
-- [ ] ADR-013 y spec 009: «Ampliada por ADR-020»; ADR-013 deja de decir «cuando exista el email» y dice qué pasó
-- [ ] Manual: capítulos 6 (identidad: el nuevo flujo de invitación) y 8 (seguridad: secretos SMTP, `LinkBaseUrl`, datos personales), glosario, y la sección de **entrega de correo** (SPF, DKIM, DMARC, remite) para el despliegue
-- [ ] Capítulo 9 (tests) con las cifras nuevas y la receta del SMTP de pruebas; `docs/README.md` con la fila de la spec y la ADR
-- [ ] Preguntas del tribunal: «¿por qué el enlace no sale de la petición?» y «¿por qué no hay cola de correo?»
+- [x] [ADR-020](../../adr/ADR-020-correo-saliente.md): contexto, seis grupos de opciones (transporte, cola, orden de envío, sin correo, origen del enlace, dónde vive el límite), decisión en dos partes, consecuencias con los riesgos aceptados (el proveedor como encargado del tratamiento, «aceptado» no es «entregado», sin cola, buzón comprometido), **lo que cambió al implementar** (números de los eventos y dónde vive el límite), los hallazgos, las versiones fijadas (MailKit 4.18.2, Mailpit v1.33.0, comprobadas el 2026-11-02), la recomendación de despliegue (proveedor, dominio, SPF/DKIM/DMARC, secretos, `LinkBaseUrl`, vigilar el `1408`, primera invitación real) y lo cerrado y lo abierto
+- [x] ADR-013, spec 009 y ADR-009 anotadas: ADR-013 ya no dice «cuando exista el email» sino qué pasó (actualización, riesgo resuelto, NEXT tachado y relación «Ampliada por»); spec 009, el NEXT del email; ADR-009, el catálogo de eventos con `1407` y `1408`
+- [x] Manual: **capítulo 1** (probar el correo en local con Mailpit, y el error de arranque en la tabla de fallos), **capítulo 6** (el recorrido con y sin correo, la sección «El correo» con las cinco ideas, «Para que el correo llegue de verdad», las lecciones, seis filas en la tabla de amenazas, el límite 10, dos preguntas), **capítulo 8** (los secretos del correo, el límite de invitaciones, los eventos `1407`/`1408`, seis filas en el mapa de amenazas y el límite 6 reescrito), **capítulo 0**, **glosario** (términos nuevos) y la sección de **entrega de correo (SPF, DKIM, DMARC)**, que vive en el capítulo 6 y en la ADR-020 porque el manual no tiene un capítulo de despliegue
+- [x] Capítulo 9: cifras reales por proyecto (Domain 244, Application 671, Infrastructure 551, Api 577; 2043 casos), la sección de la spec 017 con las tres formas de probar y por qué, las 54 mutaciones, la verificación en vivo, cinco filas nuevas en «Errores reales», y una advertencia medida sobre lanzar la solución entera
+- [x] `docs/README.md` con la ADR-020 y la spec 017 «En implementación»; el glosario y el índice de especificaciones del capítulo 12 **se pusieron al día de paso** (le faltaban las ADR 016, 018 y 019 y las specs 011 a 016)
+- [x] Preguntas del tribunal: «¿de dónde sale el enlace y por qué no de la petición?», «¿qué pasa si el correo no se envía y por qué no hay cola?», «¿qué datos nuevos salen con el correo?», «¿cómo evitas llenar de correo a un tercero?», y la respuesta antigua sobre devolver el token, reescrita
+- [ ] [externo] Commit del bloque 3 (con orden explícita)
+
+**Pendiente de los hallazgos:** la corrección de `Email.Create` (`$` por `\z`) se hace en otra sesión y se commitea aparte; el capítulo 6 y la ADR-020 la dan por hecha («se corrige allí»). Si no llegara a entrar, hay que retocar esas dos frases.
 
 ### Bloque 4 — Frontend (`ofiflow-frontend`)
 - [ ] Modelo y servicio: `token` opcional y `emailSent` en la respuesta de invitar
