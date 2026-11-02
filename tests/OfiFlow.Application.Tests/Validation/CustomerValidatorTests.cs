@@ -61,6 +61,15 @@ public class CustomerValidatorTests
     }
 
     [Fact]
+    public void Email_WithTrailingNewline_IsInvalid_SoTheApiAnswers400()
+    {
+        // Antes `$` dejaba pasar "a@b.com\n" hasta Domain/EF/logs.
+        _create.TestValidate(ValidCreate() with { Email = "a@b.com\n" })
+            .ShouldHaveValidationErrorFor(x => x.Email)
+            .WithErrorCode(CommonErrors.EmailInvalid);
+    }
+
+    [Fact]
     public void Email_TooLong_ReportsASingleError()
     {
         var tooLong = new string('a', Email.MaxLength) + "@example.com";
