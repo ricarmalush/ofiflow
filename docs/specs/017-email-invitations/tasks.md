@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) (se anota), [ADR-009](../../adr/ADR-009-seguridad-base.md), [ADR-011](../../adr/ADR-011-errores-codigos-diccionario.md) (error nuevo) y la **ADR-020** nueva (D12)
-**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloques 1 y 2 hechos y commiteados; bloque 3 (documentación) hecho, sin commitear; bloque 4 (frontend) sin empezar.
+**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloques 1, 2 y 3 hechos y commiteados; bloque 4 (frontend) hecho, sin commitear.
 
 ---
 
@@ -69,9 +69,11 @@
 **Pendiente de los hallazgos:** la corrección de `Email.Create` (`$` por `\z`) se hace en otra sesión y se commitea aparte; el capítulo 6 y la ADR-020 la dan por hecha («se corrige allí»). Si no llegara a entrar, hay que retocar esas dos frases.
 
 ### Bloque 4 — Frontend (`ofiflow-frontend`)
-- [ ] Modelo y servicio: `token` opcional y `emailSent` en la respuesta de invitar
-- [ ] Pantalla del equipo: con `emailSent`, «Invitación enviada a …» y sin enlace que copiar; sin él, el enlace manual de hoy; el error `invitation.email_not_sent` se muestra con su mensaje
-- [ ] Tests y mutaciones; comprobación en vivo contra la API real con el SMTP local
+- [x] Modelo y servicio: `InvitationCreated` pasa a `{ id, token: string | null, expiresAt, emailSent }`, con el contrato de las dos formas comentado en el modelo
+- [x] Pantalla del equipo: el diálogo de invitar tiene **tres estados**. Con `emailSent`, «Hemos enviado la invitación a …» con la caducidad y sin nada que copiar (y la lista de pendientes se recarga); sin correo, el enlace manual de siempre, ahora con el aviso «el correo no está configurado en este servidor, así que la invitación no se ha enviado»; y si la respuesta no trae ni una cosa ni la otra, un error (no un diálogo en blanco ni una invitación dada por entregada). El `502 invitation.email_not_sent` y el `429` se enseñan con el texto de la API y el formulario se queda con lo escrito para reintentar; un fallo no recarga la lista porque no se creó nada. Todo va interpolado (nunca como HTML)
+- [x] Tests (+13 casos: 218 → 231): el servicio lee las dos formas y el `502` con su código; el componente (spec nuevo, `team.component.spec.ts`, que esta pantalla no tenía) cubre con correo, sin correo, `502`, `429`, respuesta sin entrega, reintento tras un fallo, que cerrar y abrir olvidan el enlace y la confirmación, y que el enlace del siguiente no hereda el del anterior; `buildInvitationLink` (fragmento, no consulta, token codificado)
+- [x] Mutaciones (21: 17 + 4 tras reforzar tests; 20 detectadas y 1 equivalente): no reconocer «con correo», ignorar el token, dar por buena una respuesta sin entrega, otro email en la confirmación, no olvidar al cerrar ni al abrir (la confirmación y el enlace), no recargar la lista, no enseñar el error de la API, el enlace en la consulta y el token sin codificar, la pantalla que nunca muestra la confirmación, sin el destinatario o sin la caducidad con formato, sin el aviso de «no se envió». **Tres sobrevivieron y dos eran un test flojo**: «abrir no olvida…» y «cerrar no olvida el enlace» pasaban porque cada una cubría a la otra (se añadieron un test que abre sin cerrar y una comprobación justo tras cerrar). **La equivalente:** quitar el `trim()` del email no cambia nada, porque el navegador ya recorta un `<input type="email">` y el validador de Angular rechaza un valor con espacios; se deja como defensa
+- [x] Verificación en vivo contra la API real de la rama 017, una base desechable, Mailpit y `ng serve`, con el navegador integrado: con correo, `201`, «Hemos enviado la invitación a persona.nueva@…», sin campo de enlace ni botón de copiar, el correo llega a Mailpit con el enlace, **y ese enlace abre la pantalla de aceptar** (el formulario de nombre y contraseña); con el servidor de correo parado, `502`, el texto de la API en el diálogo, el formulario con el email intacto y **ninguna fila nueva** en pendientes; con la API sin correo, el enlace manual y el aviso. Un fallo mío de la comprobación: la primera vez navegué a la URL con un token de relleno y después a la real, pero como solo cambiaba el fragmento la pantalla conservó el de relleno y dio un `400`; el token real aceptó bien por la API. No es un fallo de la pantalla, pero conviene saberlo: **cambiar solo el fragmento de la URL no recarga la pantalla de aceptar**
 - [ ] [externo] Commit del frontend (con orden explícita)
 
 ---
