@@ -5,11 +5,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Application.Identity;
 using OfiFlow.Infrastructure.Identity;
+using OfiFlow.Infrastructure.Mail;
 using OfiFlow.Infrastructure.Persistence;
 using OfiFlow.Infrastructure.Persistence.Interceptors;
 using OfiFlow.Infrastructure.Tenancy;
@@ -51,6 +53,33 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddHostedService<RefreshTokenPurgeService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// El correo (spec 017, ADR-020). Lo llama <b>solo la API</b>: la consola de administración no envía correo. La configuración se valida al arrancar (R8). Con
+    /// <c>Email:Provider = None</c> (por defecto) se registra un transporte que falla en voz alta si algo lo usa; con <c>Smtp</c>, el real.
+    /// </summary>
+    public static IServiceCollection AddEmail(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddSingleton<IValidateOptions<EmailOptions>, EmailOptionsValidator>();
+        services.AddOptions<EmailOptions>()
+            .Bind(configuration.GetSection(EmailOptions.SectionName))
+            .ValidateOnStart();
+
+        services.AddSingleton<IEmailLinks, EmailLinks>();
+
+        // Se lee la opción ya enlazada para decidir el transporte; la validación completa la hace el arranque.
+        var isSmtp = Enum.TryParse<EmailProvider>(configuration.GetSection(EmailOptions.SectionName)[nameof(EmailOptions.Provider)], ignoreCase: true, out var provider) && provider == EmailProvider.Smtp;
+        if (isSmtp)
+        {
+            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, NullEmailSender>();
+        }
 
         return services;
     }

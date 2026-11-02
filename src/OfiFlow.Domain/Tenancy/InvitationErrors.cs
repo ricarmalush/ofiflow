@@ -20,4 +20,10 @@ public static class InvitationErrors
 
     /// <summary>La invitación no existe en la empresa activa (o es de otra: indistinguible a propósito).</summary>
     public const string NotFound = "invitation.not_found";
+
+    /// <summary>
+    /// No se pudo enviar el correo de la invitación, así que no se creó (spec 017 R11): el servidor de correo no contestó, rechazó las credenciales de OfiFlow, etc.
+    /// El código no dice cuál de ellas fue; el motivo exacto queda en el registro (evento 1408), nunca en la respuesta.
+    /// </summary>
+    public const string EmailNotSent = "invitation.email_not_sent";
 }

@@ -73,7 +73,7 @@ public sealed class RolesFixture : IAsyncLifetime
             var invite = await inviter.PostAsJsonAsync("/api/v1/invitations", new { email = emails[role], role = (int)role });
             var invitation = await ReadAsync<InvitationCreatedDto>(invite);
 
-            var accept = await AcceptWithOwnIpAsync(invitation.Token, $"Usuario {role}", passwords[role]);
+            var accept = await AcceptWithOwnIpAsync(invitation.Token!, $"Usuario {role}", passwords[role]);
             await EnsureSuccessAsync(accept, $"aceptar la invitación de {role}");
         }
 

@@ -96,6 +96,19 @@ public static class SecurityEventIds
     /// <summary>Se quitó a un miembro de la empresa (su cuenta y sus datos personales se borran).</summary>
     public const int UserRemoved = 1406;
 
+    /// <summary>
+    /// El correo de una invitación se entregó al servidor de correo (spec 017 R15). Lleva el Id de la invitación, la empresa y quién invitó; <b>nunca</b> la dirección, el token ni el enlace.
+    /// Que el servidor lo aceptara no garantiza que llegue a la bandeja de entrada.
+    /// </summary>
+    public const int InvitationEmailSent = 1407;
+
+    /// <summary>
+    /// No se pudo enviar el correo de una invitación y por eso no se creó (spec 017 R15). Lleva la empresa, quién invitó y la <b>categoría</b> del fallo (tiempo agotado, credenciales, rechazo,
+    /// servidor no disponible); <b>nunca</b> la dirección ni el texto del servidor de correo, que suele repetirla. Es un <c>Warning</c> y no un <c>Error</c>: falla un servicio externo, no el código.
+    /// Varios seguidos con la categoría <c>Authentication</c> o <c>Unavailable</c> son la señal de que el proveedor está mal configurado o caído.
+    /// </summary>
+    public const int InvitationEmailFailed = 1408;
+
     // 1500-1599: segundo factor (spec 010). Ninguno registra códigos, secretos ni emails: solo Ids, el motivo y recuentos.
 
     /// <summary>Alguien pidió el secreto para activar el segundo factor de su cuenta.</summary>

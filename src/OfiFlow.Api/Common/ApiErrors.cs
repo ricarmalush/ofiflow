@@ -29,5 +29,6 @@ public static class ProblemTitles
     public const string Forbidden = "problem.title.forbidden";
     public const string BadRequest = "problem.title.bad_request";
     public const string TooManyRequests = "problem.title.too_many_requests";
+    public const string BadGateway = "problem.title.bad_gateway";
     public const string ServerError = "problem.title.server_error";
 }

@@ -78,7 +78,7 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
         Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
 
         var created = (await response.Content.ReadFromJsonAsync<InvitationCreatedDto>())!;
-        Assert.True(OpaqueToken.IsWellFormed(created.Token));
+        Assert.True(OpaqueToken.IsWellFormed(created.Token!));
         Assert.InRange(created.ExpiresAt, DateTime.UtcNow.AddDays(6), DateTime.UtcNow.AddDays(8));
     }
 
@@ -94,7 +94,7 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains(created.Id.ToString(), json);
         Assert.Contains(email, json);
-        Assert.DoesNotContain(created.Token, json);
+        Assert.DoesNotContain(created.Token!, json);
         Assert.DoesNotContain("token", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("hash", json, StringComparison.OrdinalIgnoreCase);
     }
@@ -110,7 +110,7 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
         var listed = (await fixture.OwnerClient.GetFromJsonAsync<List<InvitationDto>>("/api/v1/invitations"))!;
         Assert.DoesNotContain(listed, i => i.Id == created.Id);
 
-        var accept = await AcceptAsync(created.Token);
+        var accept = await AcceptAsync(created.Token!);
         Assert.Equal(HttpStatusCode.BadRequest, accept.StatusCode);
         Assert.Equal("invitation.invalid", (await ReadProblemAsync(accept)).Code);
     }
@@ -332,7 +332,7 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
         var password = MembersFixture.NewPassword();
         var created = await InviteOkAsync(email, TenantRole.Technician);
 
-        var accept = await AcceptAsync(created.Token, "Ana Pérez", password);
+        var accept = await AcceptAsync(created.Token!, "Ana Pérez", password);
 
         Assert.Equal(HttpStatusCode.NoContent, accept.StatusCode);
         Assert.Empty(await accept.Content.ReadAsByteArrayAsync()); // sin tokens de sesión ni nada más
@@ -355,9 +355,9 @@ public class UserManagementEndpointsTests(MembersFixture fixture) : IClassFixtur
     public async Task AnAlreadyUsedToken_AndAnUnknownOne_GetTheSameResponse()
     {
         var created = await InviteOkAsync(NewEmail(), TenantRole.Employee);
-        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token!)).StatusCode);
 
-        var used = await AcceptAsync(created.Token);
+        var used = await AcceptAsync(created.Token!);
         var unknown = await AcceptAsync(OpaqueToken.Generate().Value);
 
         // Quien lo intenta no aprende cuál de los dos es: mismo estado, mismo código, mismo texto.

@@ -151,6 +151,9 @@
   <data name="invitation.not_found" xml:space="preserve">
     <value>No se ha encontrado la invitación.</value>
   </data>
+  <data name="invitation.email_not_sent" xml:space="preserve">
+    <value>No se ha podido enviar el correo de la invitación, así que no se ha creado. Inténtalo de nuevo en unos minutos; si sigue fallando, avisa a quien administre OfiFlow.</value>
+  </data>
   <data name="mfa.already_enabled" xml:space="preserve">
     <value>El segundo factor ya está activado. Para cambiarlo, desactívalo primero.</value>
   </data>
@@ -210,6 +213,9 @@
   </data>
   <data name="problem.title.too_many_requests" xml:space="preserve">
     <value>Demasiadas peticiones</value>
+  </data>
+  <data name="problem.title.bad_gateway" xml:space="preserve">
+    <value>Servicio externo no disponible</value>
   </data>
   <data name="problem.title.server_error" xml:space="preserve">
     <value>Error interno</value>

@@ -72,6 +72,9 @@ public sealed partial class GlobalExceptionHandler(
         ForbiddenException forbidden => new(StatusCodes.Status403Forbidden, ProblemTitles.Forbidden, forbidden.Code),
         // Mismo código para "no existe" y "es de otra empresa": no se revela que existe (ADR-002).
         NotFoundException notFound => new(StatusCodes.Status404NotFound, ProblemTitles.NotFound, notFound.Code),
+        // Un servicio del que depende la operación (el servidor de correo) falló: la API funciona pero no puede completarla (spec 017 D4). No es un 500: no es un bug nuestro,
+        // y la respuesta no lleva el motivo del servicio externo.
+        ExternalServiceException external => new(StatusCodes.Status502BadGateway, ProblemTitles.BadGateway, external.Code),
         // JSON mal formado o de tipo incorrecto: error del cliente (ASP.NET ya trae el 4xx), no un 500.
         // El detalle del parser no se devuelve: revela tipos internos.
         BadHttpRequestException badRequest => new(badRequest.StatusCode, ProblemTitles.BadRequest, ApiErrors.InvalidRequestBody),

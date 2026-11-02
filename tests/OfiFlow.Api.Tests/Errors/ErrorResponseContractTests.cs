@@ -99,6 +99,8 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new BusinessRuleException(InvitationErrors.AlreadyPending), HttpStatusCode.BadRequest, "invitation.already_pending" },
         { new BusinessRuleException(InvitationErrors.LimitReached), HttpStatusCode.BadRequest, "invitation.limit_reached" },
         { new NotFoundException(InvitationErrors.NotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "invitation.not_found" },
+        // Spec 017: un servicio externo (el correo) falló. 502, no 500: no es un bug nuestro.
+        { new ExternalServiceException(InvitationErrors.EmailNotSent), HttpStatusCode.BadGateway, "invitation.email_not_sent" },
         { new NotFoundException(TenancyErrors.TenantUserNotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "tenant_user.not_found" },
         { new NotFoundException(IdentityErrors.SessionNotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "session.not_found" },
         { new ForbiddenException(TenancyErrors.RoleNotManageable), HttpStatusCode.Forbidden, "tenant_user.role_not_manageable" },

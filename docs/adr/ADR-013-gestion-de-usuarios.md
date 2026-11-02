@@ -26,6 +26,8 @@ Cada decisión tiene una opción cómoda que es insegura: crear al usuario con u
 **A. El invitante crea el usuario con una contraseña temporal.** Simple, pero el invitante conoce la contraseña de otra persona; no hay forma de demostrar quién hizo qué. Descartada.
 
 **B. Invitación con token de un solo uso; el invitado elige su contraseña.** El token se guarda hasheado, caduca y se consume. Sin servicio de email, el token se devuelve al invitante, que se lo pasa a la persona. Cuando exista el email, el token deja de devolverse y se envía.
+
+> **Actualización (spec 017, 2026-11-02): resuelto.** Con `Email:Provider = Smtp`, `POST /invitations` envía el enlace por correo y ya no devuelve el token (`token: null`, `emailSent: true`); sin correo configurado, todo sigue como se describe aquí. Ver [ADR-020](ADR-020-correo-saliente.md).
 - Desventaja: el invitante ve el token y podría usarlo él mismo. Es de confianza dentro de su empresa (ya puede ver y cambiar todos sus datos), y deja rastro (evento de aceptación con el `UserId` resultante).
 
 **C. Invitación solo por email.** La correcta a largo plazo, pero exige un proveedor de correo y secretos nuevos antes de poder probar nada. Se deja como NEXT con un puerto previsto.
@@ -69,7 +71,7 @@ Cada decisión tiene una opción cómoda que es insegura: crear al usuario con u
 
 ### Negativas / riesgos aceptados
 - **Una consulta más por petición autenticada.** Por el índice único `(TenantId, UserId)` es barata; se mide cuando haya carga real y, si hace falta, se cachea unos segundos (con la contrapartida de ese retraso).
-- **El invitante conoce el token** hasta que exista el email (opción 1.B).
+- **El invitante conoce el token** hasta que exista el email (opción 1.B). *Resuelto por la spec 017 ([ADR-020](ADR-020-correo-saliente.md)): con correo configurado, quien invita ya no conoce el token. Sin correo configurado, el riesgo sigue tal cual.*
 - **Invitar revela si un email tiene cuenta** al `Owner`/`Admin` autenticado. Mismo riesgo que ya tiene el registro.
 - **Sin multi-empresa:** un email con cuenta no se puede invitar a otra empresa.
 - **Borrar es irreversible:** una baja por error obliga a volver a invitar. Se acepta a cambio de no retener datos.
@@ -83,7 +85,7 @@ Cada decisión tiene una opción cómoda que es insegura: crear al usuario con u
 - La autorización usa el rol de la base de datos, no el del token.
 
 ### Qué queda abierto para revisar más adelante
-- **NEXT:** envío del enlace por email (puerto previsto, proveedor por decidir).
+- ~~**NEXT:** envío del enlace por email (puerto previsto, proveedor por decidir).~~ **Hecho en la spec 017 ([ADR-020](ADR-020-correo-saliente.md))**: puerto `IEmailSender` y transporte SMTP; el proveedor sigue por decidir (SMTP lo hablan todos).
 - **NEXT:** pertenecer a varias empresas y elegir empresa al hacer login.
 - **NEXT:** traspasar la propiedad y abandonar la empresa por voluntad propia.
 - **NEXT:** recuperar contraseña, confirmar email, bloqueo por intentos (ADR-009).
@@ -112,4 +114,5 @@ Implementada por la spec 009 (bloques 1 a 7), con 770 tests en verde. Lo que la 
 - Usa: ADR-007 (mismo patrón de token aleatorio hasheado que el refresh token) y ADR-011 (errores con código).
 - Cierra: los NEXT de ADR-009 ("revalidar la pertenencia al tenant en cada petición") y de ADR-012 (`Users.Manage`).
 - Afecta a: ADR-009 (eventos de seguridad `1302` y `1401`–`1406` en el catálogo de R5) y ADR-002 (nuevo uso justificado de `IgnoreQueryFilters()` al aceptar una invitación).
+- Ampliada por: la [ADR-020](ADR-020-correo-saliente.md) (spec 017): el enlace de la invitación se envía por correo y el token deja de devolverse cuando hay correo configurado; cierra el riesgo del invitante que conoce el token.
 - Ampliada por: la spec 015 y la [ADR-018](ADR-018-sesion-ligada-al-access-token.md): a la consulta de pertenencia de cada petición se suma **una comprobación de sesión antes**, en la autenticación (el access token solo vale mientras su sesión tenga un refresh token activo). Como la baja de un miembro borra sus refresh tokens, su token se rechaza ahora con un `401` **antes** de llegar a la revalidación (hasta ahora daba `403`); la revalidación de esta ADR sigue siendo la segunda barrera y se comprueba con una sesión activa cuya persona ya no es miembro (`403`).

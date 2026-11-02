@@ -361,8 +361,12 @@ Authorization: Bearer {{tokenA}}
 #    Gasta 1 login más (el de Ana) y 1 aceptación de las 10 por hora.
 ###############################################################################
 
-### Invitar a Ana como Technician (rol 3). Devuelve el TOKEN de la invitación UNA sola vez: no se
-### guarda en claro ni se puede volver a ver. Hasta que haya envío por email, se lo pasarías a Ana tú.
+### Invitar a Ana como Technician (rol 3). Hay DOS formas de respuesta, según el correo (spec 017):
+###  - Sin correo configurado (Email:Provider = None, lo normal en desarrollo): devuelve el TOKEN de la invitación UNA sola vez
+###    ("emailSent": false). No se guarda en claro ni se puede volver a ver; se lo pasarías a Ana tú. Es lo que usan las peticiones de abajo.
+###  - Con correo (Email:Provider = Smtp): se ENVÍA el enlace a Ana y la respuesta NO lleva token ("token": null, "emailSent": true);
+###    quien invita no puede aceptar la invitación en nombre de otra persona. Si el correo no sale -> 502 invitation.email_not_sent y no se crea nada.
+### Límite: 20 invitaciones por hora y por persona -> 429 (spec 017).
 # @name inviteAna
 POST {{host}}/api/v1/invitations
 Authorization: Bearer {{tokenA}}

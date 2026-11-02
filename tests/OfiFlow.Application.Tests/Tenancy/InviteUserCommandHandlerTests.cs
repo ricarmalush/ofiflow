@@ -22,8 +22,11 @@ public class InviteUserCommandHandlerTests
     private readonly FakeTimeProvider _time = new(Now);
     private readonly ListLogger<InviteUserCommandHandler> _logger = new();
 
+    // Sin correo configurado: es el comportamiento de la spec 009, que esta clase sigue fijando. Con correo, ver InviteUserByEmailTests.
+    private readonly FakeEmailSender _email = new(isEnabled: false);
+
     private InviteUserCommandHandler HandlerFor(TenantRole actorRole) =>
-        new(_db, new FakeTenantContext(_tenantId), new FakeCurrentUser(actorRole, _actorId, _tenantId), _identity, _time, _logger);
+        new(_db, new FakeTenantContext(_tenantId), new FakeCurrentUser(actorRole, _actorId, _tenantId), _identity, _email, new FakeEmailLinks(), _time, _logger);
 
     private async Task<InvitationCreatedDto> InviteAsync(TenantRole actor, string email, TenantRole role) =>
         await HandlerFor(actor).Handle(new InviteUserCommand(email, role), CancellationToken.None);
@@ -53,12 +56,24 @@ public class InviteUserCommandHandlerTests
 
         var stored = await _db.Invitations.SingleAsync();
 
+        Assert.False(created.EmailSent);
+        Assert.NotNull(created.Token);
         Assert.True(OpaqueToken.IsWellFormed(created.Token));
         Assert.Equal(OpaqueToken.Hash(created.Token), stored.TokenHash);
         Assert.NotEqual(created.Token, stored.TokenHash);
         // El valor en claro no está en ningún campo de lo guardado.
         Assert.DoesNotContain(created.Token, stored.TokenHash);
         Assert.DoesNotContain(created.Token, stored.NormalizedEmail);
+    }
+
+    [Fact]
+    public async Task WithoutEmail_NothingIsSent_AndNoEmailEventIsLogged()
+    {
+        // El correo apagado es el comportamiento de siempre: el fake lanza si algo intenta enviar.
+        await InviteAsync(TenantRole.Owner, "ana@example.com", TenantRole.Technician);
+
+        Assert.Empty(_email.Sent);
+        Assert.DoesNotContain(_logger.Entries, e => e.EventId.Id is SecurityEventIds.InvitationEmailSent or SecurityEventIds.InvitationEmailFailed);
     }
 
     // ===== Jerarquía (R1, R9) =====

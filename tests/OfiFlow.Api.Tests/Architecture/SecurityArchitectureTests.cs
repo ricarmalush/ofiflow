@@ -62,7 +62,10 @@ public class SecurityArchitectureTests
             "src/OfiFlow.Application/Platform/Commands/SuspendTenant/SuspendTenantCommandHandler.cs",
             "src/OfiFlow.Application/Platform/Commands/ReactivateTenant/ReactivateTenantCommandHandler.cs",
             // quién soy (spec 012): el nombre de la PROPIA empresa, solo desde la pertenencia de quien pregunta (filtrada por empresa)
-            "src/OfiFlow.Application/Identity/Queries/GetCurrentAccount/GetCurrentAccountQueryHandler.cs"
+            "src/OfiFlow.Application/Identity/Queries/GetCurrentAccount/GetCurrentAccountQueryHandler.cs",
+            // el correo de una invitación (spec 017): el nombre de la empresa de quien invita, UNA fila buscada por el TenantId del contexto
+            // (nunca por un Id que llegue en la petición). Solo se lee cuando hay correo configurado.
+            "src/OfiFlow.Application/Tenancy/Commands/InviteUser/InviteUserCommandHandler.cs"
         ],
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
         ["ApplicationUsers"] = [

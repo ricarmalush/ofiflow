@@ -114,7 +114,19 @@ Nada: en cada petición se comprueba en la base de datos que sigue en la empresa
 El `Owner` o un `Admin` invita con un email y un rol. Se genera un token de **256 bits** del que **solo se guarda el hash**; caduca a los 7 días y se usa una vez. La persona lo acepta (ruta anónima, 10 por hora y por IP) y **elige ella su contraseña**. Un token inventado, caducado, revocado o usado reciben **exactamente la misma respuesta**. Todo se confirma en una transacción y, con dos aceptaciones a la vez, gana una. *(Cap. 6)*
 
 **¿Qué riesgo tiene devolver el token al invitante?**
-Que el invitante lo ve y podría aceptarlo él mismo. Es una decisión consciente (sin servicio de email todavía); lo que **nunca** pasa es que conozca la contraseña de la otra persona. Cuando haya email, el token dejará de devolverse. *(ADR-013)*
+Que el invitante lo ve y podría aceptarlo él mismo. Fue una decisión consciente mientras no había correo; lo que **nunca** pasó es que conociera la contraseña de la otra persona. **Desde la spec 017 el riesgo desaparece cuando hay correo configurado**: la API envía el enlace a la persona invitada y responde `"token": null`, así que quien invita nunca ve el token. Sin correo configurado (desarrollo, tests, demos) sigue como antes, y en `Production` un aviso al arrancar lo recuerda. *(ADR-013, ADR-020)*
+
+**¿De dónde sale el enlace del correo, y por qué no de la petición?**
+Solo de `Email:LinkBaseUrl`, un valor que fija el despliegue y que se valida al arrancar (`https`, sin ruta). Si saliera de la cabecera `Host` u `Origin`, quien envía la petición decidiría adónde apunta el correo que recibe la víctima (*envenenamiento por cabecera Host*): el correo, al salir de OfiFlow, sería de fiar y llevaría a otra web. Hay un test que envía una invitación con `Host`, `Origin`, `Referer` y `X-Forwarded-Host` de un tercero y comprueba que el enlace no cambia. El token va en el **fragmento** (`#token=…`), que el navegador no envía al servidor. *(Cap. 6, ADR-020)*
+
+**¿Qué pasa si el correo no se puede enviar? ¿Y por qué no hay una cola?**
+La respuesta es un **502** (`invitation.email_not_sent`, sin el motivo) y **no se crea ninguna invitación**: se envía *antes* de guardar, así que no hay nada que deshacer ni una invitación pendiente que nadie recibió. No hay cola porque una cola persistida guardaría el correo, y ese correo **contiene el token en claro**, justo lo que se evita guardando solo el hash. Se hará con el primer correo no interactivo (un recordatorio), y entonces habrá que decidir cómo no guardar secretos en ella. *(ADR-020)*
+
+**¿Qué datos nuevos salen de OfiFlow con el correo?**
+La dirección del invitado y el nombre de la empresa (en el cuerpo) salen hacia el **proveedor de correo**, que pasa a ser un *encargado del tratamiento*: hay que resolver el contrato y dónde trata los datos al elegirlo. Ni la dirección, ni el token, ni el enlace aparecen en ningún log; los eventos `1407`/`1408` llevan solo Ids y la categoría del fallo, y hay un test con la API real que lo comprueba. *(Cap. 8, ADR-020)*
+
+**¿Cómo evitas que OfiFlow sirva para llenar de correo a un tercero?**
+El asunto es fijo y **nada de lo que escribe quien invita entra en el cuerpo** (solo el nombre de la empresa, el rol y la caducidad), así que no sirve para escribir un texto cualquiera; hay un máximo de 25 invitaciones pendientes por empresa, una pendiente por email y **20 invitaciones por hora y por persona**. Ese último límite lo consulta el endpoint y no el limitador global, porque este se evalúa antes de autenticar y solo conoce la IP (y una oficina entera comparte IP). *(Cap. 6 y 8, ADR-020)*
 
 ### El operador de la plataforma (spec 011)
 
@@ -203,7 +215,7 @@ Porque obliga a pensar antes (las decisiones difíciles se descubren al escribir
 **¿Qué NO está hecho? (la pregunta más importante)**
 Con honestidad y de lo más a lo menos preocupante:
 - **El segundo factor es opcional y el TOTP no resiste al *phishing*:** obligarlo para `Owner` y `Admin` exige pantallas, y las *passkeys* son el siguiente paso. Tampoco se puede cambiar ni recuperar la contraseña, y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma.
-- **El token de invitación no se envía por email**: lo recibe quien invita.
+- **El correo existe pero no está probado contra un proveedor real, y no hay cola, reintentos ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 - **No hay alertas ni un registro de auditoría persistente**: los eventos se escriben, pero nadie los vigila.
