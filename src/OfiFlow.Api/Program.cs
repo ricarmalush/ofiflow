@@ -20,6 +20,7 @@ try
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddRefreshTokenPurge(builder.Configuration);
+    builder.Services.AddEmail(builder.Configuration);
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();

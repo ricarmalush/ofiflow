@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) (se anota), [ADR-009](../../adr/ADR-009-seguridad-base.md), [ADR-011](../../adr/ADR-011-errores-codigos-diccionario.md) (error nuevo) y la **ADR-020** nueva (D12)
-**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Sin empezar.
+**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloque 1 hecho (sin commitear); bloques 2 a 4 sin empezar.
 
 ---
 
@@ -19,14 +19,24 @@
 ## Bloques
 
 ### Bloque 1 — El puerto y el transporte (Application + Infrastructure)
-- [ ] Antes de empezar: comprobar la versión actual de MailKit y la imagen del servidor SMTP de pruebas (que existan y estén mantenidas); anotar las versiones elegidas en la ADR-020
-- [ ] `IEmailSender`, `EmailMessage` y `EmailDeliveryException` (con su categoría) en Application; el mensaje de la excepción no contiene la dirección ni texto del servidor
-- [ ] `EmailOptions` (`Provider`, `From`, `LinkBaseUrl`, `Smtp:*`) con validación al arrancar (R4–R8): cifrado obligatorio salvo bucle local, remitente con forma de dirección, `LinkBaseUrl` en `https` salvo `localhost` y sin ruta ni barra final, tiempo mayor que cero
-- [ ] `SmtpEmailSender` (MailKit): tiempo máximo, sin reintentos, asunto y direcciones sin posibilidad de inyección, categoría del fallo sin exponer el texto del servidor
-- [ ] Registro en la API (`AddEmail`): con `None` no se registra ningún transporte (un `NullEmailSender` que **falla en voz alta** si algo lo llama, para que un uso olvidado no pase en silencio); la consola de administración no lo recibe (con test)
-- [ ] Tests contra un SMTP de pruebas en contenedor: entrega el mensaje; con cifrado; con autenticación correcta e incorrecta; servidor que no contesta (tiempo máximo respetado); servidor que rechaza al destinatario; asunto y cuerpo íntegros con tildes y eñes; un destinatario con saltos de línea no inyecta cabeceras
-- [ ] Tests de las opciones (cada valor inválido rechazado, valores por defecto aprobados) y de que la configuración inválida impide arrancar
-- [ ] Mutaciones: cifrado desactivado; tiempo máximo ignorado; mensaje de error con la dirección; validación siempre verdadera; reintento añadido; etc. (se cierra la lista al implementar)
+- [x] Antes de empezar: versiones comprobadas el 2026-11-02 — MailKit **4.18.2** (la última de su línea 4.x en NuGet; la auditoría de NuGet, con vulnerabilidades como error, no avisa) y Mailpit **v1.33.0** en Docker Hub (publicada el 2026-10-31); ambas fijadas. Anotar en la ADR-020 (bloque 3)
+- [x] `IEmailSender`, `EmailMessage` (con el tipo `Email` del dominio como destinatario) y `EmailDeliveryException` con su `EmailFailureCategory`, en Application (`Common/Abstractions` y `Common/Mail`: el espacio de nombres no puede llamarse `Email`, chocaría con el tipo). El mensaje es fijo por categoría y no conserva la excepción original
+- [x] `EmailOptions` (+ `SmtpOptions`) con `Validate()` y un `EmailOptionsValidator` propio, para que el arranque diga **qué ajuste** falla (R8). Comprobado en vivo con la API real: «Falta Email:LinkBaseUrl…», «Email:Smtp:Security = None solo se admite con un servidor de esta misma máquina…»
+- [x] `SmtpEmailSender` (MailKit): cifrado obligatorio (STARTTLS o TLS implícito, nunca oportunista), un solo presupuesto de tiempo y sin reintentos, destinatario y asunto con caracteres de control rechazados antes de tocar la red, dominio de EHLO y de Message-Id tomados del remitente (sin ellos MailKit publica el nombre de la máquina en la cabecera `Received`), categoría del fallo sin texto del servidor ni dirección
+- [x] `AddEmail` en `Program.cs` de la API; con `None`, `NullEmailSender` que lanza si alguien lo llama; la consola de administración no lo recibe (con test)
+- [x] Tests (109 de Mail en Infrastructure + 5 en Api): contra **Mailpit en contenedor** (STARTTLS con usuario, y sin cifrar ni usuario): entrega entera con tildes y eñes, remitente y destinatario únicos, sin copias, contraseña incorrecta, servidor que exige usuario y no se puso, certificado en el que no se confía, huella distinta de la esperada, credenciales sin cifrar rechazadas, cuerpo que imita cabeceras sin poder añadir destinatarios; con un **servidor SMTP en proceso**: tiempo agotado en el plazo y sin reintento, destinatario rechazado (el texto del servidor no sale), STARTTLS exigido y no ofrecido (no se envía en claro), conexión cortada, saludo rechazado, nadie escuchando, TLS desde el primer byte
+- [x] Tests de las opciones (cada valor inválido rechazado, valores por defecto aprobados, ningún mensaje repite un valor ni la contraseña), del registro y del arranque real del host (`ValidateOnStart`); test de arquitectura: MailKit y MimeKit solo dentro de `Infrastructure/Mail`, nadie construye el transporte a mano, la validación del certificado nunca se desactiva
+- [x] Mutaciones (33 en total, todas detectadas salvo 2 que sobreviven **por diseño**: el tiempo máximo está dos veces —el presupuesto total y el del cliente— y quitar uno solo no cambia nada; quitar los dos sí se detecta): STARTTLS opcional; EHLO y Message-Id con el nombre de la máquina; destinatario y asunto sin comprobar; tiempo agotado no reconocido; fallo de TLS, servidor que exige usuario, destinatario rechazado y cancelación mal clasificados; registro con el texto de la excepción; autenticar siempre; sin cifrar en cualquier servidor; «localhost» por contener; barra final, ruta o http admitidos en `LinkBaseUrl`; sin tope de tiempo; usuario y contraseña desemparejados; remitente con caracteres de control; valores por defecto cambiados; validación y validador siempre correctos o sin registrar; sin `ValidateOnStart`; nunca el transporte SMTP; transporte nulo que envía en silencio; y `Program.cs` sin `AddEmail`
+- [x] Verificación contra la API publicada de verdad: arranca con el correo apagado y con una configuración válida; se niega a arrancar con `Smtp` sin `LinkBaseUrl` y con `Security = None` fuera de localhost, diciendo qué ajuste. **No hay endpoint que envíe todavía** (llega en el bloque 2), así que el envío real se ejercita con los tests contra Mailpit
+- [ ] [externo] Commit del bloque 1 (con orden explícita)
+
+**Hallazgos del bloque 1**
+- `Email.Create("a@b.com
+")` **acepta** un salto de línea final (la expresión usa `$`, que casa antes de un `
+` final). No se corrige aquí (es del dominio y toca a todos los usos); el transporte lo rechaza por su cuenta. Anotado como tarea aparte.
+- Mailpit, sin `MP_SMTP_DISABLE_RDNS`, tarda unos 10 s en saludar a la primera conexión dentro de Docker Desktop (búsqueda DNS inversa): agota el tiempo máximo del transporte y da fallos que no son del código. Los contenedores lo llevan desactivado.
+- El antivirus de la máquina de desarrollo (AVG) vuelve a firmar las conexiones TLS desde el primer byte con destino a puertos de correo, incluso en bucle local. Por eso el test de TLS implícito no fija la huella del certificado; la validación del certificado la prueban los de STARTTLS.
+- Lanzar la solución entera (`dotnet test OfiFlow.slnx`) ejecuta Infrastructure y Api a la vez y los dos levantan contenedores: aparecen cientos de fallos por contención que no son reales. Se lanzan por proyecto, uno detrás de otro.
 
 ### Bloque 2 — La invitación por correo (Application + Api)
 - [ ] `InvitationEmail`: construye el `EmailMessage` (asunto fijo, texto plano, empresa, rol en palabras, caducidad, enlace con el token tras `#`); función pura, probada con una tabla de casos, incluidos nombres de empresa con caracteres de control
