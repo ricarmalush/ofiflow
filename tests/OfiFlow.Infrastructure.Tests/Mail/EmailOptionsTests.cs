@@ -5,6 +5,7 @@ using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Mail;
 using OfiFlow.Domain.Common;
 using OfiFlow.Infrastructure.Mail;
+using OfiFlow.Infrastructure.Tests.Common;
 
 namespace OfiFlow.Infrastructure.Tests.Mail;
 
@@ -273,6 +274,7 @@ public class EmailOptionsTests
         var options = provider.GetRequiredService<IOptions<EmailOptions>>().Value;
         Assert.False(options.IsEnabled);
         Assert.Equal("NullEmailSender", provider.GetRequiredService<IEmailSender>().GetType().Name);
+        Assert.False(provider.GetRequiredService<IEmailSender>().IsEnabled);
     }
 
     [Fact]
@@ -302,6 +304,8 @@ public class EmailOptionsTests
         Assert.Equal(SmtpSecurity.SslOnConnect, options.Smtp.Security);
         Assert.Equal(TimeSpan.FromSeconds(5), options.Smtp.Timeout);
         Assert.Equal("SmtpEmailSender", provider.GetRequiredService<IEmailSender>().GetType().Name);
+        Assert.True(provider.GetRequiredService<IEmailSender>().IsEnabled);
+        Assert.StartsWith("https://app.ofiflow.example/auth/accept-invitation#", provider.GetRequiredService<IEmailLinks>().AcceptInvitation("t"));
     }
 
     [Fact]
@@ -365,7 +369,48 @@ public class EmailOptionsTests
             ("Mfa:EncryptionKey", Convert.ToBase64String(new byte[32]))));
 
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IEmailSender));
+        Assert.DoesNotContain(services, d => d.ServiceType == typeof(IEmailLinks));
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IOptions<EmailOptions>));
+    }
+
+    // ===== El aviso de arranque (D5) =====
+
+    private static (ListLogger<EmailOptionsTests> Log, int Warnings) Warn(string environment, EmailProvider provider)
+    {
+        var log = new ListLogger<EmailOptionsTests>();
+        var options = Options.Create(new EmailOptions { Provider = provider });
+        EmailStartupCheck.WarnIfOffInProduction(new FakeEnvironment(environment), options, log);
+        return (log, log.Entries.Count(e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning));
+    }
+
+    private sealed class FakeEnvironment(string name) : Microsoft.Extensions.Hosting.IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = name;
+
+        public string ApplicationName { get; set; } = "test";
+
+        public string ContentRootPath { get; set; } = ".";
+
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
+    }
+
+    [Fact]
+    public void InProductionWithoutEmail_ItWarns_WithoutStoppingAnything()
+    {
+        var (log, warnings) = Warn("Production", EmailProvider.None);
+
+        Assert.Equal(1, warnings);
+        Assert.Contains("Email:Provider = None", Assert.Single(log.Entries).Message);
+    }
+
+    [Theory]
+    [InlineData("Development", EmailProvider.None)]
+    [InlineData("Testing", EmailProvider.None)]
+    [InlineData("Staging", EmailProvider.None)]
+    [InlineData("Production", EmailProvider.Smtp)]
+    public void Elsewhere_OrWithEmailOn_ItDoesNotWarn(string environment, EmailProvider provider)
+    {
+        Assert.Equal(0, Warn(environment, provider).Warnings);
     }
 
     // ===== La excepción =====

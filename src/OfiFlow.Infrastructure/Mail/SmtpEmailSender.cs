@@ -54,6 +54,8 @@ internal sealed class SmtpEmailSender : IEmailSender
         Send
     }
 
+    public bool IsEnabled => true;
+
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         var mime = BuildMessage(message);

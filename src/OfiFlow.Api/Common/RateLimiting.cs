@@ -70,29 +70,40 @@ public static partial class RateLimiting
 
             options.OnRejected = async (rejected, cancellationToken) =>
             {
-                var httpContext = rejected.HttpContext;
-                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(RateLimiting));
-                LogRateLimitExceeded(logger, httpContext.Request.Path);
-
-                if (rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
-                {
-                    httpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
-                }
-
-                var messages = httpContext.RequestServices.GetRequiredService<IStringLocalizer<ErrorMessages>>();
-                var problem = new ProblemDetails
-                {
-                    Status = StatusCodes.Status429TooManyRequests,
-                    Title = messages[ProblemTitles.TooManyRequests],
-                    Detail = messages[ApiErrors.RateLimitExceeded]
-                };
-                problem.Extensions["code"] = ApiErrors.RateLimitExceeded;
-
-                await httpContext.Response.WriteAsJsonAsync(problem, options: null, contentType: MediaTypeNames.Application.ProblemJson, cancellationToken);
+                TimeSpan? retryAfter = rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var wait) ? wait : null;
+                await RejectAsync(rejected.HttpContext, retryAfter, cancellationToken);
             };
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Escribe la respuesta <b>429</b> de siempre (evento 1101, <c>Retry-After</c>, ProblemDetails con el código <c>rate_limit.exceeded</c>). La usa el limitador de la API y también los límites que no
+    /// pueden ser una política por IP (por ejemplo, el de invitaciones, que es por persona y por tanto solo se conoce <i>después</i> de autenticar: ver <see cref="InvitationThrottle"/>), para que el
+    /// cliente vea exactamente lo mismo venga de donde venga.
+    /// </summary>
+    public static async Task RejectAsync(HttpContext httpContext, TimeSpan? retryAfter, CancellationToken cancellationToken)
+    {
+        var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(RateLimiting));
+        LogRateLimitExceeded(logger, httpContext.Request.Path);
+
+        httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        if (retryAfter is { } wait)
+        {
+            httpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString();
+        }
+
+        var messages = httpContext.RequestServices.GetRequiredService<IStringLocalizer<ErrorMessages>>();
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status429TooManyRequests,
+            Title = messages[ProblemTitles.TooManyRequests],
+            Detail = messages[ApiErrors.RateLimitExceeded]
+        };
+        problem.Extensions["code"] = ApiErrors.RateLimitExceeded;
+
+        await httpContext.Response.WriteAsJsonAsync(problem, options: null, contentType: MediaTypeNames.Application.ProblemJson, cancellationToken);
     }
 
     private static RateLimitPartition<string> PerIp(HttpContext context, int permitLimit, TimeSpan window) =>

@@ -9,6 +9,12 @@ namespace OfiFlow.Application.Common.Abstractions;
 public interface IEmailSender
 {
     /// <summary>
+    /// ¿Hay un transporte que envíe de verdad? Con <c>Email:Provider = None</c> no, y entonces cada caso de uso decide qué hace sin correo (la invitación devuelve el token a quien invita,
+    /// como antes de la spec 017). Un caso de uso que pida enviar sin comprobarlo recibe un error en voz alta, no un envío que nunca ocurre (D5).
+    /// </summary>
+    bool IsEnabled { get; }
+
+    /// <summary>
     /// Entrega el mensaje al servidor de correo y espera su aceptación (envío directo y sin cola: D2). No reintenta (R6).
     /// </summary>
     /// <exception cref="EmailDeliveryException">El envío falló. Solo trae la categoría, nunca la dirección ni el texto del servidor.</exception>

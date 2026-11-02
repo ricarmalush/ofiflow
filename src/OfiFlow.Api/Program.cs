@@ -30,6 +30,8 @@ try
 
     // ADR-009 R4 y R6.
     builder.Services.AddAuthRateLimiting();
+    // Spec 017 D10: el límite de invitaciones es por persona, no por IP, y por eso no es una política del limitador global (ver InvitationThrottle).
+    builder.Services.AddSingleton<InvitationThrottle>();
     builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
 
     // ADR-017: CORS. El navegador solo deja que una web de otro origen (el frontend) lea las respuestas de la API si la
@@ -67,6 +69,11 @@ try
         .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
 
     var app = builder.Build();
+
+    // Spec 017 D5: sin correo configurado la invitación devuelve el token a quien invita (como antes). Es lo correcto en desarrollo, en tests y en una demo, pero en
+    // producción casi seguro es un olvido: no es un error (por eso no impide arrancar), pero que se vea en el registro.
+    OfiFlow.Infrastructure.Mail.EmailStartupCheck.WarnIfOffInProduction(
+        app.Environment, app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<OfiFlow.Infrastructure.Mail.EmailOptions>>(), app.Logger);
 
     if (app.Environment.IsDevelopment())
     {

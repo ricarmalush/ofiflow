@@ -35,6 +35,32 @@ public class EmailWiringTests(OfiFlowApiFactory factory) : IClassFixture<OfiFlow
     }
 
     [Fact]
+    public void ProgramCs_RunsTheProductionStartupCheck()
+    {
+        // D5: si alguien borrara la llamada, el aviso desaparecería sin que fallara nada.
+        Assert.Contains("src/OfiFlow.Api/Program.cs", SourceCode.FilesContaining("EmailStartupCheck.WarnIfOffInProduction(", "OfiFlow.Api"));
+    }
+
+    [Fact]
+    public void InvitationLinks_AreBuiltInOnePlaceOnly_FromConfiguration()
+    {
+        // R3: el único sitio que escribe la ruta del enlace es EmailLinks, que solo lee Email:LinkBaseUrl. Si otro fichero lo hiciera podría construirlo con datos de la petición.
+        var builders = SourceCode.Files()
+            .Where(file => file.Content.Split('\n').Select(line => line.TrimStart()).Any(line => !line.StartsWith("//", StringComparison.Ordinal) && line.Contains("/auth/accept-invitation#", StringComparison.Ordinal)))
+            .Select(file => file.Path)
+            .ToList();
+        Assert.Equal([MailFolder + "EmailLinks.cs"], builders);
+
+        // Y ningún fichero que toque correo o invitaciones lee cabeceras que controla quien envía la petición.
+        var risky = SourceCode.Files()
+            .Where(file => file.Path.Contains("/Mail/", StringComparison.Ordinal) || file.Path.Contains("InviteUser", StringComparison.Ordinal) || file.Path.Contains("InvitationEmail", StringComparison.Ordinal))
+            .Where(file => new[] { "Request.Host", "HeaderNames.Origin", "HeaderNames.Referer", "X-Forwarded-Host", "Request.Headers" }.Any(text => file.Content.Contains(text, StringComparison.Ordinal)))
+            .Select(file => file.Path)
+            .ToList();
+        Assert.Empty(risky);
+    }
+
+    [Fact]
     public void TheMailLibraries_AreOnlyUsedInsideTheMailFolder()
     {
         // El resto del código (casos de uso incluidos) solo conoce IEmailSender. Si otro fichero usara MailKit o MimeKit directamente, se saltaría las garantías
@@ -63,7 +89,9 @@ public class EmailWiringTests(OfiFlowApiFactory factory) : IClassFixture<OfiFlow
         // R5: la validación normal del certificado. El único gancho es el constructor de tests, que recibe la función desde fuera.
         var sender = SourceCode.ReadText(MailFolder + "SmtpEmailSender.cs");
 
-        Assert.DoesNotContain("=> true", sender, StringComparison.Ordinal);
+        // El único gancho es el que llega por el constructor de tests; nadie escribe una función propia que acepte todo.
+        Assert.Equal(1, sender.Split("ServerCertificateValidationCallback").Length - 1);
+        Assert.Contains("ServerCertificateValidationCallback = _certificateValidation;", sender, StringComparison.Ordinal);
         Assert.DoesNotContain("SslProtocols", sender, StringComparison.Ordinal);
         Assert.DoesNotContain("SecureSocketOptions.Auto", sender, StringComparison.Ordinal);
         Assert.DoesNotContain("StartTlsWhenAvailable", sender, StringComparison.Ordinal);

@@ -68,6 +68,8 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(EmailOptions.SectionName))
             .ValidateOnStart();
 
+        services.AddSingleton<IEmailLinks, EmailLinks>();
+
         // Se lee la opción ya enlazada para decidir el transporte; la validación completa la hace el arranque.
         var isSmtp = Enum.TryParse<EmailProvider>(configuration.GetSection(EmailOptions.SectionName)[nameof(EmailOptions.Provider)], ignoreCase: true, out var provider) && provider == EmailProvider.Smtp;
         if (isSmtp)

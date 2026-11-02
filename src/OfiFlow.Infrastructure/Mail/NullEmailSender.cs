@@ -10,6 +10,8 @@ namespace OfiFlow.Infrastructure.Mail;
 /// </summary>
 internal sealed class NullEmailSender : IEmailSender
 {
+    public bool IsEnabled => false;
+
     public Task SendAsync(EmailMessage message, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("El correo no está configurado (Email:Provider = None): un caso de uso no debería enviar sin comprobar antes que hay correo.");
 }

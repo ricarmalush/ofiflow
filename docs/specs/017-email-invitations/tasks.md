@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) (se anota), [ADR-009](../../adr/ADR-009-seguridad-base.md), [ADR-011](../../adr/ADR-011-errores-codigos-diccionario.md) (error nuevo) y la **ADR-020** nueva (D12)
-**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloque 1 hecho (sin commitear); bloques 2 a 4 sin empezar.
+**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloque 1 hecho y commiteado; bloque 2 hecho (sin commitear); bloques 3 y 4 sin empezar.
 
 ---
 
@@ -39,17 +39,23 @@
 - Lanzar la solución entera (`dotnet test OfiFlow.slnx`) ejecuta Infrastructure y Api a la vez y los dos levantan contenedores: aparecen cientos de fallos por contención que no son reales. Se lanzan por proyecto, uno detrás de otro.
 
 ### Bloque 2 — La invitación por correo (Application + Api)
-- [ ] `InvitationEmail`: construye el `EmailMessage` (asunto fijo, texto plano, empresa, rol en palabras, caducidad, enlace con el token tras `#`); función pura, probada con una tabla de casos, incluidos nombres de empresa con caracteres de control
-- [ ] `InviteUserCommandHandler`: tras las reglas de la invitación (R13) y antes de guardar, enviar si hay transporte; si falla, `invitation.email_not_sent` y no se guarda nada (R11)
-- [ ] `InvitationCreatedDto`: `Token` pasa a ser opcional y se añade `EmailSent` (R10); el endpoint y su documentación (`OfiFlow.Api.http`) al día
-- [ ] Error nuevo `invitation.email_not_sent` → 502 en el diccionario de errores (ADR-011) y su mensaje en español
-- [ ] Eventos `1012` y `1013` en `SecurityEventIds`; registros sin dirección, sin token, sin enlace, sin texto del servidor
-- [ ] Límite de envío por persona y hora para `POST /invitations` (D10): variante del limitador por `UserId`
-- [ ] Aviso al arrancar en `Production` con `Provider = None` (D5)
-- [ ] Tests (con el `IEmailSender` falso): con `None` todo igual que hoy; con `Smtp` se envía uno y la respuesta no trae token; el enlace sale de `LinkBaseUrl` aunque lleguen `Host` u `Origin` de un tercero; el enlace del correo se acepta de verdad; si falla el envío no existe la invitación; las reglas que rechazan no envían; aislamiento entre empresas; límite → 429; eventos sin datos personales
-- [ ] Test de arquitectura: ningún caso de uso usa el transporte concreto, solo el puerto
-- [ ] Mutaciones: enviar antes de las reglas; guardar aunque falle el envío; devolver el token con `Smtp`; enlace desde la cabecera `Origin`; token en la query y no en el fragmento; evento con la dirección; etc. (se cierra la lista al implementar)
-- [ ] Verificación contra la API publicada de verdad con un SMTP local: se invita, se lee el correo recibido, se acepta con el enlace; se apaga el SMTP y se comprueba el 502 y que no queda invitación; se revisan los logs
+- [x] `InvitationEmail` (función pura): asunto fijo sin ningún dato, texto plano en español con la empresa, el rol (las mismas etiquetas que el frontend), la caducidad y el enlace; el nombre de la empresa se deja en una sola línea y sin caracteres de control
+- [x] Dos puertos nuevos en Application: `IEmailSender.IsEnabled` (el caso de uso comprueba antes de enviar; el transporte nulo sigue lanzando si alguien lo olvida) e `IEmailLinks` (el enlace sale **solo** de `Email:LinkBaseUrl`, con el token en el fragmento y codificado); `EmailLinks` en Infrastructure
+- [x] `InviteUserCommandHandler`: con correo, envía **después** de todas las reglas (R13) y **antes** de guardar (R11, D3); si falla, `ExternalServiceException` y no se guarda nada. Lee el nombre de la empresa por el `TenantId` del contexto (añadido a la lista de lecturas de entidades globales, con su motivo)
+- [x] `InvitationCreatedDto(Id, Token?, ExpiresAt, EmailSent)`: con correo, `token` es `null` y `emailSent` verdadero; sin correo, todo como antes de la spec 017. `OfiFlow.Api.http` al día
+- [x] `invitation.email_not_sent` → **502** (nuevo `ExternalServiceException`, título `problem.title.bad_gateway`, entradas en el diccionario; el test del diccionario completo los exige)
+- [x] Eventos **`1407`** (enviado) y **`1408`** (fallido, con la categoría) en `SecurityEventIds`. **Cambio respecto al borrador de la spec**: eran `1012` y `1013`, pero esos números son de la familia de autenticación y las invitaciones viven en la `14xx`. La spec está corregida
+- [x] Límite de **20 invitaciones por hora y por persona** (`InvitationThrottle`, por `UserId`). **Cambio respecto al borrador**: no es una política más del limitador global, porque ese va *antes* de autenticar (ADR-017) y solo conoce la IP; el endpoint lo consulta justo antes de enviar la orden y responde el mismo 429 de siempre (`RateLimiting.RejectAsync`, compartido). Mover el limitador detrás de la autenticación habría cambiado a todos los demás endpoints
+- [x] Aviso al arrancar en `Production` con `Provider = None` (`EmailStartupCheck`), probado con un entorno falso y con un test que impide borrar la llamada de `Program.cs`
+- [x] Tests: Application (44 de invitar, 16 de la plantilla): camino feliz, el hash guardado es el del token del correo, se envía antes de guardar, cada categoría de fallo, eventos sin datos personales, ningún envío si la regla rechaza (jerarquía, email con cuenta, ya pendiente, tope de pendientes), empresa propia y no ajena. Infrastructure: `EmailLinks`, `IsEnabled`, el aviso de producción. Api con SQL Server real: respuesta sin token, el enlace del correo **acepta de verdad** la invitación, `Host`/`Origin`/`Referer`/`X-Forwarded-Host` de un tercero no cambian el enlace, 502 y nada creado, logs sin dirección/token/enlace, 429 al 21.º envío y por persona, contrato del 502
+- [x] Tests de arquitectura: MailKit/MimeKit solo en `Infrastructure/Mail` (del bloque 1); el enlace solo se escribe en `EmailLinks`; ningún fichero de correo o de invitar lee cabeceras de la petición
+- [x] Mutaciones (21, todas detectadas): no enviar nunca; devolver siempre el token; enviar después de guardar; tragarse el fallo; la dirección en el evento de fallo; empresa en el asunto; saltos de línea en el nombre de la empresa y en el cuerpo; etiqueta de rol; la «primera empresa» en vez de la del contexto (esta **sobrevivió** hasta que el test pasó a guardar primero una empresa ajena); token en la consulta y sin codificar; transporte «apagado»; límite compartido, que nunca rechaza, de 21 o sin registrar; sin `Cache-Control`; 502 que pasa a 500; `Retry-After` inútil; aviso de producción que nunca sale
+- [x] Verificación contra la API publicada de verdad (base desechable, Mailpit real): se invita → `201` con `token: null`, `emailSent: true` y `Cache-Control: no-store`; el correo recibido tiene remitente, asunto fijo, empresa, rol, caducidad y el enlace con el token en el fragmento; **aceptar con ese enlace da `204` y la invitada entra (`200`)**; con el servidor de correo parado, `502` con el código y sin motivo, y la invitación no existe; el registro tiene `1407` y `1408` y **cero** apariciones de la dirección, el token o el enlace
+- [ ] [externo] Commit del bloque 2 (con orden explícita)
+
+**Hallazgos del bloque 2**
+- Un test de aislamiento que parecía fuerte no lo era: con la empresa propia guardada *antes* que la ajena, una consulta que cogiera «la primera empresa» daba el mismo resultado. Lo cazó una mutación; ahora la ajena se guarda la primera.
+- Dos limitaciones asumidas del límite por persona: es en memoria y por instancia (como los demás límites, ADR-009) y se reinicia al reiniciar la API.
 
 ### Bloque 3 — Documentación
 - [ ] ADR-020: el correo (puerto, SMTP/MailKit, por qué sin cola todavía, el proveedor como encargado del tratamiento, cómo reconocer un proveedor caído por el evento `1013`, versiones elegidas)

@@ -101,11 +101,11 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         await RevokeAsync(revoked.Id);
 
         var used = await InviteOkAsync(NewEmail("usada"), TenantRole.Employee);
-        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(used.Token)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(used.Token!)).StatusCode);
 
         var membersBefore = (await MembersAsync()).Count;
         var shapes = new List<(int? Status, string? Title, string? Detail, string? Code)>();
-        foreach (var token in new[] { unknown, expired.Token, revoked.Token, used.Token })
+        foreach (var token in new[] { unknown, expired.Token!, revoked.Token!, used.Token! })
         {
             var response = await AcceptAsync(token);
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -125,8 +125,8 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         var created = await InviteOkAsync(email, TenantRole.Technician);
 
         var responses = await Task.WhenAll(
-            Task.Run(() => AcceptAsync(created.Token, "Primera")),
-            Task.Run(() => AcceptAsync(created.Token, "Segunda")));
+            Task.Run(() => AcceptAsync(created.Token!, "Primera")),
+            Task.Run(() => AcceptAsync(created.Token!, "Segunda")));
 
         Assert.Single(responses, r => r.StatusCode == HttpStatusCode.NoContent); // exactamente una gana
         var loser = Assert.Single(responses, r => r.StatusCode != HttpStatusCode.NoContent);
@@ -142,15 +142,15 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         var email = NewEmail("validacion");
         var created = await InviteOkAsync(email, TenantRole.Employee);
 
-        var emptyName = await AcceptAsync(created.Token, name: "");
-        var shortPassword = await AcceptAsync(created.Token, password: "corta");
+        var emptyName = await AcceptAsync(created.Token!, name: "");
+        var shortPassword = await AcceptAsync(created.Token!, password: "corta");
 
         Assert.Equal(HttpStatusCode.BadRequest, emptyName.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, shortPassword.StatusCode);
         Assert.Contains(await PendingAsync(), i => i.Id == created.Id); // sigue pendiente
 
         // Control positivo: con datos válidos, el MISMO token sí funciona.
-        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token!)).StatusCode);
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         var created = await InviteOkAsync(email, TenantRole.Employee);
         await fixture.CreateAccountAsync(email); // alguien se registró con ese email mientras tanto
 
-        var response = await AcceptAsync(created.Token);
+        var response = await AcceptAsync(created.Token!);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("user.email_already_registered", (await ReadProblemAsync(response)).Code);
@@ -178,18 +178,18 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         var password = $"Clave-Distintiva-{Guid.NewGuid():N}";
 
         var created = await InviteOkAsync(email, TenantRole.Technician);
-        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token, name, password)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token!, name, password)).StatusCode);
         var member = (await MembersAsync()).Single(m => m.Email == email);
 
         // Base de datos: ninguna columna de la invitación contiene el token en claro (solo su hash).
         var row = await fixture.InvitationRowAsTextAsync(created.Id);
-        Assert.DoesNotContain(created.Token, row);
-        Assert.Contains(OpaqueToken.Hash(created.Token), row);
+        Assert.DoesNotContain(created.Token!, row);
+        Assert.Contains(OpaqueToken.Hash(created.Token!), row);
 
         // Registro: ni el token ni la contraseña aparecen en NINGÚN log.
         var allLogs = fixture.Factory.Logs.Entries;
-        Assert.DoesNotContain(allLogs, e => e.Message.Contains(created.Token));
-        Assert.DoesNotContain(allLogs, e => e.Message.Contains(OpaqueToken.Hash(created.Token)));
+        Assert.DoesNotContain(allLogs, e => e.Message.Contains(created.Token!));
+        Assert.DoesNotContain(allLogs, e => e.Message.Contains(OpaqueToken.Hash(created.Token!)));
         Assert.DoesNotContain(allLogs, e => e.Message.Contains(password));
 
         // Eventos de seguridad: con los Ids, pero sin el email ni el nombre (control positivo: los eventos SÍ existen).
@@ -226,7 +226,7 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         var email = NewEmail("baja");
         var password = MembersFixture.NewPassword();
         var created = await InviteOkAsync(email, TenantRole.Technician);
-        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token, "Persona de baja", password)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token!, "Persona de baja", password)).StatusCode);
 
         var login = await fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode); // control: antes de la baja entra
@@ -247,7 +247,7 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         // Su cuenta y sus datos ya no existen: el email está libre y se puede volver a invitar a esa persona.
         Assert.False(await fixture.EmailHasAnAccountAsync(email));
         var again = await InviteOkAsync(email, TenantRole.Manager);
-        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(again.Token, "Persona que vuelve", password)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(again.Token!, "Persona que vuelve", password)).StatusCode);
         Assert.Equal("Manager", (await MembersAsync()).Single(m => m.Email == email).Role);
 
         // El evento de la baja queda registrado, con el Id de la pertenencia y sin el email.
@@ -355,7 +355,7 @@ public class UserManagementAcceptanceTests(MembersFixture fixture) : IClassFixtu
         var email = NewEmail("ficha-propia");
         var created = await InviteOkAsync(email, TenantRole.Technician);
 
-        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AcceptAsync(created.Token!)).StatusCode);
 
         Assert.Single(await MembersAsync(), m => m.Email == email);
         Assert.DoesNotContain(await MembersAsync(other.OwnerClient), m => m.Email == email);

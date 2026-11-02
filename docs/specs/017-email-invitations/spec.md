@@ -58,7 +58,7 @@ Cuatro bloques, de menor a mayor dependencia:
 - **R12.** Nada de lo que escribe el invitante entra en el cuerpo, salvo la dirección (que es el destinatario) y el rol (lista cerrada). El nombre de la empresa sale de la base de datos y ya está limitado en longitud. Así un correo de OfiFlow no se puede usar para escribir un texto cualquiera a un tercero (*phishing*).
 - **R13.** Las reglas de la invitación (rol gestionable, una pendiente por email, máximo 25 pendientes, email no registrado) **se comprueban antes de enviar**: no se envía correo por una invitación que se iba a rechazar.
 - **R14.** Enviar correo es **costoso y abusable** (un `Admin` podría usar OfiFlow para llenar de correo a un tercero revocando y volviendo a invitar). `POST /invitations` lleva un **límite por persona y hora** (D10), además del tope de 25 pendientes.
-- **R15.** Eventos de seguridad (D9): `1012 InvitationEmailSent` (`Information`: `InvitationId`, `TenantId`, quién invitó) y `1013 InvitationEmailFailed` (`Warning`: `TenantId`, quién, la categoría del fallo). **Nunca** la dirección, el token, el enlace ni el texto de error del servidor de correo.
+- **R15.** Eventos de seguridad (D9): `1407 InvitationEmailSent` (`Information`: `InvitationId`, `TenantId`, quién invitó) y `1408 InvitationEmailFailed` (`Warning`: `TenantId`, quién, la categoría del fallo). **Nunca** la dirección, el token, el enlace ni el texto de error del servidor de correo.
 
 ## Modelo conceptual
 
@@ -84,7 +84,7 @@ Api
 - Dado `Provider = None`, cuando un `Admin` invita, entonces la respuesta trae el token y `emailSent: false`, y no se contacta con ningún servidor de correo (comportamiento de hoy, sin regresiones).
 - Dado `Provider = Smtp`, cuando un `Admin` invita, entonces el servidor de correo recibe **un** mensaje para esa dirección con el enlace, y la respuesta trae `token: null` y `emailSent: true`.
 - Dado ese correo, cuando se lee el enlace, entonces empieza por `Email:LinkBaseUrl`, el token va tras `#`, y **aceptar la invitación con ese token funciona**.
-- Dado `Smtp` y un servidor de correo que no contesta, cuando se invita, entonces la respuesta es `invitation.email_not_sent` en menos del tiempo máximo más un margen, **no existe ninguna invitación nueva** y se registra el evento `1013`.
+- Dado `Smtp` y un servidor de correo que no contesta, cuando se invita, entonces la respuesta es `invitation.email_not_sent` en menos del tiempo máximo más un margen, **no existe ninguna invitación nueva** y se registra el evento `1408`.
 - Dado un servidor que rechaza la autenticación, cuando se invita, entonces mismo resultado y la categoría del evento es `Authentication`.
 - Dado un rol no gestionable, un email ya registrado, una invitación ya pendiente o 25 pendientes, cuando se invita, entonces se responde lo de siempre y **no se envía ningún correo**.
 - Dada una petición con cabecera `Host` u `Origin` de un tercero, cuando se invita, entonces el enlace del correo sigue empezando por `Email:LinkBaseUrl`.
@@ -104,7 +104,7 @@ Caso multi-tenant obligatorio: la empresa que aparece en el correo es la del inv
 - **Aislamiento:** no hay entidad nueva; no se usa `IgnoreQueryFilters()`.
 - **SQL crudo:** ninguno.
 - **Abuso:** **sí**: enviar correo es la vía clásica de abuso. Límite por persona y hora, tope de pendientes, el correo solo se envía tras superar todas las reglas (R13, R14) y no hay texto libre en el cuerpo (R12).
-- **Eventos de seguridad:** `1012` y `1013` (R15). Un `1013` repetido es la señal de que el proveedor está caído o mal configurado; la ADR-020 dice cómo reconocerlo.
+- **Eventos de seguridad:** `1407` y `1408` (R15). Un `1408` repetido es la señal de que el proveedor está caído o mal configurado; la ADR-020 dice cómo reconocerlo.
 - **Secretos nuevos:** usuario y contraseña SMTP. Mismas reglas que `Jwt:Secret` y `Mfa:EncryptionKey`: fuera del repositorio, no se escriben en logs, y quedan documentados para el despliegue.
 
 ## Decisiones técnicas relevantes (pendientes de aprobar)
@@ -117,7 +117,7 @@ Caso multi-tenant obligatorio: la empresa que aparece en el correo es la del inv
 - **D6. El enlace sale de `Email:LinkBaseUrl`** (R3), un valor propio y validado (`https`, salvo `localhost`; sin ruta ni barra final), **no** de `Cors:AllowedOrigins`. *Recomendado.* Son dos ajustes que hoy valen lo mismo, pero significan cosas distintas (a quién se deja leer respuestas / adónde apunta un enlace en un correo); acoplarlos haría que tocar uno rompiera el otro en silencio.
 - **D7. Contenido:** **texto plano, en español, plantilla fija**, sin HTML (R7, R12). *Recomendado.* Es lo que no se puede inyectar ni se ve distinto en cada cliente de correo. Un HTML con marca llegará con presupuestos y facturas, donde sí importa la imagen.
 - **D8. Configuración y secretos:** sección `Email` con `Provider`, `From`, `LinkBaseUrl` y `Smtp:*` (R4–R8); contraseña por secretos. Cifrado obligatorio salvo bucle local. *Recomendado.* El mismo patrón que `RefreshTokenPurge` y `Cors`: se valida al arrancar y falla en voz alta.
-- **D9. Eventos:** `1012` y `1013` (R15), sin datos personales. *Recomendado.* El fallo es de nivel `Warning` y no `Error`: el que falla es un servicio externo, no un bug nuestro, y un `Error` despertaría a quien no puede arreglarlo.
+- **D9. Eventos:** `1407` y `1408` (R15), sin datos personales (en la familia `14xx` de usuarios e invitaciones; el borrador decía `1012`/`1013`, números de la familia de autenticación, y se cambió al implementar). *Recomendado.* El fallo es de nivel `Warning` y no `Error`: el que falla es un servicio externo, no un bug nuestro, y un `Error` despertaría a quien no puede arreglarlo.
 - **D10. Límite de envío:** `POST /invitations` limitado a **20 por hora y por persona** (por `UserId`, no por IP), valor inicial. *Recomendado.* Hasta ahora todos los límites son por IP; aquí el actor ya está autenticado y es más justo y más difícil de esquivar limitar por persona (varias personas detrás de una misma oficina no se estorban). Hace falta una pequeña variante del helper del limitador.
 - **D11. Cómo se prueba:** el handler y la API con un **`IEmailSender` falso** que guarda lo enviado (rápido, determinista); el transporte SMTP con un **servidor SMTP de pruebas en contenedor** (Testcontainers, como SQL Server en ADR-008), para que el cifrado, la autenticación, los tiempos máximos y el formato real del mensaje se prueben de verdad. *Recomendado.* Un falso no puede cazar un fallo de MailKit. Coste: el contenedor se añade a lo que ya necesita Docker.
 - **D12. Documentación:** **ADR-020** nueva (el correo: puerto, SMTP, por qué sin cola todavía, el proveedor como encargado del tratamiento, qué hacer cuando falla); anotación «Ampliada por ADR-020» en ADR-013 (cierra su nota sobre el email) y en la spec 009; capítulos 6 y 8 del manual; y una sección de **entrega de correo** (SPF, DKIM, DMARC, dirección de remite) para el despliegue. *Recomendado.* Sin esa sección el código estaría «hecho» y los correos acabarían en la carpeta de spam.
