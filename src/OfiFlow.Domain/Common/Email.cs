@@ -42,6 +42,8 @@ public sealed partial record Email
 
     public override string ToString() => Value;
 
-    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
+    // `\z` y no `$`: en .NET `$` también casa justo antes de un "\n" final, y "a@b.com\n"
+    // llegaría a EF, a los logs y a cualquier salida tipo cabecera. `\z` solo casa al final absoluto.
+    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+\z")]
     private static partial Regex EmailRegex();
 }
