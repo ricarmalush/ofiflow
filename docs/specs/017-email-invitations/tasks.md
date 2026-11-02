@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) (se anota), [ADR-009](../../adr/ADR-009-seguridad-base.md), [ADR-011](../../adr/ADR-011-errores-codigos-diccionario.md) (error nuevo) y la **ADR-020** nueva (D12)
-**Estado general:** Aprobada (decisiones D1–D13, 2026-11-02). Bloques 1, 2 y 3 hechos y commiteados; bloque 4 (frontend) hecho, sin commitear.
+**Estado general:** Implementada (2026-11-02), decisiones D1–D13 aprobadas el mismo día. Backend fusionado en el PR #55 y frontend en `master` de `ofiflow-frontend`.
 
 ---
 
@@ -66,7 +66,7 @@
 - [x] Preguntas del tribunal: «¿de dónde sale el enlace y por qué no de la petición?», «¿qué pasa si el correo no se envía y por qué no hay cola?», «¿qué datos nuevos salen con el correo?», «¿cómo evitas llenar de correo a un tercero?», y la respuesta antigua sobre devolver el token, reescrita
 - [ ] [externo] Commit del bloque 3 (con orden explícita)
 
-**Pendiente de los hallazgos:** la corrección de `Email.Create` (`$` por `\z`) se hace en otra sesión y se commitea aparte; el capítulo 6 y la ADR-020 la dan por hecha («se corrige allí»). Si no llegara a entrar, hay que retocar esas dos frases.
+**Resuelto de los hallazgos:** la corrección de `Email.Create` (`$` por `\z`) se fusionó aparte en el PR #57, y el capítulo 6 y la ADR-020 ya dicen la verdad.
 
 ### Bloque 4 — Frontend (`ofiflow-frontend`)
 - [x] Modelo y servicio: `InvitationCreated` pasa a `{ id, token: string | null, expiresAt, emailSent }`, con el contrato de las dos formas comentado en el modelo

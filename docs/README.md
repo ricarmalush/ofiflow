@@ -58,7 +58,8 @@
 | [014-logout-all](./specs/014-logout-all/spec.md) | Cerrar todas mis sesiones: `DELETE /account/sessions` revoca todos los refresh tokens de la cuenta (amplía ADR-007 y ADR-012) | Implementada (API; el frontend es el bloque 5) |
 | [015-access-token-session](./specs/015-access-token-session/spec.md) | El access token deja de valer en cuanto se cierra su sesión: `sid` en el token, comprobado en cada petición (401); `RefreshToken.SessionId` con migración (cambia ADR-007, crea ADR-018) | Implementada (API y frontend) |
 | [016-sessions-purge-and-list](./specs/016-sessions-purge-and-list/spec.md) | Purga de refresh tokens caducados (servicio en segundo plano) y ver y cerrar mis sesiones concretas: `GET` y `DELETE /account/sessions/{id}`, con datos del dispositivo (amplía ADR-007 y ADR-018, crea ADR-019) | Implementada |
-| [017-email-invitations](./specs/017-email-invitations/spec.md) | Correo de OfiFlow: puerto `IEmailSender` con transporte SMTP y, como primer uso, la invitación de un miembro por correo en lugar de pasar el token a mano (cierra la nota de ADR-013, crea ADR-020) | En implementación |
+| [017-email-invitations](./specs/017-email-invitations/spec.md) | Correo de OfiFlow: puerto `IEmailSender` con transporte SMTP y, como primer uso, la invitación de un miembro por correo en lugar de pasar el token a mano (cierra la nota de ADR-013, crea ADR-020) | Implementada |
+| [018-password-recovery](./specs/018-password-recovery/spec.md) | Recuperar la contraseña olvidada: `POST /auth/forgot-password` (siempre la misma respuesta) y `POST /auth/reset-password` (cierra todas las sesiones), con una cola de correo en memoria; segundo uso del puerto de correo (amplía ADR-007 y ADR-014, crea ADR-021) | Aprobada |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 
