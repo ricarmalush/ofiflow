@@ -16,4 +16,10 @@ public static class IdentityErrors
     /// es idéntica para que la ruta no sirva de oráculo («¿existe esta sesión de otra persona?»).
     /// </summary>
     public const string SessionNotFound = "session.not_found";
+
+    /// <summary>
+    /// El enlace para restablecer la contraseña no se puede usar (spec 018 R8). Es el <b>mismo</b> código para un token desconocido, caducado, ya usado o
+    /// anulado por otro pedido: quien lo intenta no debe aprender cuál de los cuatro es. El motivo real solo va al registro.
+    /// </summary>
+    public const string PasswordResetInvalid = "password_reset.invalid";
 }

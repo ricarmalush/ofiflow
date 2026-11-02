@@ -37,6 +37,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     internal DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    /// <summary>Los permisos de un solo uso para restablecer una contraseña (spec 018): globales (de una cuenta), y solo los lee <c>PasswordResetService</c>.</summary>
+    internal DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+
     /// <summary>El segundo factor (spec 010): tampoco forma parte de IApplicationDbContext, solo lo toca Infrastructure.</summary>
     internal DbSet<MfaCredential> MfaCredentials => Set<MfaCredential>();
 

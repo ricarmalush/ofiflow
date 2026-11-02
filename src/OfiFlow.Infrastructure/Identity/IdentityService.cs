@@ -78,6 +78,9 @@ public sealed partial class IdentityService(
         // El segundo factor (spec 010 R20): ninguna de estas tablas tiene clave foránea hacia la cuenta (como
         // RefreshToken), así que no se borrarían solas y quedarían filas huérfanas con secretos de alguien que ya no existe.
         await MfaStore.RemoveAllAsync(dbContext, id, cancellationToken);
+
+        // Los tokens de restablecimiento (spec 018): tampoco tienen clave foránea hacia la cuenta.
+        await PasswordResetService.RemoveAllAsync(dbContext, id, cancellationToken);
     }
 
 

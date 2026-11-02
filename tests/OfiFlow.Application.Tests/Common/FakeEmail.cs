@@ -46,4 +46,6 @@ public sealed class FakeEmailLinks : IEmailLinks
     public const string BaseUrl = "https://app.fake.example";
 
     public string AcceptInvitation(string token) => $"{BaseUrl}/auth/accept-invitation#token={token}";
+
+    public string ResetPassword(string token) => $"{BaseUrl}/auth/reset-password#token={token}";
 }

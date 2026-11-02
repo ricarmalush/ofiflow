@@ -86,6 +86,8 @@ public class SecurityArchitectureTests
         ["MfaChallenges"] = [MfaServiceFile, MfaStoreFile],
         // se buscan por el hash del token, que es secreto y único
         ["RefreshTokens"] = ["src/OfiFlow.Infrastructure/Identity/TokenService.cs"],
+        // los permisos de un solo uso para restablecer una contraseña (spec 018): también se buscan por el hash del token, que es secreto y único
+        ["PasswordResetTokens"] = ["src/OfiFlow.Infrastructure/Identity/PasswordResetService.cs"],
         // los operadores de la plataforma (spec 011): se consulta siempre por el Id de la cuenta ("¿es operador activo?", alta y baja), nunca por listado
         ["PlatformOperators"] = ["src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs"],
         // la auditoría de plataforma es de solo inserción (.Add se admite en cualquier sitio) y hoy NADIE la lee desde la aplicación: una lectura nueva tiene que añadirse aquí a propósito

@@ -48,6 +48,19 @@ public static class SecurityEventIds
     public const int RefreshTokensPurged = 1011;
 
     /// <summary>
+    /// El servicio de purga borró tokens de restablecimiento de contraseña caducados hace más del margen (spec 018 R18). Como <see cref="RefreshTokensPurged"/>: una vez por
+    /// ciclo y solo si borró algo, con el recuento y la fecha de corte; nunca hashes ni Ids de cuenta (es mantenimiento de la tabla).
+    /// </summary>
+    public const int PasswordResetTokensPurged = 1012;
+
+    /// <summary>
+    /// El servicio que envía el correo de la cola no pudo entregar un mensaje (spec 018 R16). Lleva la <b>categoría</b> del fallo (tiempo agotado, credenciales, rechazo, servidor no
+    /// disponible); <b>nunca</b> la dirección, el texto del servidor ni el contenido del mensaje (puede llevar un enlace con un token). Es un <c>Warning</c>: falla un servicio
+    /// externo, no el código. Varios seguidos con <c>Authentication</c> o <c>Unavailable</c> son la señal de que el proveedor está mal configurado o caído.
+    /// </summary>
+    public const int EmailDispatchFailed = 1013;
+
+    /// <summary>
     /// Una persona cerró <b>una sesión concreta</b> suya (spec 016 R17), distinta de «cerrar todas» (<see cref="AllSessionsClosed"/>) y de salir de la
     /// propia (<see cref="SessionClosed"/>). Solo se registra cuando de verdad cerró algo. Lleva el UserId y si era la sesión actual; <b>nunca</b> el Id de la
     /// sesión cerrada, ni tokens ni hashes (una ráfaga de estos del mismo UserId seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño).

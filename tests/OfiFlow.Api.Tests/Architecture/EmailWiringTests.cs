@@ -35,6 +35,37 @@ public class EmailWiringTests(OfiFlowApiFactory factory) : IClassFixture<OfiFlow
     }
 
     [Fact]
+    public void TheApiHost_RegistersTheEmailQueue_AndItsDispatchService()
+    {
+        // Spec 018: sin el servicio, un correo encolado no saldría nunca y nada fallaría a la vista; sin la cola, un caso de uso que la pida fallaría al primer uso.
+        var queue = factory.Services.GetRequiredService<IEmailQueue>();
+
+        Assert.Same(queue, factory.Services.GetRequiredService<IEmailQueue>()); // un singleton
+        Assert.Contains(factory.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>(), service => service.GetType().Name == "EmailDispatchService");
+        Assert.True(factory.Services.GetRequiredService<IOptions<EmailDispatchOptions>>().Value.Enabled);
+    }
+
+    [Fact]
+    public void TheAdminProgram_DoesNotUseTheEmailQueue()
+    {
+        Assert.Empty(SourceCode.FilesContaining("IEmailQueue", "OfiFlow.Admin"));
+        Assert.Empty(SourceCode.FilesContaining("EmailDispatch", "OfiFlow.Admin"));
+    }
+
+    [Fact]
+    public void TheQueueSideThatReads_IsOnlyUsedByTheDispatchService()
+    {
+        // Application solo encola (IEmailQueue). Quien lee del canal es el servicio de envío: si otro fichero leyera, dos lectores se repartirían los mensajes.
+        var readers = SourceCode.Files()
+            .Where(file => file.Content.Contains(".Reader", StringComparison.Ordinal) && file.Content.Contains("EmailQueue", StringComparison.Ordinal))
+            .Select(file => file.Path)
+            .Order()
+            .ToList();
+
+        Assert.Equal([MailFolder + "EmailDispatchService.cs", MailFolder + "EmailQueue.cs"], readers);
+    }
+
+    [Fact]
     public void ProgramCs_RunsTheProductionStartupCheck()
     {
         // D5: si alguien borrara la llamada, el aviso desaparecería sin que fallara nada.
@@ -45,11 +76,23 @@ public class EmailWiringTests(OfiFlowApiFactory factory) : IClassFixture<OfiFlow
     public void InvitationLinks_AreBuiltInOnePlaceOnly_FromConfiguration()
     {
         // R3: el único sitio que escribe la ruta del enlace es EmailLinks, que solo lee Email:LinkBaseUrl. Si otro fichero lo hiciera podría construirlo con datos de la petición.
+        // Se busca el fragmento con el token («#token=»), que es lo que tiene en común todo enlace con un secreto (invitación y restablecimiento de contraseña, spec 018):
+        // así un enlace nuevo no puede escribirse en otro sitio sin que este test lo vea.
         var builders = SourceCode.Files()
-            .Where(file => file.Content.Split('\n').Select(line => line.TrimStart()).Any(line => !line.StartsWith("//", StringComparison.Ordinal) && line.Contains("/auth/accept-invitation#", StringComparison.Ordinal)))
+            .Where(file => file.Content.Split('\n').Select(line => line.TrimStart()).Any(line => !line.StartsWith("//", StringComparison.Ordinal) && line.Contains("#token=", StringComparison.Ordinal)))
             .Select(file => file.Path)
             .ToList();
         Assert.Equal([MailFolder + "EmailLinks.cs"], builders);
+
+        // Y las dos rutas de los enlaces solo las nombra ese fichero (en código: los comentarios y las rutas de los endpoints, que son relativas, no cuentan).
+        foreach (var path in new[] { "\"/auth/accept-invitation\"", "\"/auth/reset-password\"" })
+        {
+            var namers = SourceCode.Files()
+                .Where(file => file.Content.Split('\n').Select(line => line.TrimStart()).Any(line => !line.StartsWith("//", StringComparison.Ordinal) && line.Contains(path, StringComparison.Ordinal)))
+                .Select(file => file.Path)
+                .ToList();
+            Assert.Equal([MailFolder + "EmailLinks.cs"], namers);
+        }
 
         // Y ningún fichero que toque correo o invitaciones lee cabeceras que controla quien envía la petición.
         var risky = SourceCode.Files()
