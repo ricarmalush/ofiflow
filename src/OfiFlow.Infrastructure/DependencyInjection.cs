@@ -39,6 +39,7 @@ public static class DependencyInjection
         // pedir y consumir un token llegan con los casos de uso.
         services.AddScoped<PasswordResetService>();
         services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
+        services.AddScoped<IPasswordResetService>(provider => provider.GetRequiredService<PasswordResetService>());
         services.AddScoped<IPlatformTokenService, PlatformTokenService>();
 
         return services.AddAccountStore(configuration);

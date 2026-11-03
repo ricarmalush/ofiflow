@@ -66,6 +66,35 @@ public class EmailWiringTests(OfiFlowApiFactory factory) : IClassFixture<OfiFlow
     }
 
     [Fact]
+    public void ForgotPassword_NeverSendsTheEmailInsideTheRequest_ItOnlyQueuesIt()
+    {
+        // Spec 018 R2, D3: enviar dentro de la petición tardaría segundos solo cuando la cuenta existe, y ese tiempo la delataría. El caso de uso solo ENCOLA y pregunta si hay correo
+        // (IsEnabled); nunca llama al transporte. Es un escaneo del código (ADR-009): si alguien lo cambiara «para simplificar», este test salta antes de que lo mida nadie.
+        var sendsInline = SourceCode.Files("OfiFlow.Application/Identity/Commands/ForgotPassword")
+            .Where(file => file.Content.Split('\n').Select(line => line.TrimStart()).Any(line => !line.StartsWith("//", StringComparison.Ordinal) && line.Contains(".SendAsync(", StringComparison.Ordinal)))
+            .Select(file => file.Path)
+            .ToList();
+        Assert.Empty(sendsInline);
+
+        var handler = SourceCode.ReadText("src/OfiFlow.Application/Identity/Commands/ForgotPassword/ForgotPasswordCommandHandler.cs");
+        Assert.Contains("emailQueue.TryEnqueue(", handler);
+        Assert.Contains("emailSender.IsEnabled", handler);
+    }
+
+    [Fact]
+    public void TheForgotPasswordEndpoint_AppliesTheTimeFloor_AfterTheWork()
+    {
+        // D2: el suelo de tiempo es lo que oculta la diferencia medida entre «con cuenta» y «sin cuenta». Si alguien lo quitara del endpoint, las respuestas seguirían siendo idénticas
+        // y ningún otro test lo notaría: solo un cronómetro.
+        var endpoints = SourceCode.ReadText("src/OfiFlow.Api/Endpoints/AuthEndpoints.cs");
+        var forgot = endpoints[endpoints.IndexOf("\"/forgot-password\"", StringComparison.Ordinal)..];
+
+        Assert.Contains("ResponseTimeFloor.HoldAsync(", forgot);
+        Assert.True(forgot.IndexOf("sender.Send(", StringComparison.Ordinal) < forgot.IndexOf("ResponseTimeFloor.HoldAsync(", StringComparison.Ordinal),
+            "El suelo debe aplicarse DESPUÉS del trabajo: si fuera antes, solo retrasaría las dos respuestas por igual y no ocultaría nada.");
+    }
+
+    [Fact]
     public void ProgramCs_RunsTheProductionStartupCheck()
     {
         // D5: si alguien borrara la llamada, el aviso desaparecería sin que fallara nada.

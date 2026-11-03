@@ -8,6 +8,7 @@ using OfiFlow.Application.Customers.Queries.GetCustomers;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.CloseAllSessions;
 using OfiFlow.Application.Identity.Commands.CloseSession;
+using OfiFlow.Application.Identity.Commands.ForgotPassword;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
@@ -46,7 +47,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 40 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 41 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta y, de la spec 018, la de «he olvidado mi contraseña») declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -97,7 +98,8 @@ public class OperationPermissionsTests
         typeof(AcceptInvitationCommand), // spec 009: anónima, el token de la invitación es la credencial
         typeof(VerifyMfaChallengeCommand), // spec 010: anónima, el desafío del primer paso es la credencial
         typeof(PlatformLoginCommand), // spec 011: anónima, la contraseña del operador es la credencial (y solo da un desafío)
-        typeof(VerifyPlatformChallengeCommand) // spec 011: anónima, el desafío de plataforma es la credencial
+        typeof(VerifyPlatformChallengeCommand), // spec 011: anónima, el desafío de plataforma es la credencial
+        typeof(ForgotPasswordCommand) // spec 018: anónima, quien la olvidó no puede identificarse; no devuelve nada y el correo es la prueba de que la cuenta es suya
     ];
 
     // Spec 011: las operaciones del panel no piden un permiso de empresa (un operador no tiene ninguna): piden ser un operador activo.
@@ -193,7 +195,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(40, inTheTable.Count);
+        Assert.Equal(41, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

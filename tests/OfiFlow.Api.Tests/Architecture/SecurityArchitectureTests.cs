@@ -70,6 +70,8 @@ public class SecurityArchitectureTests
         // credenciales: se buscan por email o por Id de usuario, nunca por listado
         ["ApplicationUsers"] = [
             "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
+            // pedir el restablecimiento de una contraseña (spec 018): busca la cuenta por el email para crear su token. Nunca devuelve nada a quien lo pide por HTTP: el caso de uso responde igual exista o no
+            "src/OfiFlow.Infrastructure/Identity/PasswordResetService.cs",
             // el contador de intentos y el bloqueo se actualizan por el Id de la cuenta (spec 010)
             "src/OfiFlow.Infrastructure/Identity/AccountLockout.cs",
             // el email de la cuenta (nombre en la app del móvil) y la contraseña a reconfirmar, siempre por el Id de la cuenta (spec 010)
@@ -89,7 +91,8 @@ public class SecurityArchitectureTests
         // los permisos de un solo uso para restablecer una contraseña (spec 018): también se buscan por el hash del token, que es secreto y único
         ["PasswordResetTokens"] = ["src/OfiFlow.Infrastructure/Identity/PasswordResetService.cs"],
         // los operadores de la plataforma (spec 011): se consulta siempre por el Id de la cuenta ("¿es operador activo?", alta y baja), nunca por listado
-        ["PlatformOperators"] = ["src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs"],
+        // y pedir el restablecimiento de una contraseña (spec 018 R14): una cuenta de operador, activo o no, se trata como «no existe» (se consulta por el Id de la cuenta)
+        ["PlatformOperators"] = ["src/OfiFlow.Infrastructure/Identity/PlatformOperators.cs", "src/OfiFlow.Infrastructure/Identity/PasswordResetService.cs"],
         // la auditoría de plataforma es de solo inserción (.Add se admite en cualquier sitio) y hoy NADIE la lee desde la aplicación: una lectura nueva tiene que añadirse aquí a propósito
         ["PlatformAuditEntries"] = []
     };

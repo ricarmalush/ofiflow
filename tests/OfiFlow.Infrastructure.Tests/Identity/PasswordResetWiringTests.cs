@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Infrastructure;
 using OfiFlow.Infrastructure.Identity;
 
@@ -36,6 +37,15 @@ public class PasswordResetWiringTests
 
         Assert.Contains(services, d => d.ServiceType == typeof(PasswordResetService) && d.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(services, d => d.ServiceType == typeof(IPasswordResetTokenPurger) && d.Lifetime == ServiceLifetime.Scoped);
+    }
+
+    [Fact]
+    public void TheApi_RegistersThePasswordResetPort_ForTheForgotPasswordUseCase()
+    {
+        // Spec 018: sin este registro el caso de uso fallaría al primer «he olvidado mi contraseña», no al arrancar.
+        var services = ApiServices();
+
+        Assert.Contains(services, d => d.ServiceType == typeof(IPasswordResetService) && d.Lifetime == ServiceLifetime.Scoped);
     }
 
     [Fact]

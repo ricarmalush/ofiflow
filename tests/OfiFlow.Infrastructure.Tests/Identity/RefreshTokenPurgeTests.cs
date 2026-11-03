@@ -218,6 +218,7 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
         services.AddScoped<TokenService>();
         services.AddScoped<IRefreshTokenPurger>(provider => provider.GetRequiredService<TokenService>());
         // El ciclo purga también los tokens de restablecimiento (spec 018 R18).
+        services.AddSingleton(TimeProvider.System);
         services.AddScoped<PasswordResetService>();
         services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
 

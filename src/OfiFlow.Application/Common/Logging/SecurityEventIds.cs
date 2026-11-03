@@ -61,6 +61,18 @@ public static class SecurityEventIds
     public const int EmailDispatchFailed = 1013;
 
     /// <summary>
+    /// Alguien pidió restablecer una contraseña (spec 018). Lleva si la cuenta existía y su UserId, <b>solo en el registro</b> (un analista lo necesita; la respuesta HTTP es la misma exista o no, R1).
+    /// <b>Nunca</b> el email, el token ni el enlace. Una ráfaga con «la cuenta existe: False» desde una IP es alguien probando emails.
+    /// </summary>
+    public const int PasswordResetRequested = 1014;
+
+    /// <summary>
+    /// Se pidió restablecer la contraseña de una cuenta que ya había llegado al límite de la hora (spec 018 R4). No se creó token ni se envió correo, y a quien lo pidió no se le dijo
+    /// (si no, el límite sería un oráculo). Lleva el UserId. Una ráfaga de estos sobre una cuenta es alguien intentando inundar el buzón de una víctima desde muchas IPs.
+    /// </summary>
+    public const int PasswordResetThrottled = 1015;
+
+    /// <summary>
     /// Una persona cerró <b>una sesión concreta</b> suya (spec 016 R17), distinta de «cerrar todas» (<see cref="AllSessionsClosed"/>) y de salir de la
     /// propia (<see cref="SessionClosed"/>). Solo se registra cuando de verdad cerró algo. Lleva el UserId y si era la sesión actual; <b>nunca</b> el Id de la
     /// sesión cerrada, ni tokens ni hashes (una ráfaga de estos del mismo UserId seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño).

@@ -72,7 +72,7 @@ public class PasswordResetTokenStoreTests(SqlServerContainerFixture fixture) : I
     private async Task<int> PurgeBatchAsync(int batchSize)
     {
         await using var db = Open();
-        return await new PasswordResetService(db).PurgeBatchAsync(Cutoff, batchSize, CancellationToken.None);
+        return await new PasswordResetService(db, TimeProvider.System).PurgeBatchAsync(Cutoff, batchSize, CancellationToken.None);
     }
 
     // ===== El esquema =====
@@ -287,6 +287,7 @@ public class PasswordResetTokenStoreTests(SqlServerContainerFixture fixture) : I
         services.AddSingleton<IClientInfo>(new FakeClientInfo());
         services.AddScoped<TokenService>();
         services.AddScoped<IRefreshTokenPurger>(provider => provider.GetRequiredService<TokenService>());
+        services.AddSingleton(TimeProvider.System);
         services.AddScoped<PasswordResetService>();
         services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
 

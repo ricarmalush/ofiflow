@@ -32,6 +32,12 @@ try
     builder.Services.AddAuthRateLimiting();
     // Spec 017 D10: el límite de invitaciones es por persona, no por IP, y por eso no es una política del limitador global (ver InvitationThrottle).
     builder.Services.AddSingleton<InvitationThrottle>();
+
+    // Spec 018 D2: el suelo de tiempo de «he olvidado mi contraseña». Se valida al arrancar como el resto de secciones.
+    builder.Services.AddOptions<ForgotPasswordTimingOptions>()
+        .Bind(builder.Configuration.GetSection(ForgotPasswordTimingOptions.SectionName))
+        .Validate(options => options.Validate() is null, "La sección ForgotPassword no vale: revisa ResponseFloor (entre 0 y 5 segundos).")
+        .ValidateOnStart();
     builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
 
     // ADR-017: CORS. El navegador solo deja que una web de otro origen (el frontend) lea las respuestas de la API si la
