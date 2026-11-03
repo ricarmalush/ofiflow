@@ -73,6 +73,19 @@ public static class SecurityEventIds
     public const int PasswordResetThrottled = 1015;
 
     /// <summary>
+    /// Una contraseña se restableció con el token del correo (spec 018 R9). Lleva el UserId y cuántas sesiones se cerraron. <b>Nunca</b> la contraseña, el token ni el email. Sin que el
+    /// dueño lo pidiera, es la señal de un buzón comprometido: de ahí el correo de aviso (R12) y que este evento se pueda cruzar con un inicio de sesión posterior.
+    /// </summary>
+    public const int PasswordResetCompleted = 1016;
+
+    /// <summary>
+    /// Se intentó restablecer una contraseña con un token que no sirvió (spec 018 R8). Lleva el <b>motivo real</b> (<c>Unknown</c>, <c>Expired</c>, <c>UsedOrReplaced</c>,
+    /// <c>PlatformOperator</c>, <c>AccountGone</c> o <c>Concurrent</c>) y el UserId si se encontró: la respuesta HTTP es el mismo error para todos. <b>Nunca</b> el token. Una ráfaga de
+    /// <c>Unknown</c> desde una IP es alguien probando tokens.
+    /// </summary>
+    public const int PasswordResetRejected = 1017;
+
+    /// <summary>
     /// Una persona cerró <b>una sesión concreta</b> suya (spec 016 R17), distinta de «cerrar todas» (<see cref="AllSessionsClosed"/>) y de salir de la
     /// propia (<see cref="SessionClosed"/>). Solo se registra cuando de verdad cerró algo. Lleva el UserId y si era la sesión actual; <b>nunca</b> el Id de la
     /// sesión cerrada, ni tokens ni hashes (una ráfaga de estos del mismo UserId seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño).

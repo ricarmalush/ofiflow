@@ -33,6 +33,18 @@ public sealed class FakePasswordResetService : IPasswordResetService
 
     public List<string> Requested { get; } = [];
 
+    /// <summary>Lo que devuelve «canjear». Por defecto, un token que sirve para la cuenta indicada.</summary>
+    public PasswordResetConsumption ConsumeResult { get; set; } = new(PasswordResetConsumeOutcome.Consumed, Guid.NewGuid());
+
+    /// <summary>Los tokens (en claro) que se intentó canjear, en orden.</summary>
+    public List<string> Consumed { get; } = [];
+
+    public Task<PasswordResetConsumption> ConsumeAsync(string token, CancellationToken cancellationToken)
+    {
+        Consumed.Add(token);
+        return Task.FromResult(ConsumeResult);
+    }
+
     public Task<PasswordResetIssue> IssueAsync(string email, CancellationToken cancellationToken)
     {
         Requested.Add(email);

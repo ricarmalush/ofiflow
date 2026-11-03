@@ -49,6 +49,15 @@ public sealed class FakeTokenService : ITokenService
         return Task.FromResult(3);
     }
 
+    /// <summary>Las cuentas cuyas sesiones se marcó para cerrar SIN confirmar (spec 018), en orden.</summary>
+    public List<Guid> UsersWithSessionsRevokedWithoutSaving { get; } = [];
+
+    public Task<int> RevokeAllRefreshTokensWithoutSavingAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        UsersWithSessionsRevokedWithoutSaving.Add(userId);
+        return Task.FromResult(3);
+    }
+
     /// <summary>Las sesiones activas que devuelve «listar» (spec 016), las que el test quiera; y para qué cuentas se pidió.</summary>
     public List<ActiveSession> ActiveSessions { get; } = [];
 

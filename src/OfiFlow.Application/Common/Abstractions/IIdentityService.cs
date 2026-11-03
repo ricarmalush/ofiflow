@@ -41,6 +41,14 @@ public interface IIdentityService
     Task<bool> ConfirmPasswordAsync(Guid userId, string password, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Cambia la contraseña de una cuenta sin pedir la vieja (restablecimiento, spec 018 R9): guarda el hash PBKDF2 de la nueva (el mismo que el registro) y pone a cero el contador de
+    /// intentos y el bloqueo (R9d). <b>No confirma el cambio</b>: lo hace el caso de uso en su única confirmación, junto con consumir el token y cerrar las sesiones, para que sea todo o
+    /// nada (como <see cref="DeleteUserAsync"/>). No toca el segundo factor (R11).
+    /// </summary>
+    /// <returns>El email de la cuenta (para el aviso de cambio, R12) o <c>null</c> si la cuenta ya no existe. Es un dato personal: no va al registro.</returns>
+    Task<string?> SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Borra las credenciales de un usuario, y con ellas su email deja de estar ocupado (spec 009 R14d).
     /// Como <see cref="CreateUserAsync"/>, no confirma el cambio: lo hace el Handler en su único SaveChanges,
     /// junto con el resto del borrado, para que sea todo o nada. Si el usuario no existe, no hace nada.

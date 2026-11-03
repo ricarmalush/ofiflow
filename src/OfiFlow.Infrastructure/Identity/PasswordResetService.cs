@@ -12,8 +12,7 @@ namespace OfiFlow.Infrastructure.Identity;
 /// cuenta (R17).
 /// </summary>
 /// <remarks>
-/// Hace tres cosas: la <b>purga</b> de los caducados (R18), el <b>borrado al dar de baja a una cuenta</b> y <b>pedir un token</b> (bloque 2). Consumirlo llega en el bloque 3,
-/// en este mismo fichero.
+/// Hace cuatro cosas: la <b>purga</b> de los caducados (R18), el <b>borrado al dar de baja a una cuenta</b>, <b>pedir un token</b> (bloque 2) y <b>canjearlo</b> (bloque 3).
 /// </remarks>
 internal sealed class PasswordResetService(ApplicationDbContext dbContext, TimeProvider timeProvider) : IPasswordResetService, IPasswordResetTokenPurger
 {
@@ -76,6 +75,57 @@ internal sealed class PasswordResetService(ApplicationDbContext dbContext, TimeP
         // El valor en claro sale de aquí UNA vez, para el correo. En la base de datos solo queda su hash.
         return new PasswordResetIssue(PasswordResetIssueOutcome.Issued, userId, value);
     }
+
+    public async Task<PasswordResetConsumption> ConsumeAsync(string token, CancellationToken cancellationToken)
+    {
+        // Por el hash: el token en claro no se guarda en ningún sitio y el hash es único (índice) y de 256 bits, así que esta búsqueda no distingue cuentas ni empresas (R17).
+        var hash = OpaqueToken.Hash(token);
+        var entity = await dbContext.PasswordResetTokens.FirstOrDefaultAsync(t => t.TokenHash == hash, cancellationToken);
+
+        // R8: los motivos reales solo viajan hasta el registro; el caso de uso responde lo mismo para todos.
+        if (entity is null)
+        {
+            return Rejected("Unknown");
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+
+        // «Usado» y «anulado por otro pedido» dejan la misma marca (UsedAt, como en el dominio: Invalidate no distingue), y se cuentan juntos.
+        if (entity.UsedAt is not null)
+        {
+            return Rejected("UsedOrReplaced", entity.UserId);
+        }
+
+        if (!entity.IsUsableAt(now))
+        {
+            return Rejected("Expired", entity.UserId);
+        }
+
+        // R14: la cuenta de un operador nunca tiene token (IssueAsync no lo crea), pero esta puerta no depende de eso: si una cuenta pasara a ser de operador con un token vivo,
+        // su contraseña se gestiona con la consola de administración, no por correo.
+        if (await dbContext.PlatformOperators.AnyAsync(o => o.UserId == entity.UserId, cancellationToken))
+        {
+            return Rejected("PlatformOperator", entity.UserId);
+        }
+
+        // R10: se marca como usado SIN confirmar. La confirmación es la del caso de uso y la decide la versión de fila: dos canjes a la vez leyeron «sin usar», los dos llegan aquí,
+        // y solo uno de los dos UPDATE encuentra la fila como la leyó.
+        entity.Consume(now);
+
+        // R3/R9b: el resto de los vigentes de la cuenta también dejan de valer (normalmente no queda ninguno, porque pedir otro ya anula el anterior).
+        var others = await dbContext.PasswordResetTokens
+            .Where(t => t.UserId == entity.UserId && t.Id != entity.Id && t.UsedAt == null && t.ExpiresAt > now)
+            .ToListAsync(cancellationToken);
+        foreach (var other in others)
+        {
+            other.Invalidate(now);
+        }
+
+        return new PasswordResetConsumption(PasswordResetConsumeOutcome.Consumed, entity.UserId);
+    }
+
+    private static PasswordResetConsumption Rejected(string reason, Guid? userId = null) =>
+        new(PasswordResetConsumeOutcome.Rejected, userId, reason);
 
     public Task<int> PurgeBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken) =>
         // Set-based y en LINQ (no SQL a mano: ADR-009 R1). Lo MÁS antiguo primero y con tope de lote. Solo mira ExpiresAt (índice IX_PasswordResetTokens_ExpiresAt):

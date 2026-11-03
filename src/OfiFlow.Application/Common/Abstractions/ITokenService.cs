@@ -34,6 +34,13 @@ public interface ITokenService
     Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Lo mismo que <see cref="RevokeAllRefreshTokensAsync"/> pero <b>sin confirmar el cambio y sin dejar el evento</b> (spec 018 D6): lo usa el restablecimiento de contraseña, que
+    /// confirma una sola vez cambiar la contraseña, consumir el token y cerrar las sesiones, para que sea todo o nada, y registra su propio evento con el recuento.
+    /// </summary>
+    /// <returns>Cuántas sesiones activas se marcaron para cerrar.</returns>
+    Task<int> RevokeAllRefreshTokensWithoutSavingAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Las sesiones <b>activas</b> de una cuenta (spec 016 R10): las que tienen un refresh token sin revocar y sin caducar, en todas sus empresas, de la más
     /// reciente a la más antigua por última actividad. Una sesión que renovó varias veces sale <b>una vez</b>. Solo lee. Devuelve los datos tal como están
     /// guardados (el navegador sin interpretar, la IP ya truncada): convertirlos para mostrarlos es cosa de Application, que nunca los devuelve crudos.

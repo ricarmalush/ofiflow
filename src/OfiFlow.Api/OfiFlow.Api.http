@@ -84,6 +84,18 @@ Content-Type: application/json
   "email": "ana@example.com"
 }
 
+### Restablecer la contraseña (spec 018): anónimo; la credencial es el token del enlace del correo (el valor que va tras «#token=»).
+### 204 si sirvió: cambia la contraseña, cierra TODAS las sesiones de la cuenta (también sus access tokens), quita el bloqueo y envía un aviso por correo, todo o nada.
+### 400 password_reset.invalid, siempre el MISMO, si el token no sirve (desconocido, caducado, ya usado o anulado por otro pedido); el motivo real solo queda en el registro.
+### NO inicia sesión (entra con el login de siempre) y NO toca el segundo factor: con MFA activo, el login sigue pidiendo el código. Máximo 10 por hora y por IP (429).
+POST {{host}}/api/v1/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "PEGA-AQUI-EL-TOKEN-DEL-CORREO",
+  "newPassword": "Una-clave-nueva-de-8-a-128-caracteres"
+}
+
 ### Quién soy (spec 012): tu nombre y email, tu empresa, el Id de tu pertenencia, tu rol EFECTIVO y tus permisos.
 ### El rol sale de la base de datos, no del token: si un gestor te lo cambia, esta petición ya dice el nuevo con el mismo token.
 ### Los permisos (Customers.Read...) sirven para pintar la interfaz; quien decide es siempre la API. No lleva parámetros:

@@ -28,6 +28,18 @@ public sealed class FakeIdentityService : IIdentityService
         return IdentityCreationResult.Success();
     }
 
+    /// <summary>El email que devuelve «cambiar la contraseña» (spec 018), o <c>null</c> para simular una cuenta que ya no existe.</summary>
+    public string? EmailOfTheAccountWhosePasswordIsSet { get; set; } = "ana@example.com";
+
+    /// <summary>Las contraseñas que se pidió cambiar (cuenta y contraseña nueva), en orden.</summary>
+    public List<(Guid UserId, string Password)> PasswordsSet { get; } = [];
+
+    public Task<string?> SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken)
+    {
+        PasswordsSet.Add((userId, newPassword));
+        return Task.FromResult(EmailOfTheAccountWhosePasswordIsSet);
+    }
+
     /// <summary>Ids de los usuarios cuyas credenciales se han borrado, para que los tests lo comprueben.</summary>
     public List<Guid> DeletedUsers { get; } = [];
 
