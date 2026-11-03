@@ -20,3 +20,9 @@ a813dceacda1f78f3de0b3dd1a80cf6898e6e576:tests/OfiFlow.Api.Tests/Security/RbacEn
 # Gitleaks lo confunde con una clave por su forma (regla generic-api-key); el commit ya está publicado en el PR #46, así que se
 # registra aquí en vez de reescribir una rama publicada. Si algún día se sustituyera por un valor real, ESE valor sí sería un hallazgo.
 299a8661160dbf963a1923dab9e15b9f5fb8c946:src/OfiFlow.Api/OfiFlow.Api.http:generic-api-key:572
+
+# Texto de EJEMPLO del campo newPassword en la colección OfiFlow.Api.http (spec 018, endpoint reset-password): una frase
+# descriptiva que indica la forma de la contraseña (8 a 128 caracteres), NO una contraseña real. Gitleaks la confunde con una
+# clave por su forma (regla generic-api-key). El commit ya está publicado en el PR #58, así que se registra aquí en vez de
+# reescribir una rama publicada. Si algún día se sustituyera por un valor real, ESE valor sí sería un hallazgo.
+dc66a44481ebf473e118ad94d81b3462f5d1edbc:src/OfiFlow.Api/OfiFlow.Api.http:generic-api-key:96
