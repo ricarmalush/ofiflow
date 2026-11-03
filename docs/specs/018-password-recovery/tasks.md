@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-007](../../adr/ADR-007-identity-refresh-token.md), [ADR-009](../../adr/ADR-009-seguridad-base.md), [ADR-014](../../adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) y [ADR-020](../../adr/ADR-020-correo-saliente.md) (se anotan) y la **ADR-021** nueva (D14)
-**Estado general:** Aprobada (decisiones D1–D15, 2026-11-02). Bloques 1 y 2 hechos y commiteados; bloque 3 hecho (pendiente de commit); bloques 4 y 5 sin empezar.
+**Estado general:** Aprobada (decisiones D1–D15, 2026-11-02). Bloques 1 a 3 (backend) hechos y commiteados; bloque 4 (frontend) hecho, pendiente de commit; bloque 5 sin empezar.
 
 ---
 
@@ -59,9 +59,11 @@
 - [ ] [externo] Commit del bloque 3 (con orden explícita)
 
 ### Bloque 4 — Frontend (`ofiflow-frontend`)
-- [ ] Enlace «¿Has olvidado tu contraseña?» en el login; pantalla de pedir (siempre el mismo mensaje, sea cual sea la respuesta) y pantalla de restablecer (el token se lee del fragmento y se borra de la barra de direcciones; dos campos; errores de validación)
-- [ ] Modelo, servicio y rutas; tras el éxito, al login con un aviso; un `400 password_reset.invalid` con el mensaje de la API y un enlace para pedir otro
-- [ ] Tests y mutaciones; comprobación en vivo con la API real y Mailpit
+- [x] Enlace «¿Has olvidado tu contraseña?» en el paso de credenciales del login (no en el del código del segundo factor). Pantalla **`/auth/forgot-password`**: pide el email y, ante cualquier `202`, dice siempre lo mismo y **sin afirmar nada** («Si existe una cuenta con ese email, te enviaremos un enlace…», no «te hemos enviado»); solo se enseñan los fallos que no dependen de la cuenta (email mal formado, límite de la IP, sin red). Pantalla **`/auth/reset-password`**: lee el token del fragmento y lo **borra de la barra de direcciones y del historial al entrar** (conservando la consulta), nunca lo pinta en la página; dos campos con las reglas de la API (8 a 128, coinciden); sin token, el error y un enlace para pedir otro
+- [x] `AuthService.forgotPassword` y `resetPassword` (sin tocar la sesión, que la API no abre); utilidad compartida `readFragmentToken`/`clearFragment`, que usa también la invitación; rutas públicas (sin guardia); tras el éxito, al login con el aviso «Contraseña cambiada. Se han cerrado todas tus sesiones: entra con la nueva.» y el token y la contraseña olvidados; un `400 password_reset.invalid` (en el código o en un error de campo, que es como llega un token mal formado) esconde el formulario y enseña el texto de la API con un enlace para pedir otro; un fallo reintentable (contraseña no válida, `429`) conserva el formulario y el token
+- [x] Tests (**+45** specs; 276 en total): servicio, utilidades, las dos pantallas (qué se envía, qué se olvida, qué se enseña con cada respuesta, doble envío), el enlace del login y las rutas (públicas, y la de restablecer coincide con la del enlace del correo). **Una lección:** el configurador flotante de tema (`document.startViewTransition`) desconecta el Chrome sin interfaz de Karma; los specs de pantallas lo sustituyen por un doble vacío
+- [x] Comprobación en vivo (navegador integrado, API real, Mailpit): el enlace del login lleva a pedir; el mensaje neutro; el enlace del correo abre el formulario y deja la barra sin el token; contraseñas distintas desactivan el botón; restablecer lleva al login con el aviso y la contraseña nueva entra; reabrir el enlace usado enseña el texto de la API y «Pedir un enlace nuevo»; sin token, el error; llegan el correo del enlace y el aviso de cambio
+- [x] Mutaciones (35, 34 detectadas): el mensaje que afirma el envío, el email sin recortar o que se queda en memoria, el éxito o el error que no se enseñan, el doble envío, el error que no se borra al reintentar; el token leído de la consulta o que se queda en la barra, enviar sin token o con el formulario inválido, el éxito sin ir al login o sin aviso, el token o la contraseña que se conservan, el enlace rechazado que no esconde el formulario o que no se reconoce (por código o por campo), las contraseñas de 1 o de 1000 caracteres, que no tengan que coincidir; otro campo u otra ruta en el servicio; las utilidades del fragmento; la invitación que deja de leer su token; el enlace del login que apunta a otra página; las rutas que faltan o cambian. **Sobrevive 1 y es de verdad indetectable aquí:** esconder el enlace del login con una clase de estilo (`hidden`), porque Karma no carga los estilos de Tailwind y el enlace sigue en el árbol. Lo que sí se protege es que exista, a dónde apunta y que no salga en el paso del código
 - [ ] [externo] Commit del frontend (con orden explícita)
 
 ### Bloque 5 — Documentación
