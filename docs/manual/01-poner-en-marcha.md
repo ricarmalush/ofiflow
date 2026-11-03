@@ -151,6 +151,31 @@ Tres cosas que conviene saber:
 
 Para apagarlo otra vez: `dotnet user-secrets remove "Email:Provider" --project src/OfiFlow.Api`. En producción el correo se configura por variables de entorno (`Email__Provider`, `Email__Smtp__Host`…) y los pasos para que llegue de verdad (proveedor, dominio, SPF, DKIM, DMARC) están en la [Parte 6 del capítulo 6](06-identidad-y-autenticacion.md) y en la [ADR-020](../adr/ADR-020-correo-saliente.md).
 
+## Probar la recuperación de contraseña en local (spec 018)
+
+Con Mailpit configurado como arriba, puedes recorrer el flujo entero sin enviar nada a internet. Necesitas una cuenta (la de tu registro de prueba sirve). Si usas el fichero `.http` de la API, las dos peticiones están en su sección de autenticación (`forgot-password` y `reset-password`); con `curl`:
+
+```bash
+# 1. Pedir el enlace. SIEMPRE devuelve 202 sin cuerpo, tengas cuenta o no.
+curl -i -X POST http://localhost:5279/api/v1/auth/forgot-password \
+  -H "Content-Type: application/json" -d '{"email":"tu@empresa.com"}'
+```
+
+Tarda **un cuarto de segundo** a propósito (es el suelo de tiempo, ver el capítulo 6). Abre <http://localhost:8025>: el correo «Restablece tu contraseña de OfiFlow» tiene un enlace con el token después de `#token=`.
+
+```bash
+# 2. Elegir la contraseña nueva con ese token (204 si sirvió).
+curl -i -X POST http://localhost:5279/api/v1/auth/reset-password \
+  -H "Content-Type: application/json" -d '{"token":"PEGA-EL-TOKEN","newPassword":"Una-clave-nueva-2026!"}'
+```
+
+Después, entra con la contraseña nueva (`POST /auth/login`); la vieja ya no vale, **todas tus sesiones anteriores han dejado de funcionar** y en Mailpit hay un segundo correo, el aviso de cambio. Vuelve a lanzar la segunda petición con el mismo token y obtendrás `400 password_reset.invalid`: el enlace es de un solo uso.
+
+Con el frontend (`ng serve` en el repositorio `ofiflow-frontend`), lo mismo desde el navegador: en <http://localhost:4200/auth/login>, «¿Has olvidado tu contraseña?». Dos cosas que conviene saber:
+
+- **Sin correo configurado** (`Email:Provider = None`, el valor por defecto) `forgot-password` también responde `202`, pero **no crea ningún token ni envía nada**: solo deja un aviso en el registro. Es a propósito: devolver el token en la respuesta, como hace la invitación sin correo, entregaría la cuenta a quien la pida.
+- **Los límites existen también aquí**: 5 peticiones de `forgot-password` por hora y por IP (la sexta da `429`), y 3 tokens por hora para la misma cuenta, **en silencio** (a partir del cuarto, seguirás recibiendo `202` pero no llegará ningún correo).
+
 ## Tu primera petición
 
 La API no tiene frontend, pero en `Development` incluye **Swagger UI**: una pantalla que lista todas las operaciones y permite probarlas desde el navegador, sin escribir peticiones a mano. Con la API en marcha, abre **`http://localhost:5279/swagger`** (con el perfil `https`, `https://localhost:7228/swagger`; en Visual Studio se abre sola).

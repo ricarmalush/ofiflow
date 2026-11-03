@@ -27,6 +27,7 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Clean Architecture** | Organizar el código en capas concéntricas donde las dependencias apuntan hacia dentro | 2 |
 | **CodeQL** | Analizador de GitHub que sigue el flujo de los datos buscando vulnerabilidades | 10 |
 | **Código de recuperación** (*recovery code*) | Uno de diez códigos de un solo uso (80 bits, solo se guarda su hash) que permite entrar si se pierde el móvil | 6 |
+| **Cola en memoria** (*in-memory queue*) | Una lista de correos pendientes que vive en la memoria del proceso, con un solo consumidor que los envía de uno en uno. No se pierde nada **mientras la API siga viva**, pero se pierde si se reinicia, y no reintenta. Se usa para el correo de recuperar la contraseña porque así el token **no se guarda en claro** en ningún sitio persistente | 6 |
 | **Command / Query** | Una operación que cambia algo / una que solo lee | 3 |
 | **Concurrencia optimista** (*optimistic concurrency*) | Dos peticiones leen lo mismo; al guardar, la base de datos solo deja confirmar a una (columna `rowversion`) | 6 |
 | **CQRS** | Separar las operaciones que cambian datos de las que los leen | 2 |
@@ -64,6 +65,7 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Multi-tenancy** | Que muchos clientes (empresas) compartan el mismo sistema sin ver los datos de los demás | 5 |
 | **Mutación** (*mutation testing*) | Romper el código a propósito y comprobar que algún test se pone en rojo | 9 |
 | **OpenAPI / Swagger** | La descripción de la API en JSON y la pantalla para probarla desde el navegador | 1 |
+| **Oráculo** (*oracle*) | Cualquier cosa que, sin querer, responde a una pregunta que el atacante no debería poder hacer («¿existe esta cuenta?»). Puede ser la respuesta, **el tiempo que tarda**, o un límite que se activa. Se evita haciendo que todos los casos se vean igual por fuera | 6, 8 |
 | **OWASP** | Organización que publica listas de riesgos y herramientas de seguridad web (como ZAP) | 8, 10 |
 | **PBKDF2** | Función de hash lenta y con sal para contraseñas | 6 |
 | **Permiso** (*permission*) | Lo que se puede hacer, con el formato `Entidad.Acción` (`Jobs.Assign`) | 8 |
@@ -83,11 +85,13 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **SCA** | Vigilar las **dependencias** por vulnerabilidades conocidas (NuGetAudit, Dependabot) | 10 |
 | **Spec-Driven Development** | Escribir la especificación antes que el código | 11 |
 | **STRIDE** | Seis tipos de amenaza (suplantación, manipulación, repudio, revelación, denegación de servicio, elevación de privilegios) | 8 |
+| **Suelo de tiempo** (*time floor*) | Una espera mínima que se aplica a una petición **después** de hacer su trabajo, para que no tarde menos de cierto tiempo pase lo que pase. En `forgot-password` oculta que crear un token cuesta ≈ 12 ms más que no crearlo | 6, 8 |
 | **Tenant** | Una empresa cliente de OfiFlow | 5 |
 | **Testcontainers** | Librería que arranca un SQL Server real en Docker desde el propio test | 9 |
 | **TimeProvider** | La forma de pedir la hora en .NET, sustituible en los tests para no esperar | 11 |
 | **TOTP** (*Time-based One-Time Password*, RFC 6238) | El código de 6 dígitos que cambia cada 30 segundos y sale de un secreto compartido y de la hora. Cada paso solo se acepta una vez | 6 |
 | **Token** | Una credencial de un solo valor secreto (de acceso, de renovación o de invitación) | 6 |
+| **Token de restablecimiento** (*password reset token*) | El secreto del enlace del correo de «he olvidado mi contraseña»: 256 bits aleatorios, **solo se guarda su hash**, caduca a la hora, vale una sola vez y una cuenta tiene uno vigente | 6 |
 | **Value object** | Un objeto sin identidad propia, definido por su valor (`Email`) | 3 |
 | **ZAP** | Herramienta de OWASP que ataca automáticamente una API en ejecución | 10 |
 
@@ -129,6 +133,7 @@ Cada ADR está en [`docs/adr/`](../adr/). El manual **explica cómo funciona**; 
 | [018](../adr/ADR-018-sesion-ligada-al-access-token.md) Sesión ligada al token | El access token lleva el Id de su sesión (`sid`) y la API comprueba en cada petición que siga activa: cerrar una sesión corta también su token | 6 |
 | [019](../adr/ADR-019-purga-de-sesiones-y-datos-del-dispositivo.md) Purga y datos del dispositivo | El primer servicio en segundo plano (purga de refresh tokens caducados) y qué se guarda de cada sesión: IP truncada y el navegador como etiqueta de un conjunto cerrado | 6, 8 |
 | [020](../adr/ADR-020-correo-saliente.md) Correo saliente | Un puerto `IEmailSender` y un transporte SMTP (MailKit); la invitación se envía por correo y el token deja de devolverse; sin cola de momento porque el correo lleva un secreto; el enlace sale solo de la configuración | 6, 8 |
+| [021](../adr/ADR-021-recuperacion-de-contrasena.md) Recuperar la contraseña | Respuesta idéntica y **tiempo medido** (un suelo de 250 ms), correo por una **cola en memoria** (el token no se guarda en claro), token de una hora y un solo uso, y restablecer **cierra todas las sesiones** en una sola confirmación sin tocar el segundo factor | 1, 6, 8 |
 
 ## Las especificaciones
 
@@ -153,6 +158,7 @@ Cada spec está en [`docs/specs/`](../specs/) con su `spec.md` y su `tasks.md`.
 | **015** El token muere con su sesión | `sid` en el access token, comprobado en cada petición |
 | **016** Purga y sesiones | Purga de refresh tokens caducados en segundo plano; ver y cerrar mis sesiones concretas |
 | **017** Correo e invitaciones | Un puerto de correo con transporte SMTP; la invitación se envía por correo (sin token para quien invita), con límite de 20 por hora y por persona y eventos `1407`/`1408` |
+| **018** Recuperar la contraseña | `POST /auth/forgot-password` (siempre `202`, con un suelo de tiempo medido) y `POST /auth/reset-password` (cierra todas las sesiones, reinicia el bloqueo y avisa por correo), con una cola de correo en memoria; los eventos `1012`–`1017`; y las dos pantallas del frontend |
 
 ## Lo que viene
 

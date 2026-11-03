@@ -1,6 +1,6 @@
 # Spec — 018-password-recovery
 
-**Estado:** Aprobada. Decisiones D1–D15 aprobadas el 2026-11-02 tal como estaban escritas
+**Estado:** Implementada (2026-11-03). Decisiones D1–D15 aprobadas el 2026-11-02 tal como estaban escritas
 **Fecha:** 2026-11-02
 **Bounded Context:** Identity (credenciales y sesiones)
 **Depende de:** spec 017 y ADR-020 (el puerto de correo y los enlaces), spec 010 y ADR-014 (el bloqueo de cuenta y el segundo factor), specs 013–015 (cerrar sesiones: `RevokeAllRefreshTokensAsync`, el access token ligado a su sesión), spec 016 y ADR-019 (la purga y el primer servicio en segundo plano), ADR-004 y ADR-007 (credenciales y hash de contraseñas), ADR-009 (datos personales fuera de los logs, eventos, límite de peticiones)
@@ -122,7 +122,7 @@ Caso multi-tenant obligatorio: restablecer la contraseña de una cuenta **no rev
 - **Enumeración de cuentas:** esta spec **no empeora** nada. `forgot-password` no revela si existe la cuenta (R1, R2, R4). El registro **sigue** revelando «ese email ya está registrado» (límite conocido del capítulo 6): se cerrará con la confirmación de email, no aquí.
 - **Modelo de amenazas del buzón:** quien lea el buzón puede cambiar la contraseña (R9) pero, con segundo factor, **no entrar** (R11); y la persona se entera por el correo de aviso (R12) y porque sus sesiones se cierran (R9c). Sin segundo factor, quien controla el buzón controla la cuenta: es la razón de fondo para obligar el MFA a `Owner` y `Admin` (límite 3b de ADR-014, ya anotado).
 
-## Decisiones técnicas relevantes (pendientes de aprobar)
+## Decisiones técnicas relevantes (aprobadas)
 
 - **D1. Alcance: solo «he olvidado mi contraseña»**, no «cambiar la contraseña estando dentro» (spec 019). *Recomendado.* Son dos amenazas distintas: aquí el atacante puede ser quien controla un buzón; allí, quien tiene una sesión robada, y por eso allí se exige la contraseña actual. Mezclarlas haría la spec demasiado grande para defenderla.
 - **D2. Siempre la misma respuesta, y el tiempo se mide.** `202` sin cuerpo en todos los casos (R1). *Recomendado.* El tiempo es la fuga que se olvida: se **mide** con muchas muestras al implementar (con y sin cuenta) y, si se distingue, se añade un **suelo de tiempo** a la petición. Alternativa: poner el suelo ya, sin medir; se descarta porque añade latencia que quizá no hace falta y porque medir es el método de este proyecto.

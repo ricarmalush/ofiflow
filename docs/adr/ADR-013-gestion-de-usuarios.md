@@ -88,7 +88,7 @@ Cada decisión tiene una opción cómoda que es insegura: crear al usuario con u
 - ~~**NEXT:** envío del enlace por email (puerto previsto, proveedor por decidir).~~ **Hecho en la spec 017 ([ADR-020](ADR-020-correo-saliente.md))**: puerto `IEmailSender` y transporte SMTP; el proveedor sigue por decidir (SMTP lo hablan todos).
 - **NEXT:** pertenecer a varias empresas y elegir empresa al hacer login.
 - **NEXT:** traspasar la propiedad y abandonar la empresa por voluntad propia.
-- **NEXT:** recuperar contraseña, confirmar email, bloqueo por intentos (ADR-009).
+- ~~**NEXT:** recuperar contraseña~~ **Hecho en la spec 018 ([ADR-021](ADR-021-recuperacion-de-contrasena.md))**; ~~bloqueo por intentos~~ hecho en la spec 010 ([ADR-014](ADR-014-mfa-y-bloqueo-de-cuenta.md)). **NEXT:** confirmar email.
 - **NEXT:** purga de invitaciones antiguas (guardan el email).
 - **LATER:** caché de la pertenencia si la consulta por petición llega a medirse como cuello de botella.
 
@@ -116,3 +116,4 @@ Implementada por la spec 009 (bloques 1 a 7), con 770 tests en verde. Lo que la 
 - Afecta a: ADR-009 (eventos de seguridad `1302` y `1401`–`1406` en el catálogo de R5) y ADR-002 (nuevo uso justificado de `IgnoreQueryFilters()` al aceptar una invitación).
 - Ampliada por: la [ADR-020](ADR-020-correo-saliente.md) (spec 017): el enlace de la invitación se envía por correo y el token deja de devolverse cuando hay correo configurado; cierra el riesgo del invitante que conoce el token.
 - Ampliada por: la spec 015 y la [ADR-018](ADR-018-sesion-ligada-al-access-token.md): a la consulta de pertenencia de cada petición se suma **una comprobación de sesión antes**, en la autenticación (el access token solo vale mientras su sesión tenga un refresh token activo). Como la baja de un miembro borra sus refresh tokens, su token se rechaza ahora con un `401` **antes** de llegar a la revalidación (hasta ahora daba `403`); la revalidación de esta ADR sigue siendo la segunda barrera y se comprueba con una sesión activa cuya persona ya no es miembro (`403`).
+- Ampliada por: la [ADR-021](ADR-021-recuperacion-de-contrasena.md) (spec 018): el token de restablecimiento sigue el mismo patrón que el de la invitación (256 bits, solo su hash, un solo uso, el mismo error para todo lo que no sirve) pero caduca a la hora, y la cuenta puede tener solo uno vigente.
