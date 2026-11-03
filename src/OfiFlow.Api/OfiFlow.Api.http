@@ -73,6 +73,29 @@ Content-Type: application/json
   "refreshToken": "{{refreshA}}"
 }
 
+### He olvidado mi contraseña (spec 018): anónimo. Responde SIEMPRE 202 sin cuerpo y con las mismas cabeceras, exista o no la cuenta (también si está
+### bloqueada, suspendida, es de un operador de la plataforma, el correo está apagado o se pasó el límite de la cuenta). Solo un email mal formado da 400.
+### Si la cuenta existe, le llega un correo con un enlace de un solo uso que caduca a la hora; pedir otro anula el anterior. Tarda al menos ~250 ms a
+### propósito (ForgotPassword:ResponseFloor): así el tiempo no delata si la cuenta existe. Máximo 5 por hora y por IP (429 al sexto) y 3 por cuenta y hora.
+POST {{host}}/api/v1/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "ana@example.com"
+}
+
+### Restablecer la contraseña (spec 018): anónimo; la credencial es el token del enlace del correo (el valor que va tras «#token=»).
+### 204 si sirvió: cambia la contraseña, cierra TODAS las sesiones de la cuenta (también sus access tokens), quita el bloqueo y envía un aviso por correo, todo o nada.
+### 400 password_reset.invalid, siempre el MISMO, si el token no sirve (desconocido, caducado, ya usado o anulado por otro pedido); el motivo real solo queda en el registro.
+### NO inicia sesión (entra con el login de siempre) y NO toca el segundo factor: con MFA activo, el login sigue pidiendo el código. Máximo 10 por hora y por IP (429).
+POST {{host}}/api/v1/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "PEGA-AQUI-EL-TOKEN-DEL-CORREO",
+  "newPassword": "Una-clave-nueva-de-8-a-128-caracteres"
+}
+
 ### Quién soy (spec 012): tu nombre y email, tu empresa, el Id de tu pertenencia, tu rol EFECTIVO y tus permisos.
 ### El rol sale de la base de datos, no del token: si un gestor te lo cambia, esta petición ya dice el nuevo con el mismo token.
 ### Los permisos (Customers.Read...) sirven para pintar la interfaz; quien decide es siempre la API. No lleva parámetros:

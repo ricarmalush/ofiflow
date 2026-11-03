@@ -217,6 +217,10 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
         services.AddSingleton<IClientInfo>(new FakeClientInfo()); // TokenService lo necesita (spec 016, bloque 2); la purga no lo usa
         services.AddScoped<TokenService>();
         services.AddScoped<IRefreshTokenPurger>(provider => provider.GetRequiredService<TokenService>());
+        // El ciclo purga también los tokens de restablecimiento (spec 018 R18).
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<PasswordResetService>();
+        services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
 
         return services.BuildServiceProvider();
     }
@@ -350,6 +354,12 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
         }
     }
 
+    // El ciclo también purga los tokens de restablecimiento (spec 018 R18): aquí no hay nada que borrar y no es lo que se prueba.
+    private sealed class NothingToPurge : IPasswordResetTokenPurger
+    {
+        public Task<int> PurgeBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken) => Task.FromResult(0);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition, int seconds = 15)
     {
         var limit = DateTime.UtcNow.AddSeconds(seconds);
@@ -363,7 +373,7 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
     public async Task Service_ACycleThatFails_DoesNotKillIt_AndTheNextCycleRetries()
     {
         var purger = new FlakyPurger();
-        var services = new ServiceCollection().AddSingleton<IRefreshTokenPurger>(purger).BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton<IRefreshTokenPurger>(purger).AddSingleton<IPasswordResetTokenPurger>(new NothingToPurge()).BuildServiceProvider();
         var logger = new ListLogger<RefreshTokenPurgeService>();
         var service = NewService(services, new RefreshTokenPurgeOptions { StartupDelay = TimeSpan.Zero, Interval = TimeSpan.FromMilliseconds(30), BatchSize = 10 }, logger, TimeProvider.System);
 

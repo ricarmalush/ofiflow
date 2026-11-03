@@ -7,6 +7,7 @@
 - Cómo se guarda una contraseña (y por qué nunca "se guarda" de verdad).
 - Qué es un token JWT, qué lleva dentro y por qué no se puede falsificar.
 - Para qué sirve el *refresh token*, cómo rota y cómo detecta un robo.
+- Cómo se recupera una contraseña olvidada sin regalar la cuenta: respuesta uniforme, un tiempo medido y todas las sesiones cerradas (Parte 9).
 - Qué ataques frena este flujo, y qué límites tiene hoy.
 
 Este capítulo explica el **token** que ya has visto en los capítulos 4 y 5: de dónde sale, qué contiene y cómo se protege.
@@ -34,6 +35,8 @@ Estas son las rutas **anónimas** de la primera hora (no exigen sesión, porque 
 | `POST /api/v1/auth/logout` | Cierra la sesión de un *refresh token* (lo revoca; spec 013, Parte 5) | 20 por minuto y por IP (cubo propio, distinto del de renovar) |
 | `DELETE /api/v1/account/sessions` | Cierra **todas** las sesiones de la cuenta de quien lo pide (autenticada; spec 014, Parte 5) | 10 por hora y por IP (cubo propio) |
 | `POST /api/v1/auth/accept-invitation` | Acepta una invitación con su token: la persona elige nombre y contraseña y nace su cuenta (Parte 6) | 10 por hora y por IP |
+| `POST /api/v1/auth/forgot-password` | Pide el enlace para recuperar una contraseña olvidada; **siempre `202`, exista la cuenta o no** (Parte 9) | 5 por hora y por IP, y 3 por hora y por cuenta en silencio |
+| `POST /api/v1/auth/reset-password` | Elige la contraseña nueva con el token del correo; cierra todas las sesiones (Parte 9) | 10 por hora y por IP |
 
 (Los límites están en [`RateLimiting.cs:44-46`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
 
@@ -700,6 +703,120 @@ Hasta aquí el cliente sabía quién es por lo que **decía el token** al emitir
 
 ---
 
+## Parte 9 — Recuperar la contraseña olvidada (spec 018)
+
+Hasta la spec 018, una contraseña olvidada era **una cuenta perdida**. Pero recuperar la contraseña no es un formulario con un botón: es el flujo **más atacado** de cualquier sistema con cuentas, porque convierte «controlo el buzón de esta persona» en «controlo su cuenta». Por eso esta parte no va de pantallas sino de **qué se le niega al atacante en cada paso**. Las decisiones están en la [ADR-021](../adr/ADR-021-recuperacion-de-contrasena.md).
+
+### El recorrido
+
+```
+1. Pides el enlace      POST /auth/forgot-password  { email }
+                         → 202 sin cuerpo, SIEMPRE lo mismo
+2. Te llega un correo   enlace: {LinkBaseUrl}/auth/reset-password#token=…   (caduca a la hora, un solo uso)
+3. Eliges la nueva      POST /auth/reset-password   { token, newPassword }
+                         → 204; cambia la contraseña, cierra TODAS las sesiones y avisa por correo
+4. Entras               el login de siempre (y con el segundo factor, si lo tienes)
+```
+
+Tres operaciones, tres decisiones de seguridad que se entienden mirando lo que **no** hacen.
+
+### Pedir el enlace: que no se pueda saber si una cuenta existe
+
+Si la API contestara «ese email no existe», cualquiera podría probar emails y obtener la lista de tus clientes. Así que [`ForgotPasswordCommandHandler`](../../src/OfiFlow.Application/Identity/Commands/ForgotPassword/ForgotPasswordCommandHandler.cs) responde **exactamente lo mismo** (`202`, sin cuerpo, con las mismas cabeceras) en todos estos casos:
+
+- la cuenta existe; no existe;
+- está bloqueada, o su empresa suspendida;
+- es de un operador de la plataforma (se trata como «no existe»: es otra identidad);
+- el correo está apagado, o la cuenta ya pidió 3 enlaces esa hora.
+
+Solo un email **mal formado** da `400`, y eso se decide sin consultar nada. Un test compara la respuesta completa —estado, cuerpo y cabeceras— de una cuenta que existe y una que no, y son idénticas **byte a byte**.
+
+**Pero la respuesta no es la única fuga: también el tiempo.** Si el correo se enviara dentro de la petición, tardaría segundos *solo cuando la cuenta existe*, y ese tiempo delataría la cuenta aunque la respuesta fuera idéntica. Por eso el correo **no se envía en la petición: se encola** en memoria y otro servicio ([`EmailDispatchService`](../../src/OfiFlow.Infrastructure/Mail/EmailDispatchService.cs)) lo envía después. La petición no espera al proveedor.
+
+**¿Por qué una cola en memoria, y no en la base de datos?** Porque el correo contiene el token **en claro**, y guardarlo —aunque fuera «un rato»— es exactamente lo que el diseño evita: en la base solo hay el hash. La cola en memoria tiene un precio asumido (si la API se reinicia, lo pendiente se pierde; no hay reintentos) que aquí es aceptable porque **pedirlo otra vez es gratis** para la persona. Es una cola **acotada** (100) con un único lector: llena, el mensaje nuevo se descarta *al instante* y se registra, sin bloquear ni cambiar la respuesta.
+
+### El tiempo se midió, y hizo falta un suelo
+
+Aquí está la lección más útil de la spec: **no se supuso, se midió.** Con la API real y SQL Server real, alternando las dos series con cientos de muestras:
+
+| | Con cuenta | Sin cuenta | ¿Se distinguen? |
+|---|---|---|---|
+| **Sin suelo** | mediana ≈ 17,3 ms | mediana ≈ 4,8 ms | **Sí, sin dudar** (t de Welch ≈ 54; Mann-Whitney z ≈ 24) |
+| **Con suelo de 250 ms** | — | — | No (t = 1,47 y 0,96 en dos tandas) |
+
+Los 12 ms de diferencia son el trabajo de crear el token. Un atacante con un cronómetro los distinguiría. La solución es un **suelo de tiempo**: la petición no termina antes de 250 ms ([`ResponseTimeFloor`](../../src/OfiFlow.Api/Common/ForgotPasswordTiming.cs)), exista la cuenta o no. Dos detalles importan: se aplica **después** del trabajo (si fuera antes, retrasaría las dos respuestas por igual y no ocultaría nada; un test de arquitectura lo vigila), y es configurable (`ForgotPassword:ResponseFloor`) porque si algún día el trabajo real superara el suelo, la diferencia volvería. 250 ms son unas siete veces el peor caso medido.
+
+### Dos límites, porque abusan de cosas distintas
+
+| Límite | Valor | Qué frena |
+|---|---|---|
+| **Por IP** | 5 por hora (`429` al sexto) | A quien prueba muchos emails desde una máquina |
+| **Por cuenta**, **en silencio** | 3 tokens por hora, vengan de la IP que vengan | A quien llena de correos el buzón de una **víctima** desde muchas IPs |
+
+El segundo es silencioso a propósito: si respondiera algo distinto, sería un oráculo («esta cuenta existe y ya ha pedido tres veces»). Se resuelve con un `202` idéntico, ningún token nuevo y ningún correo, y un evento `1015` para un analista.
+
+### El token
+
+Es el mismo patrón que el de la invitación ([`OpaqueToken`](../../src/OfiFlow.Application/Common/Security/OpaqueToken.cs), Parte 6): 256 bits aleatorios, **solo se guarda su hash SHA-256**, un solo uso y el mismo error para todo lo que no sirve. Tres diferencias, todas por el daño de que se robe:
+
+- **Caduca a la hora**, no a los 7 días de una invitación: este token cambia la contraseña de una cuenta que **ya existe**.
+- **Una cuenta tiene un solo token vigente**: pedir otro anula los anteriores.
+- **Va en una tabla global** ([`PasswordResetToken`](../../src/OfiFlow.Domain/Identity/PasswordResetToken.cs)): es de una cuenta, no de una empresa. No lleva `TenantId`, no tiene clave foránea y **no guarda el email**; y **un solo fichero** (`PasswordResetService.cs`) la lee, vigilado por un test de arquitectura.
+
+El correo tiene una plantilla fija ([`PasswordResetEmail`](../../src/OfiFlow.Application/Identity/PasswordResetEmail.cs)): ningún dato de la persona. Quien pida el restablecimiento de la cuenta de otro no consigue que OfiFlow le entregue un texto suyo.
+
+### Restablecer: todo o nada
+
+Cuando la persona elige la contraseña nueva, **cuatro cosas cambian y las cuatro se confirman juntas**, en un único `SaveChangesAsync` ([`ResetPasswordCommandHandler`](../../src/OfiFlow.Application/Identity/Commands/ResetPassword/ResetPasswordCommandHandler.cs)):
+
+1. **La contraseña**, con el mismo PBKDF2 del registro.
+2. **El token pasa a usado**, y los demás de la cuenta se anulan.
+3. **Todas las sesiones de la cuenta se cierran**, en todas sus empresas. Es la parte clave: si la contraseña vieja estaba comprometida, el atacante **que ya tenía una sesión** la conservaría con solo cambiar la contraseña. Con esto la pierde, y sus tokens de acceso mueren en la petición siguiente (ADR-018).
+4. **El contador de intentos y el bloqueo de cuenta vuelven a cero.** Quien demuestra que controla el buzón no es quien probaba contraseñas, y una cuenta bloqueada que restablece debe poder entrar de inmediato.
+
+**¿Por qué «una sola confirmación» es tan importante?** Porque si se confirmara por separado, un fallo entre medias dejaría la contraseña cambiada con las sesiones vivas (justo lo que el atacante necesita) o las sesiones cerradas con la contraseña vieja. Para lograrlo, las tres piezas **no confirman por su cuenta**: canjear el token, cambiar la contraseña y cerrar las sesiones solo *preparan* los cambios, y el caso de uso los confirma de una vez. Por eso existe una variante de «cerrar todas las sesiones» que no confirma ([`RevokeAllRefreshTokensWithoutSavingAsync`](../../src/OfiFlow.Infrastructure/Identity/TokenService.cs)). Y como es fácil que alguien «simplifique» confirmando antes, **tres escaneos del código** ([`PasswordResetArchitectureTests`](../../tests/OfiFlow.Api.Tests/Architecture/PasswordResetArchitectureTests.cs)) lo impiden.
+
+**Un solo error para todo lo que no sirva.** Token desconocido, caducado, ya usado o anulado por otro pedido: siempre `400 password_reset.invalid`. El motivo real va al registro (evento `1017`), nunca a la respuesta. Un test compara la respuesta completa de los cuatro casos y es la misma.
+
+**Dos restablecimientos a la vez con el mismo token: gana uno.** El token lleva una columna de versión de fila; los dos leen «sin usar», los dos preparan sus cambios, pero solo un `UPDATE` encuentra la fila como la leyó. La perdedora falla *al confirmar* —y con ella su cambio de contraseña y su cierre de sesiones— y recibe el mismo `password_reset.invalid`. Se probó con una carrera de verdad contra SQL Server, no con una simulación.
+
+### Lo que el restablecimiento no hace
+
+- **No abre sesión.** Se entra con el login de siempre. Controlar el buzón basta para **elegir** una contraseña, no para **entrar**.
+- **No toca el segundo factor.** Una cuenta con MFA sigue pidiendo el código después de restablecer. Es la defensa que queda si el buzón está comprometido; restablecer el MFA por correo la anularía. Perder el móvil sigue resolviéndose como en la spec 010. Dos tests lo comprueban (el flujo completo por HTTP y un escaneo del código que busca la palabra «Mfa»).
+- **No desbloquea una empresa suspendida.** La contraseña cambia, pero el login sigue dando `403 tenant.suspended`.
+- **No avisa sin cuenta ni a un operador**, ni deja ninguna huella distinta.
+
+Y un **correo de aviso** ([`PasswordChangedEmail`](../../src/OfiFlow.Application/Identity/PasswordChangedEmail.cs)): «tu contraseña se acaba de cambiar y se han cerrado todas tus sesiones; si no has sido tú…». Sin enlace —no hay nada que abrir—. Lo que hace sospechoso un restablecimiento que no pediste es **enterarte**.
+
+### En el navegador
+
+El enlace del correo lleva el token en el **fragmento** (`#token=…`), que el navegador no envía al servidor. La pantalla (`reset-password.ts`, en el repositorio del frontend (`ofiflow-frontend`, `src/app/pages/auth/`)) lo lee al entrar y **lo borra de la barra de direcciones y del historial** en ese mismo instante. La pantalla de pedir el enlace tiene una regla de redacción: dice «**Si existe una cuenta** con ese email, te enviaremos un enlace…», nunca «te hemos enviado», porque no lo sabe, y su texto tiene que ser idéntico en los dos casos.
+
+### Sin correo configurado
+
+Con `Email:Provider = None`, `forgot-password` responde `202` igual, **no crea ningún token** (no habría cómo entregarlo) y deja un `Warning`. La alternativa que se descartó con claridad es la de la invitación: devolver el token en la respuesta. Aquí entregaría **la cuenta de cualquiera a quien la pida**.
+
+### Los eventos de seguridad
+
+| Id | Qué dice |
+|---|---|
+| `1014` | Se pidió restablecer: si la cuenta existía y su `UserId` (solo en el registro) |
+| `1015` | Un pedido frenado por el límite de la cuenta |
+| `1016` | Restablecida: `UserId` y sesiones cerradas |
+| `1017` | Rechazada: el motivo real (`Unknown`, `Expired`, `UsedOrReplaced`, `PlatformOperator`, `AccountGone`, `Concurrent`) |
+
+Ninguno lleva el email, el token, el enlace ni la contraseña.
+
+### Lo que enseñó la spec 018
+
+- **Medir encontró lo que el razonamiento no.** Que crear un token tarda más es obvio; que la diferencia se distinga con una prueba estadística de manual, no. El suelo se añadió por la medición, no por la sospecha.
+- **Una mutación colgó el test host y mi ejecutor la dio por «detectada».** Un test esperaba un mensaje que nunca llegaba, los procesos huérfanos bloqueaban las DLL y doce mutaciones «fallaron» sin ni compilar. Ahora una mutación solo cuenta con tests en rojo.
+- **El orden importa más de lo que parece.** El suelo de tiempo *antes* del trabajo no oculta nada; la confirmación *antes* de cerrar las sesiones rompe el todo o nada.
+- **Reutilizar el refresh token de una sesión cerrada por el restablecimiento es una reutilización** (Parte 5): revoca las demás sesiones, incluida la que se acaba de abrir con la contraseña nueva. Lo vimos en la comprobación en vivo.
+
+---
+
 ## Cómo se protege todo el flujo
 
 Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenazas final del manual). Las técnicas **T1110** son de MITRE ATT&CK, que verás en CyberOps:
@@ -727,6 +844,13 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 | **Inyectar cabeceras** del correo (`Bcc:`…) | Asunto fijo; destinatario y asunto con caracteres de control se rechazan antes de tocar la red | `SmtpEmailSender.cs` | `ARecipientThatSlippedPastTheDomainWithControlCharacters_...`, `ABodyThatLooksLikeHeaders_StaysInsideTheBody` |
 | Correo y credenciales **en claro por la red** | Cifrado obligatorio (STARTTLS o TLS); sin cifrar solo en bucle local; certificado siempre validado | `SmtpEmailSender.cs`, `EmailOptions.cs` | `WhenEncryptionIsRequiredButTheServerDoesNotOffer...`, `NoEncryption_IsRejected_ForAServerThatIsNotOnThisMachine` |
 | Dirección, token o enlace **en los logs** | Los eventos `1407` y `1408` llevan solo Ids y la categoría del fallo | `InviteUserCommandHandler.cs` | `TheLogs_HaveTheEmailEvents_WithoutTheAddressTheTokenOrTheLink` |
+| **Saber qué emails tienen cuenta** al recuperar la contraseña | Siempre `202` idéntico (estado, cuerpo y cabeceras), **y un suelo de tiempo** de 250 ms que oculta la diferencia medida (≈ 12 ms) | `ForgotPasswordCommandHandler.cs`, `ForgotPasswordTiming.cs` | `AKnownAndAnUnknownEmail_GetTheSameResponse_ByteForByte`, `ForgotPasswordTimingTests` |
+| **Llenar de correo** el buzón de una víctima con la recuperación | 5 por hora y por IP, y 3 por cuenta y hora **en silencio**; cola acotada; texto fijo | `RateLimiting.cs`, `PasswordResetService.cs` | `TheFourthRequestOfTheHourForTheSameAccount_...`, `TheSixthRequestFromTheSameIp_Is429_...` |
+| Token de restablecimiento **robado de la base de datos** | Solo el hash en la base; el valor solo en memoria unos segundos; caduca a la hora; un solo uso | `PasswordResetToken.cs`, `EmailQueue.cs` | `TheTokenInClear_IsInNoColumnOfTheRow`, `PasswordResetTokenTests` |
+| Usar dos veces un enlace, o dos a la vez | Un solo uso + versión de fila: gana uno, la perdedora no deja nada | `PasswordResetToken.cs`, `PasswordResetService.cs` | `TwoResetsWithTheSameToken_OneWins_AndTheLoserLeavesNothingBehind` |
+| Un atacante **conserva su sesión** tras el cambio de contraseña | Restablecer cierra todas las sesiones en la misma confirmación | `ResetPasswordCommandHandler.cs` | `TheWholeFlow_ChangesThePassword_ClosesTheSessions_AndSendsTheNotice`, `TheResetUseCase_ClosesTheSessionsWithTheVariantThatDoesNotConfirm` |
+| **Entrar con solo controlar el buzón** | El restablecimiento no abre sesión ni toca el segundo factor | `ResetPasswordCommandHandler.cs` | `AnAccountWithASecondFactor_StillNeedsTheCode_AfterResetting` |
+| Contraseña, token o enlace de recuperación **en los logs** | Los eventos `1014`–`1017` llevan solo Ids y el motivo; el comando no imprime sus secretos | `ResetPasswordCommand.cs` | `TheLogs_HaveTheEvents_WithoutThePasswordTheTokenOrTheAddress`, `TheCommand_NeverPrintsItsSecrets` |
 | Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:78-84` | **Sin test propio** (ver "Controles sin test") |
 | El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:96` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
 
@@ -744,7 +868,7 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **4. ✅ Cerrado (specs 013, 014 y 015): hay cierre de sesión en el servidor, de una o de todas, y corta también el token de acceso.** `POST /auth/logout` revoca el refresh token y `DELETE /account/sessions` los de todas las sesiones (Parte 5); desde la spec 015 el *token de acceso* de esas sesiones también deja de valer en la petición siguiente (lleva el Id de su sesión, `sid`; ver «El token muere con su sesión»). Siguen abiertos: listar mis sesiones y cerrar una concreta, y purgar los refresh tokens caducados o revocados (las filas se acumulan).
 
-**5. No hay confirmación de email ni recuperación de contraseña.** Es la razón de que no se use `UserManager` de ASP.NET Identity: se aplaza hasta que esas funciones se construyan (ADR-007). Desde la spec 017 ya existe el **prerrequisito** (la API sabe enviar correo), pero ninguna de las dos está construida: serán la spec 018 y siguientes.
+**5. ✅ Cerrado a medias (spec 018): hay recuperación de contraseña, pero no confirmación de email.** La recuperación existe (Parte 9); la confirmación de email sigue pendiente y es lo que cerraría la enumeración por el registro (límite 3). Tampoco se puede **cambiar la contraseña estando dentro** (spec 019, que exigirá la contraseña actual). Y, sin segundo factor, **quien controla el buzón de una cuenta controla la cuenta**: es el modelo de amenazas de cualquier recuperación por correo, y el remedio de fondo es obligar el segundo factor a `Owner` y `Admin` (ADR-014, límite 3b).
 
 **6. ✅ Resuelto (spec 015): un token de acceso se puede anular antes de caducar.** Por ser un JWT sin estado no se podía (valía hasta 30 minutos); ahora lleva el Id de su sesión y la API comprueba en cada petición que esa sesión siga activa (ADR-018). **Lo que sigue abierto:** un token robado *mientras nadie cierra la sesión* sigue valiendo hasta que caduque, y es una consulta más por petición (medida, ver «El token muere con su sesión»).
 
@@ -754,7 +878,7 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **9. Los límites de peticiones viven en memoria**, por IP. Se reinician con cada despliegue y no se comparten entre instancias (ADR-009).
 
-**10. Hay correo de salida, pero no de entrada, ni cola, ni rebotes (spec 017).** La API puede enviar la invitación, pero: «el servidor lo aceptó» no es «llegó a la bandeja» (hace falta SPF, DKIM y DMARC); no hay cola ni reintentos (si el proveedor está caído, la invitación da `502` y se repite a mano); y un correo que el destino rechaza después de que el proveedor lo aceptara no vuelve a OfiFlow. Además, **quien lea el buzón del invitado puede aceptar su invitación**: es el modelo de amenazas de cualquier enlace por correo, y se mitiga con la caducidad a 7 días y el uso único. El límite de 20 invitaciones por hora vive, como los demás, en memoria y por instancia.
+**10. Hay correo de salida, pero no de entrada, ni cola persistida, ni rebotes (spec 017 y 018).** La API puede enviar la invitación, pero: «el servidor lo aceptó» no es «llegó a la bandeja» (hace falta SPF, DKIM y DMARC); no hay cola ni reintentos (si el proveedor está caído, la invitación da `502` y se repite a mano); y un correo que el destino rechaza después de que el proveedor lo aceptara no vuelve a OfiFlow. Además, **quien lea el buzón del invitado puede aceptar su invitación**: es el modelo de amenazas de cualquier enlace por correo, y se mitiga con la caducidad a 7 días y el uso único. El límite de 20 invitaciones por hora vive, como los demás, en memoria y por instancia. **Desde la spec 018 sí hay una cola, pero en memoria** (para el correo de recuperación, que lleva un secreto que no se puede guardar en claro): si la API se reinicia, lo pendiente se pierde, y la persona vuelve a pedirlo.
 
 ### Controles sin test propio
 
@@ -782,8 +906,12 @@ Son los tres candidatos más baratos para la próxima ronda de endurecimiento, c
 10. Dos personas aceptan la misma invitación exactamente a la vez. ¿Qué garantiza que solo nazca una cuenta y qué error inesperado cazó el test contra SQL Server real?
 11. Con el correo configurado, ¿qué lleva la respuesta de `POST /invitations`, y qué riesgo cierra eso?
 12. Alguien envía una petición de invitar con la cabecera `Host: sitio-malo.example`. ¿De dónde sale el enlace del correo y por qué importa?
+13. ¿Por qué `forgot-password` responde igual si el email no tiene cuenta, y qué otra fuga, aparte de la respuesta, hubo que cerrar y cómo se supo que existía?
+14. ¿Por qué el correo de recuperación se encola en memoria en vez de enviarse en la petición o guardarse en una cola de la base de datos?
+15. Al restablecer, ¿qué cuatro cosas cambian, por qué se confirman en un único `SaveChanges` y qué pasa si dos personas usan el mismo enlace a la vez?
+16. Una persona con segundo factor activo restablece su contraseña desde un buzón comprometido. ¿Qué puede hacer el atacante y qué no?
 
-*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos). 8 = solo el hash SHA-256; no lleva sal porque el token ya es aleatorio de 256 bits (no hay diccionario que atacar) y hace falta un hash determinista para buscarlo en el índice. 9 = no puede adivinar 256 bits aleatorios; además la forma del token se valida antes de buscar y recibe siempre el mismo error (`invitation.invalid`) sea cual sea el motivo; el analista ve eventos `1403` con el motivo real (y la IP), sin el token ni el email. 10 = la invitación tiene una columna de versión de fila y, además, el índice único del email impide dos cuentas iguales: solo una confirma y la otra recibe `invitation.invalid`; el test con SQL real cazó que la perdedora recibía una violación del índice único (que acababa en un 500) y no el error de concurrencia esperado, porque una base en memoria no aplica índices únicos. 11 = `"token": null` y `"emailSent": true`: quien invita no conoce el token, así que no puede aceptar la invitación en nombre de otra persona (el riesgo que ADR-013 había dejado aceptado). 12 = solo de `Email:LinkBaseUrl`, que fija el despliegue; si saliera de la petición, quien la envía decidiría adónde lleva el correo que recibe la víctima (envenenamiento por cabecera Host), y el correo, al salir de OfiFlow, sería de fiar.)*
+*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos). 8 = solo el hash SHA-256; no lleva sal porque el token ya es aleatorio de 256 bits (no hay diccionario que atacar) y hace falta un hash determinista para buscarlo en el índice. 9 = no puede adivinar 256 bits aleatorios; además la forma del token se valida antes de buscar y recibe siempre el mismo error (`invitation.invalid`) sea cual sea el motivo; el analista ve eventos `1403` con el motivo real (y la IP), sin el token ni el email. 10 = la invitación tiene una columna de versión de fila y, además, el índice único del email impide dos cuentas iguales: solo una confirma y la otra recibe `invitation.invalid`; el test con SQL real cazó que la perdedora recibía una violación del índice único (que acababa en un 500) y no el error de concurrencia esperado, porque una base en memoria no aplica índices únicos. 11 = `"token": null` y `"emailSent": true`: quien invita no conoce el token, así que no puede aceptar la invitación en nombre de otra persona (el riesgo que ADR-013 había dejado aceptado). 12 = solo de `Email:LinkBaseUrl`, que fija el despliegue; si saliera de la petición, quien la envía decidiría adónde lleva el correo que recibe la víctima (envenenamiento por cabecera Host), y el correo, al salir de OfiFlow, sería de fiar. 13 = para que no se pueda obtener la lista de clientes probando emails; la otra fuga es el **tiempo** (crear el token tarda ≈ 12 ms más que no crearlo, y se distingue estadísticamente), que se descubrió **midiendo** con la API y SQL Server reales y se cerró con un suelo de 250 ms aplicado después del trabajo. 14 = en la petición tardaría segundos solo cuando la cuenta existe (otro oráculo de tiempo); en la base de datos obligaría a guardar el token en claro, que es lo que el diseño evita (solo hay hash); en memoria el token vive unos segundos, a costa de perder lo pendiente si la API se reinicia, algo asumible porque pedirlo otra vez es gratis. 15 = la contraseña, el token (usado, y los demás de la cuenta anulados), las sesiones (todas cerradas) y el contador y bloqueo (a cero); en una sola confirmación para que sea todo o nada, sin dejar la contraseña cambiada con sesiones vivas; y si dos personas lo usan a la vez gana una, porque el token lleva una versión de fila y la perdedora falla al confirmar, sin cambiar nada, y recibe `password_reset.invalid`. 16 = puede elegir una contraseña nueva, pero no entrar: el login con ella sigue pidiendo el código del segundo factor, que el restablecimiento no toca; además la persona recibe el aviso de cambio y sus sesiones se cierran.)*
 
 ## Siguiente capítulo
 

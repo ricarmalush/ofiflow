@@ -1,11 +1,15 @@
+using System.Diagnostics;
 using MediatR;
+using Microsoft.Extensions.Options;
 using OfiFlow.Api.Common;
 using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
+using OfiFlow.Application.Identity.Commands.ForgotPassword;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
+using OfiFlow.Application.Identity.Commands.ResetPassword;
 using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
 
 namespace OfiFlow.Api.Endpoints;
@@ -89,5 +93,39 @@ public static class AuthEndpoints
             .WithName("AcceptInvitation")
             .WithSummary("Acepta una invitación con su token: la persona elige su nombre y su contraseña y se crea su cuenta.")
             .RequireRateLimiting(RateLimiting.AcceptInvitation);
+
+        // Spec 018: «he olvidado mi contraseña». Anónima, y la respuesta es SIEMPRE la misma (202 sin cuerpo): exista o no la cuenta, esté bloqueada, suspendida o del operador, esté el
+        // correo apagado o se haya pasado el límite de la cuenta. Solo un email mal formado da 400, y eso se decide sin consultar nada.
+        group.MapPost("/forgot-password", async (ForgotPasswordCommand command, ISender sender, IOptions<ForgotPasswordTimingOptions> timing, HttpContext httpContext, CancellationToken cancellationToken) =>
+            {
+                var started = Stopwatch.GetTimestamp();
+                await sender.Send(command, cancellationToken);
+
+                // El suelo de tiempo (R2, D2): con una cuenta la petición hace más trabajo que sin ella, y esa diferencia (medida: ~12 ms, inequívoca) la delataría aunque la respuesta sea idéntica.
+                // Un email mal formado no llega aquí (la validación lanza antes) y no hace falta: se decide sin consultar nada.
+                await ResponseTimeFloor.HoldAsync(started, timing.Value.ResponseFloor, cancellationToken);
+
+                httpContext.Response.Headers.CacheControl = "no-store";
+
+                return Results.Accepted();
+            })
+            .WithName("ForgotPassword")
+            .WithSummary("Pide restablecer la contraseña olvidada. Responde 202 sin cuerpo siempre (exista o no la cuenta); si existe, envía por correo un enlace de un solo uso que caduca a la hora.")
+            .RequireRateLimiting(RateLimiting.ForgotPassword);
+
+        // Spec 018: elegir la contraseña nueva con el token del correo. Anónima: la credencial es el token. Un token que no sirve (desconocido, caducado, usado o anulado) da SIEMPRE el mismo
+        // 400 password_reset.invalid; si sirve, cambia la contraseña, cierra todas las sesiones, quita el bloqueo y avisa por correo, todo o nada. No inicia sesión: se entra con el login de
+        // siempre (y con el segundo factor, si lo tiene).
+        group.MapPost("/reset-password", async (ResetPasswordCommand command, ISender sender, HttpContext httpContext, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(command, cancellationToken);
+
+                httpContext.Response.Headers.CacheControl = "no-store";
+
+                return Results.NoContent();
+            })
+            .WithName("ResetPassword")
+            .WithSummary("Restablece la contraseña con el token del enlace del correo. 204 si sirvió; 400 password_reset.invalid, siempre el mismo, si el token no sirve. Cierra todas las sesiones de la cuenta y no toca el segundo factor.")
+            .RequireRateLimiting(RateLimiting.ResetPassword);
     }
 }

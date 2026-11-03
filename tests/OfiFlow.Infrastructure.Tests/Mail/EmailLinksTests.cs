@@ -50,4 +50,44 @@ public class EmailLinksTests
     {
         Assert.Throws<InvalidOperationException>(() => For(baseUrl).AcceptInvitation("tok"));
     }
+
+    // ===== El enlace de restablecer la contraseña (spec 018 R5) =====
+
+    [Theory]
+    [InlineData("https://app.ofiflow.example")]
+    [InlineData("https://app.ofiflow.example:8443")]
+    [InlineData("http://localhost:4200")]
+    public void TheResetLink_StartsWithTheConfiguredBase_AndKeepsTheTokenInTheFragment(string baseUrl)
+    {
+        Assert.Equal($"{baseUrl}/auth/reset-password#token=abc-DEF_123", For(baseUrl).ResetPassword("abc-DEF_123"));
+    }
+
+    [Fact]
+    public void TheResetLink_IsADifferentPage_ThanTheInvitationLink()
+    {
+        var links = For("https://app.ofiflow.example");
+
+        Assert.NotEqual(links.AcceptInvitation("tok"), links.ResetPassword("tok"));
+        Assert.Contains("/auth/reset-password#", links.ResetPassword("tok"));
+        Assert.DoesNotContain("accept-invitation", links.ResetPassword("tok"));
+    }
+
+    [Fact]
+    public void TheResetToken_GoesAfterTheHash_NeverInTheQuery_AndIsEncoded()
+    {
+        var link = For("https://app.ofiflow.example").ResetPassword("a b&c=d#e?f/../g");
+
+        Assert.Equal("https://app.ofiflow.example/auth/reset-password#token=a%20b%26c%3Dd%23e%3Ff%2F..%2Fg", link);
+        Assert.Single(link, '#');
+        Assert.DoesNotContain('?', link);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void WithoutAConfiguredBase_TheResetLinkFailsLoudly(string? baseUrl)
+    {
+        Assert.Throws<InvalidOperationException>(() => For(baseUrl).ResetPassword("tok"));
+    }
 }

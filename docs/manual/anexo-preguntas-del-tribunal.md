@@ -120,13 +120,30 @@ Que el invitante lo ve y podría aceptarlo él mismo. Fue una decisión conscien
 Solo de `Email:LinkBaseUrl`, un valor que fija el despliegue y que se valida al arrancar (`https`, sin ruta). Si saliera de la cabecera `Host` u `Origin`, quien envía la petición decidiría adónde apunta el correo que recibe la víctima (*envenenamiento por cabecera Host*): el correo, al salir de OfiFlow, sería de fiar y llevaría a otra web. Hay un test que envía una invitación con `Host`, `Origin`, `Referer` y `X-Forwarded-Host` de un tercero y comprueba que el enlace no cambia. El token va en el **fragmento** (`#token=…`), que el navegador no envía al servidor. *(Cap. 6, ADR-020)*
 
 **¿Qué pasa si el correo no se puede enviar? ¿Y por qué no hay una cola?**
-La respuesta es un **502** (`invitation.email_not_sent`, sin el motivo) y **no se crea ninguna invitación**: se envía *antes* de guardar, así que no hay nada que deshacer ni una invitación pendiente que nadie recibió. No hay cola porque una cola persistida guardaría el correo, y ese correo **contiene el token en claro**, justo lo que se evita guardando solo el hash. Se hará con el primer correo no interactivo (un recordatorio), y entonces habrá que decidir cómo no guardar secretos en ella. *(ADR-020)*
+La respuesta es un **502** (`invitation.email_not_sent`, sin el motivo) y **no se crea ninguna invitación**: se envía *antes* de guardar, así que no hay nada que deshacer ni una invitación pendiente que nadie recibió. No hay cola porque una cola persistida guardaría el correo, y ese correo **contiene el token en claro**, justo lo que se evita guardando solo el hash. Se hará con el primer correo no interactivo (un recordatorio), y entonces habrá que decidir cómo no guardar secretos en ella. La spec 018 añadió una cola **en memoria**, sin persistencia, para el correo de recuperar la contraseña, justo por esa razón. *(ADR-020, ADR-021)*
 
 **¿Qué datos nuevos salen de OfiFlow con el correo?**
 La dirección del invitado y el nombre de la empresa (en el cuerpo) salen hacia el **proveedor de correo**, que pasa a ser un *encargado del tratamiento*: hay que resolver el contrato y dónde trata los datos al elegirlo. Ni la dirección, ni el token, ni el enlace aparecen en ningún log; los eventos `1407`/`1408` llevan solo Ids y la categoría del fallo, y hay un test con la API real que lo comprueba. *(Cap. 8, ADR-020)*
 
 **¿Cómo evitas que OfiFlow sirva para llenar de correo a un tercero?**
 El asunto es fijo y **nada de lo que escribe quien invita entra en el cuerpo** (solo el nombre de la empresa, el rol y la caducidad), así que no sirve para escribir un texto cualquiera; hay un máximo de 25 invitaciones pendientes por empresa, una pendiente por email y **20 invitaciones por hora y por persona**. Ese último límite lo consulta el endpoint y no el limitador global, porque este se evalúa antes de autenticar y solo conoce la IP (y una oficina entera comparte IP). *(Cap. 6 y 8, ADR-020)*
+
+### Recuperar la contraseña (spec 018)
+
+**¿Cómo se recupera una contraseña olvidada sin regalar la cuenta?**
+En tres pasos y negándole algo al atacante en cada uno. Pedir el enlace (`forgot-password`) responde **siempre `202` sin cuerpo**, exista la cuenta o no, esté bloqueada, suspendida, sea de un operador o el correo esté apagado, y **tarda siempre lo mismo** (un suelo de 250 ms); el correo no se envía en la petición sino que se **encola** y lo envía otro servicio. El token es de 256 bits, **solo se guarda su hash**, caduca a la hora y vale una vez. Al restablecer (`reset-password`) cambian a la vez, en **una sola confirmación**, la contraseña, el token (usado), **todas las sesiones** (cerradas) y el bloqueo (a cero); no abre sesión ni toca el segundo factor. *(Cap. 6, ADR-021)*
+
+**¿Por qué no basta con devolver siempre lo mismo?**
+Porque el tiempo también habla. Sin más, crear el token cuesta ≈ 12 ms más que no crearlo, y con cientos de muestras la diferencia se distingue con una prueba estadística (t de Welch ≈ 54). **Se midió, no se supuso**, y se añadió un suelo de 250 ms aplicado *después* del trabajo; con él, dos tandas dieron t = 1,47 y 0,96 (indistinguibles). **Límite honesto:** si el trabajo de una cuenta que existe se pasara del suelo, volvería la diferencia. *(Cap. 6 y 8, ADR-021)*
+
+**¿Por qué el correo de recuperación va a una cola en memoria?**
+Enviarlo en la petición tardaría segundos solo cuando la cuenta existe (otro oráculo de tiempo); guardarlo en una cola de la base de datos obligaría a guardar el token **en claro**, que es lo que el diseño evita. En memoria vive unos segundos. El coste: si la API se reinicia, lo pendiente se pierde y no hay reintentos; es aceptable porque pedirlo otra vez es gratis. *(ADR-021)*
+
+**Si roban la contraseña de alguien, ¿qué impide que el atacante se quede dentro tras recuperarla?**
+Que restablecer **cierra todas las sesiones** de la cuenta, en todas sus empresas, en la misma confirmación que cambia la contraseña: el atacante que ya tenía sesión la pierde y sus tokens de acceso mueren en la petición siguiente. Y si había segundo factor, ni siquiera con el buzón puede entrar: el restablecimiento no lo toca. *(Cap. 6, ADR-021)*
+
+**¿Y si dos personas usan el mismo enlace a la vez?**
+Gana una. El token lleva una columna de versión de fila; las dos preparan sus cambios, pero solo un `UPDATE` encuentra la fila como la leyó, y la perdedora falla al confirmar —sin cambiar la contraseña ni cerrar sesiones— y recibe el mismo `password_reset.invalid`. Se probó con una carrera de verdad contra SQL Server. *(Cap. 6)*
 
 ### El operador de la plataforma (spec 011)
 
@@ -163,7 +180,7 @@ EF Core parametriza las consultas; los analizadores de seguridad del compilador 
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, una `Content-Security-Policy` muy restrictiva y `Cross-Origin-Resource-Policy`; y HSTS fuera de desarrollo. La única excepción es la pantalla de Swagger, solo en desarrollo y solo en su ruta, con tests que impiden que se extienda. *(Cap. 8)*
 
 **¿Qué se registra y qué no?**
-Hay 32 eventos de seguridad con identificador estable (`1001`...`1608`). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
+Hay 45 eventos de seguridad con identificador estable (`1001`...`1608`). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
 
 **¿Cómo se manejan los secretos?**
 Fuera del repositorio. gitleaks escanea **todo el historial** en cada PR, GitHub bloquea el `push` si detecta uno conocido, y la aplicación **no arranca** si falta el secreto del token. *(Cap. 6, 10)*
@@ -214,8 +231,8 @@ Porque obliga a pensar antes (las decisiones difíciles se descubren al escribir
 
 **¿Qué NO está hecho? (la pregunta más importante)**
 Con honestidad y de lo más a lo menos preocupante:
-- **El segundo factor es opcional y el TOTP no resiste al *phishing*:** obligarlo para `Owner` y `Admin` exige pantallas, y las *passkeys* son el siguiente paso. Tampoco se puede cambiar ni recuperar la contraseña, y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma.
-- **El correo existe pero no está probado contra un proveedor real, y no hay cola, reintentos ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
+- **El segundo factor es opcional y el TOTP no resiste al *phishing*:** obligarlo para `Owner` y `Admin` exige pantallas, y las *passkeys* son el siguiente paso. La contraseña se puede recuperar (spec 018) pero no cambiar estando dentro, y **sin segundo factor quien controla el buzón de una cuenta controla la cuenta**; y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma.
+- **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 - **No hay alertas ni un registro de auditoría persistente**: los eventos se escriben, pero nadie los vigila.

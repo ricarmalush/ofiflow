@@ -34,6 +34,12 @@ public static class DependencyInjection
         services.AddScoped<TokenService>();
         services.AddScoped<ITokenService>(provider => provider.GetRequiredService<TokenService>());
         services.AddScoped<IRefreshTokenPurger>(provider => provider.GetRequiredService<TokenService>());
+
+        // Los tokens de restablecimiento de contraseña (spec 018): PasswordResetService es el único fichero que lee su tabla. Por ahora solo se ve como el purgador;
+        // pedir y consumir un token llegan con los casos de uso.
+        services.AddScoped<PasswordResetService>();
+        services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
+        services.AddScoped<IPasswordResetService>(provider => provider.GetRequiredService<PasswordResetService>());
         services.AddScoped<IPlatformTokenService, PlatformTokenService>();
 
         return services.AddAccountStore(configuration);
@@ -69,6 +75,16 @@ public static class DependencyInjection
             .ValidateOnStart();
 
         services.AddSingleton<IEmailLinks, EmailLinks>();
+
+        // La cola de correo en memoria y la tarea que la vacía (spec 018, D3, ADR-021): para los correos que no pueden esperar al servidor de correo dentro de la petición.
+        // Opciones validadas al arrancar; solo en la API (la consola de administración no recibe AddEmail).
+        services.AddOptions<EmailDispatchOptions>()
+            .Bind(configuration.GetSection(EmailDispatchOptions.SectionName))
+            .Validate(options => options.Validate() is null, "La sección EmailDispatch no vale: revisa QueueCapacity (entre 1 y 10000).")
+            .ValidateOnStart();
+        services.AddSingleton<EmailQueue>();
+        services.AddSingleton<IEmailQueue>(provider => provider.GetRequiredService<EmailQueue>());
+        services.AddHostedService<EmailDispatchService>();
 
         // Se lee la opción ya enlazada para decidir el transporte; la validación completa la hace el arranque.
         var isSmtp = Enum.TryParse<EmailProvider>(configuration.GetSection(EmailOptions.SectionName)[nameof(EmailOptions.Provider)], ignoreCase: true, out var provider) && provider == EmailProvider.Smtp;

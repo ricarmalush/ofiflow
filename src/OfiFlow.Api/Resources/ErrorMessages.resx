@@ -154,6 +154,9 @@
   <data name="invitation.email_not_sent" xml:space="preserve">
     <value>No se ha podido enviar el correo de la invitación, así que no se ha creado. Inténtalo de nuevo en unos minutos; si sigue fallando, avisa a quien administre OfiFlow.</value>
   </data>
+  <data name="password_reset.invalid" xml:space="preserve">
+    <value>El enlace para restablecer la contraseña no es válido, ha caducado o ya se ha usado. Pide uno nuevo.</value>
+  </data>
   <data name="mfa.already_enabled" xml:space="preserve">
     <value>El segundo factor ya está activado. Para cambiarlo, desactívalo primero.</value>
   </data>

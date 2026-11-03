@@ -139,6 +139,22 @@ public sealed partial class TokenService(
 
     public async Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {
+        var closed = await RevokeAllActiveAsync(userId, cancellationToken);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Un evento por petición, también con cero (R6): «alguien pidió cerrar todo y no había nada» es información.
+        LogAllSessionsClosed(logger, userId, closed);
+        return closed;
+    }
+
+    // Spec 018 D6: la misma revocación pero sin confirmar y sin evento. El restablecimiento de contraseña confirma UNA vez (contraseña, token y sesiones, todo o nada) y deja su propio
+    // evento con este recuento; si confirmara aquí, un fallo después dejaría las sesiones cerradas con la contraseña vieja (o al revés).
+    public Task<int> RevokeAllRefreshTokensWithoutSavingAsync(Guid userId, CancellationToken cancellationToken) =>
+        RevokeAllActiveAsync(userId, cancellationToken);
+
+    private async Task<int> RevokeAllActiveAsync(Guid userId, CancellationToken cancellationToken)
+    {
         // Solo las filas ACTIVAS de esta cuenta (R2): las ya revocadas conservan su fecha y las caducadas no cuentan como sesión. El
         // filtro es siempre por el UserId que llega del token, nunca por un dato de la petición (R1); RefreshTokens no tiene filtro
         // de empresa, así que este Where es lo único que separa a una cuenta de otra.
@@ -153,10 +169,6 @@ public sealed partial class TokenService(
             token.Revoke();
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        // Un evento por petición, también con cero (R6): «alguien pidió cerrar todo y no había nada» es información.
-        LogAllSessionsClosed(logger, userId, active.Count);
         return active.Count;
     }
 

@@ -27,6 +27,18 @@ public static partial class RateLimiting
 
     public const string AcceptInvitation = "auth-accept-invitation";
 
+    /// <summary>
+    /// Pedir el restablecimiento de la contraseña (anónimo y con envío de correo): <b>5 por hora y por IP</b> (spec 018 R4, D5). Frena a quien prueba muchos emails desde una IP; el límite
+    /// por cuenta (3 por hora, en silencio) protege al destinatario de un buzón inundado desde muchas IPs. Cubo propio: no gasta el de otras rutas.
+    /// </summary>
+    public const string ForgotPassword = "auth-forgot-password";
+
+    /// <summary>
+    /// Elegir la contraseña nueva con el token del correo (anónimo y caro: hashea con PBKDF2): <b>10 por hora y por IP</b> (spec 018 R4/D5). Más holgado que pedir el enlace porque una
+    /// persona se equivoca al teclear la contraseña, pero el token es de 256 bits y no se puede adivinar: el límite protege la CPU, no el secreto. Cubo propio.
+    /// </summary>
+    public const string ResetPassword = "auth-reset-password";
+
     /// <summary>Canjear el desafío del login en dos pasos (anónimo y con acceso a la base de datos): 10 por minuto y por IP (spec 010).</summary>
     public const string MfaVerify = "auth-mfa-verify";
 
@@ -57,6 +69,10 @@ public static partial class RateLimiting
             options.AddPolicy(AccountSessions, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
             // Anónima y cara (hashea una contraseña con PBKDF2): sin límite sería una vía de agotamiento de CPU (spec 009 D7).
             options.AddPolicy(AcceptInvitation, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
+            // Anónima y con envío de correo: sin límite sería una vía de abuso (llenar de correo a un tercero) y de enumeración (spec 018 R4).
+            options.AddPolicy(ForgotPassword, context => PerIp(context, permitLimit: 5, TimeSpan.FromHours(1)));
+            // Anónima y cara (PBKDF2 sobre la contraseña nueva): sin límite sería una vía de agotamiento de CPU (spec 018 R4).
+            options.AddPolicy(ResetPassword, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
             // Probar códigos de 6 dígitos sin freno sería la vía obvia contra el segundo factor: además del tope de 5 intentos por
             // desafío y del bloqueo por cuenta, un límite por IP para quien reparte los intentos entre muchos desafíos (spec 010, valores iniciales).
             options.AddPolicy(MfaVerify, context => PerIp(context, permitLimit: 10, TimeSpan.FromMinutes(1)));

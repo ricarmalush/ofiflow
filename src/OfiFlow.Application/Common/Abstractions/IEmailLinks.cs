@@ -11,4 +11,10 @@ public interface IEmailLinks
     /// no envía el fragmento al servidor, así que no acaba en logs de servidores ni de proxies ni en la cabecera <c>Referer</c>.
     /// </summary>
     string AcceptInvitation(string token);
+
+    /// <summary>
+    /// El enlace para restablecer la contraseña (spec 018 R5): <c>{LinkBaseUrl}/auth/reset-password#token=…</c>. Misma regla que <see cref="AcceptInvitation"/>: solo la
+    /// configuración del despliegue, nunca la petición, y el token en el <b>fragmento</b>, que el navegador no envía al servidor ni al <c>Referer</c>.
+    /// </summary>
+    string ResetPassword(string token);
 }

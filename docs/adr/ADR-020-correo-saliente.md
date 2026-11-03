@@ -156,8 +156,8 @@ Para que el correo llegue de verdad hace falta, **fuera del código**:
 
 ### Qué queda abierto para revisar más adelante
 
-- **Cola de envío persistida con reintentos**, cuando haya el primer correo no interactivo, y cómo no guardar secretos en ella.
-- **Recuperar contraseña** (spec 018) y **confirmar el email**: segundo y tercer uso del puerto.
+- **Cola de envío persistida con reintentos**, cuando haya el primer correo no interactivo, y cómo no guardar secretos en ella. *La spec 018 ([ADR-021](ADR-021-recuperacion-de-contrasena.md)) añadió una cola **en memoria**, sin persistencia ni reintentos, porque el token de restablecimiento no puede guardarse en claro; la persistida sigue abierta.*
+- ~~**Recuperar contraseña** (spec 018)~~ **Hecho** ([ADR-021](ADR-021-recuperacion-de-contrasena.md)), y **confirmar el email**: segundo (hecho) y tercer uso del puerto.
 - **Rebotes y quejas**, según el proveedor.
 - **Reenviar una invitación** como acción propia (hoy: revocar y volver a invitar).
 - **HTML con marca** para presupuestos y facturas, y **adjuntos**.
@@ -174,4 +174,5 @@ Para que el correo llegue de verdad hace falta, **fuera del código**:
 - Resuelve: la nota de ADR-013 («cuando exista el email, el token deja de devolverse y se envía») y su riesgo aceptado («el invitante conoce el token»).
 - Amplía: ADR-009 (eventos `1407` y `1408`; la dirección del invitado, un dato personal, sale hacia un encargado del tratamiento y sigue sin aparecer en ningún registro; límite de peticiones que no es por IP).
 - Relacionada con: ADR-017 (el limitador va antes de autenticar, y por eso el límite por persona no es una política suya), ADR-011 (código de error nuevo y estado 502), ADR-008 (servidor SMTP de pruebas en contenedor, como SQL Server), ADR-010 (versiones fijadas y auditoría de dependencias), ADR-012 (sin permisos nuevos: invitar sigue exigiendo `Users.Manage`).
-- Prepara: la spec 018 (recuperar contraseña) y los avisos de presupuestos y facturas.
+- Ampliada por: la [ADR-021](ADR-021-recuperacion-de-contrasena.md) (spec 018): segundo uso del puerto (recuperar la contraseña) y la **cola en memoria** con su servicio de envío, que cierra la restricción de «sin cola» solo para el correo cuyo secreto no puede guardarse en claro.
+- Prepara: los avisos de presupuestos y facturas y la confirmación de email.

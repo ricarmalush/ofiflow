@@ -48,6 +48,44 @@ public static class SecurityEventIds
     public const int RefreshTokensPurged = 1011;
 
     /// <summary>
+    /// El servicio de purga borró tokens de restablecimiento de contraseña caducados hace más del margen (spec 018 R18). Como <see cref="RefreshTokensPurged"/>: una vez por
+    /// ciclo y solo si borró algo, con el recuento y la fecha de corte; nunca hashes ni Ids de cuenta (es mantenimiento de la tabla).
+    /// </summary>
+    public const int PasswordResetTokensPurged = 1012;
+
+    /// <summary>
+    /// El servicio que envía el correo de la cola no pudo entregar un mensaje (spec 018 R16). Lleva la <b>categoría</b> del fallo (tiempo agotado, credenciales, rechazo, servidor no
+    /// disponible); <b>nunca</b> la dirección, el texto del servidor ni el contenido del mensaje (puede llevar un enlace con un token). Es un <c>Warning</c>: falla un servicio
+    /// externo, no el código. Varios seguidos con <c>Authentication</c> o <c>Unavailable</c> son la señal de que el proveedor está mal configurado o caído.
+    /// </summary>
+    public const int EmailDispatchFailed = 1013;
+
+    /// <summary>
+    /// Alguien pidió restablecer una contraseña (spec 018). Lleva si la cuenta existía y su UserId, <b>solo en el registro</b> (un analista lo necesita; la respuesta HTTP es la misma exista o no, R1).
+    /// <b>Nunca</b> el email, el token ni el enlace. Una ráfaga con «la cuenta existe: False» desde una IP es alguien probando emails.
+    /// </summary>
+    public const int PasswordResetRequested = 1014;
+
+    /// <summary>
+    /// Se pidió restablecer la contraseña de una cuenta que ya había llegado al límite de la hora (spec 018 R4). No se creó token ni se envió correo, y a quien lo pidió no se le dijo
+    /// (si no, el límite sería un oráculo). Lleva el UserId. Una ráfaga de estos sobre una cuenta es alguien intentando inundar el buzón de una víctima desde muchas IPs.
+    /// </summary>
+    public const int PasswordResetThrottled = 1015;
+
+    /// <summary>
+    /// Una contraseña se restableció con el token del correo (spec 018 R9). Lleva el UserId y cuántas sesiones se cerraron. <b>Nunca</b> la contraseña, el token ni el email. Sin que el
+    /// dueño lo pidiera, es la señal de un buzón comprometido: de ahí el correo de aviso (R12) y que este evento se pueda cruzar con un inicio de sesión posterior.
+    /// </summary>
+    public const int PasswordResetCompleted = 1016;
+
+    /// <summary>
+    /// Se intentó restablecer una contraseña con un token que no sirvió (spec 018 R8). Lleva el <b>motivo real</b> (<c>Unknown</c>, <c>Expired</c>, <c>UsedOrReplaced</c>,
+    /// <c>PlatformOperator</c>, <c>AccountGone</c> o <c>Concurrent</c>) y el UserId si se encontró: la respuesta HTTP es el mismo error para todos. <b>Nunca</b> el token. Una ráfaga de
+    /// <c>Unknown</c> desde una IP es alguien probando tokens.
+    /// </summary>
+    public const int PasswordResetRejected = 1017;
+
+    /// <summary>
     /// Una persona cerró <b>una sesión concreta</b> suya (spec 016 R17), distinta de «cerrar todas» (<see cref="AllSessionsClosed"/>) y de salir de la
     /// propia (<see cref="SessionClosed"/>). Solo se registra cuando de verdad cerró algo. Lleva el UserId y si era la sesión actual; <b>nunca</b> el Id de la
     /// sesión cerrada, ni tokens ni hashes (una ráfaga de estos del mismo UserId seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño).

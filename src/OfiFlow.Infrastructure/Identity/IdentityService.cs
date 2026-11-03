@@ -78,6 +78,9 @@ public sealed partial class IdentityService(
         // El segundo factor (spec 010 R20): ninguna de estas tablas tiene clave foránea hacia la cuenta (como
         // RefreshToken), así que no se borrarían solas y quedarían filas huérfanas con secretos de alguien que ya no existe.
         await MfaStore.RemoveAllAsync(dbContext, id, cancellationToken);
+
+        // Los tokens de restablecimiento (spec 018): tampoco tienen clave foránea hacia la cuenta.
+        await PasswordResetService.RemoveAllAsync(dbContext, id, cancellationToken);
     }
 
 
@@ -188,6 +191,27 @@ public sealed partial class IdentityService(
         await lockout.ReleaseAsync(userId, cancellationToken);
 
         return true;
+    }
+
+    public async Task<string?> SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken)
+    {
+        // Con seguimiento, a propósito: el cambio se confirma con el SaveChanges del caso de uso, junto con el token consumido y las sesiones cerradas (todo o nada). Por eso
+        // tampoco usa AccountLockout.ClearAsync, que escribe al instante con ExecuteUpdate: aquí el contador y el bloqueo se ponen a cero EN LA MISMA confirmación.
+        var user = await dbContext.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        if (user is null)
+        {
+            return null;
+        }
+
+        // El mismo PBKDF2 con sal del registro. Un hash nuevo siempre: la contraseña vieja deja de valer aunque la nueva fuera igual (nadie puede comprobarlo desde fuera).
+        user.PasswordHash = PasswordHasher.HashPassword(user, newPassword);
+
+        // R9d: quien demuestra que controla el buzón no es quien probaba contraseñas, y una cuenta bloqueada que restablece debe poder entrar de inmediato.
+        user.AccessFailedCount = 0;
+        user.LockoutEnd = null;
+
+        return user.Email;
     }
 
     /// <summary>

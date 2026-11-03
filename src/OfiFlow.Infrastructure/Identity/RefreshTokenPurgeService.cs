@@ -8,7 +8,7 @@ namespace OfiFlow.Infrastructure.Identity;
 
 /// <summary>
 /// El <b>primer servicio en segundo plano</b> de OfiFlow (spec 016, ADR-019): cada <see cref="RefreshTokenPurgeOptions.Interval"/> borra, por lotes,
-/// los refresh tokens que caducaron hace más del margen. La tabla se consulta en cada petición (spec 015) y cada renovación añade una fila,
+/// los refresh tokens (y, desde la spec 018, los tokens de restablecimiento de contraseña) que caducaron hace más del margen. La tabla se consulta en cada petición (spec 015) y cada renovación añade una fila,
 /// así que sin esto crecería sin límite.
 /// </summary>
 /// <remarks>
@@ -59,30 +59,52 @@ internal sealed partial class RefreshTokenPurgeService(
         }
     }
 
-    /// <summary>Un ciclo entero: lotes hasta que no queda nada que borrar. Público para el test, que lo llama sin esperar al temporizador.</summary>
-    /// <returns>Cuántas filas borró en total.</returns>
+    /// <summary>
+    /// Un ciclo entero: lotes hasta que no queda nada que borrar, primero de refresh tokens y después de tokens de restablecimiento de contraseña (spec 018 R18,
+    /// D11: una sola tarea de mantenimiento, el mismo margen y el mismo borrado por lotes). Público para el test, que lo llama sin esperar al temporizador.
+    /// </summary>
+    /// <returns>Cuántas filas borró en total, de las dos tablas.</returns>
     internal async Task<int> RunCycleAsync(CancellationToken cancellationToken)
     {
         // R1: caducadas hace MÁS de RetentionDays. El corte lo calcula este ciclo con la hora de ahora; el borrado solo compara con él.
         var cutoff = timeProvider.GetUtcNow().UtcDateTime - TimeSpan.FromDays(_options.RetentionDays);
+
+        var refreshTokens = await PurgeInBatchesAsync<IRefreshTokenPurger>((purger, size, token) => purger.PurgeBatchAsync(cutoff, size, token), cancellationToken);
+        if (refreshTokens > 0)
+        {
+            // R5: un evento por ciclo que borró algo; un ciclo sin nada no deja ninguno.
+            LogPurged(logger, refreshTokens, cutoff);
+        }
+
+        var resetTokens = await PurgeInBatchesAsync<IPasswordResetTokenPurger>((purger, size, token) => purger.PurgeBatchAsync(cutoff, size, token), cancellationToken);
+        if (resetTokens > 0)
+        {
+            LogResetTokensPurged(logger, resetTokens, cutoff);
+        }
+
+        return refreshTokens + resetTokens;
+    }
+
+    // Lotes de UNA tabla hasta que un lote sale incompleto (nada más por debajo del corte). Un ámbito por lote: el contexto de base de datos no acumula
+    // rastreo ni conexiones entre lotes.
+    private async Task<int> PurgeInBatchesAsync<TPurger>(Func<TPurger, int, CancellationToken, Task<int>> purgeBatch, CancellationToken cancellationToken)
+        where TPurger : notnull
+    {
         var total = 0;
 
         while (true)
         {
-            // Un ámbito por lote: el contexto de base de datos no acumula rastreo ni conexiones entre lotes.
             int deleted;
             using (var scope = scopeFactory.CreateScope())
             {
-                deleted = await scope.ServiceProvider.GetRequiredService<IRefreshTokenPurger>()
-                    .PurgeBatchAsync(cutoff, _options.BatchSize, cancellationToken);
+                deleted = await purgeBatch(scope.ServiceProvider.GetRequiredService<TPurger>(), _options.BatchSize, cancellationToken);
             }
 
             total += deleted;
 
-            // Un lote incompleto significa que ya no queda nada por debajo del corte.
             if (deleted < _options.BatchSize)
             {
-                break;
+                return total;
             }
 
             if (_options.PauseBetweenBatches > TimeSpan.Zero)
@@ -90,19 +112,15 @@ internal sealed partial class RefreshTokenPurgeService(
                 await Task.Delay(_options.PauseBetweenBatches, timeProvider, cancellationToken);
             }
         }
-
-        if (total > 0)
-        {
-            // R5: un evento por ciclo que borró algo; un ciclo sin nada no deja ninguno.
-            LogPurged(logger, total, cutoff);
-        }
-
-        return total;
     }
 
     [LoggerMessage(EventId = SecurityEventIds.RefreshTokensPurged, Level = LogLevel.Information,
         Message = "Purga de refresh tokens: {DeletedCount} filas borradas (caducadas antes de {Cutoff:O})")]
     private static partial void LogPurged(ILogger logger, int deletedCount, DateTime cutoff);
+
+    [LoggerMessage(EventId = SecurityEventIds.PasswordResetTokensPurged, Level = LogLevel.Information,
+        Message = "Purga de tokens de restablecimiento: {DeletedCount} filas borradas (caducadas antes de {Cutoff:O})")]
+    private static partial void LogResetTokensPurged(ILogger logger, int deletedCount, DateTime cutoff);
 
     // Sin EventId de seguridad: es mantenimiento. Un fallo aquí lo ve quien mire el registro, con su excepción.
     [LoggerMessage(Level = LogLevel.Error, Message = "Falló un ciclo de la purga de refresh tokens; se reintentará en el ciclo siguiente.")]

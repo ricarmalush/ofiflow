@@ -111,7 +111,7 @@ El servidor tiene que **calcular** el código, así que no puede guardar solo un
 - El secreto TOTP y los códigos de recuperación nunca están en claro en la base de datos, ni se devuelven dos veces, ni se registran.
 
 ### Qué queda abierto para revisar más adelante
-- **NEXT:** MFA obligatorio para `Owner`/`Admin` (con frontend); passkeys/WebAuthn; bloqueo progresivo; desbloqueo manual; rotación de la clave de cifrado; claim `amr`; recuperar y cambiar contraseña (que también cerrará sesiones).
+- **NEXT:** MFA obligatorio para `Owner`/`Admin` (con frontend); passkeys/WebAuthn; bloqueo progresivo; desbloqueo manual; rotación de la clave de cifrado; claim `amr`; ~~recuperar~~ y cambiar contraseña (que también cerrará sesiones). **Recuperar la contraseña se hizo en la spec 018 ([ADR-021](ADR-021-recuperacion-de-contrasena.md)); cambiarla estando dentro sigue siendo NEXT (spec 019).**
 - **LATER:** "recordar este dispositivo"; avisos por email de bloqueos y reinicios.
 
 ---
@@ -137,3 +137,4 @@ Implementada por la spec 010 (bloques 1 a 7), con 1192 tests en verde. Lo que la
 - Cierra, al aceptarse: los NEXT de ADR-009 "Lockout por cuenta" y "Enumeración de usuarios: igualar el tiempo del login".
 - Afecta a: ADR-009 (eventos `1005`, `1006` y `1501`–`1507` en el catálogo de R5; `Mfa:EncryptionKey` entre los secretos de R8).
 - Es requisito de, y lo reutiliza: la spec 011 (ADR-016, panel de operador de la plataforma). El segundo factor es ahí **obligatorio sin excepción**: el alta lo enrola y lo confirma en el mismo acto, el login de plataforma siempre devuelve un desafío, y el desafío lleva una audiencia para que no cruce de mundo. El bloqueo de cuenta protege también al operador.
+- Ampliada por: la [ADR-021](ADR-021-recuperacion-de-contrasena.md) (spec 018): restablecer la contraseña **reinicia el contador de intentos y el bloqueo de cuenta** (quien demuestra que controla el buzón no es quien probaba contraseñas) y **no toca el segundo factor** (con él, controlar el buzón basta para elegir una contraseña, no para entrar). Hace más urgente el NEXT de **obligar el MFA a `Owner` y `Admin`**: sin segundo factor, quien lee el buzón controla la cuenta.

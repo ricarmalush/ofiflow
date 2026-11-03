@@ -9,7 +9,11 @@ namespace OfiFlow.Infrastructure.Mail;
 /// </summary>
 internal sealed class EmailLinks(IOptions<EmailOptions> options) : IEmailLinks
 {
-    public string AcceptInvitation(string token)
+    public string AcceptInvitation(string token) => Build("/auth/accept-invitation", token);
+
+    public string ResetPassword(string token) => Build("/auth/reset-password", token);
+
+    private string Build(string path, string token)
     {
         var baseUrl = options.Value.LinkBaseUrl;
         if (string.IsNullOrWhiteSpace(baseUrl))
@@ -20,6 +24,6 @@ internal sealed class EmailLinks(IOptions<EmailOptions> options) : IEmailLinks
 
         // El token es URL-safe (Base64 sin relleno), pero se codifica igualmente: un enlace nunca debe depender de que el contenido del token sea inofensivo.
         // En el fragmento (#), no en la consulta (?): el navegador no lo envía al servidor ni a la cabecera Referer.
-        return $"{baseUrl}/auth/accept-invitation#token={Uri.EscapeDataString(token)}";
+        return $"{baseUrl}{path}#token={Uri.EscapeDataString(token)}";
     }
 }

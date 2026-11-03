@@ -1,6 +1,6 @@
 # Spec — 017-email-invitations
 
-**Estado:** Aprobada. Decisiones D1–D13 aprobadas el 2026-11-02 tal como estaban escritas
+**Estado:** Implementada (2026-11-02). Decisiones D1–D13 aprobadas el 2026-11-02 tal como estaban escritas
 **Fecha:** 2026-11-02
 **Bounded Context:** Identity / Tenancy (invitaciones) y un puerto común de correo
 **Depende de:** spec 009 y ADR-013 (la invitación con token de un solo uso y la nota «cuando exista el email, el token deja de devolverse y se envía»), ADR-009 (datos personales fuera de los logs, eventos de seguridad, límite de peticiones), ADR-017 (la lista cerrada de orígenes del frontend), ADR-008 (tests de integración con contenedores)
