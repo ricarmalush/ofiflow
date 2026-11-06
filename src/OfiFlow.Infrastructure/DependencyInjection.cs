@@ -11,6 +11,7 @@ using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Application.Identity;
 using OfiFlow.Infrastructure.Identity;
+using OfiFlow.Infrastructure.Legal;
 using OfiFlow.Infrastructure.Mail;
 using OfiFlow.Infrastructure.Persistence;
 using OfiFlow.Infrastructure.Persistence.Interceptors;
@@ -40,6 +41,19 @@ public static class DependencyInjection
         services.AddScoped<PasswordResetService>();
         services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
         services.AddScoped<IPasswordResetService>(provider => provider.GetRequiredService<PasswordResetService>());
+
+        // Los registros pendientes de confirmar (spec 021): PendingRegistrationService es el único fichero que lee su tabla. Un solo objeto por petición visto por sus dos contratos: el de
+        // Application (pedir y canjear) y el de la purga (interno).
+        services.AddScoped<PendingRegistrationService>();
+        services.AddScoped<IPendingRegistrationService>(provider => provider.GetRequiredService<PendingRegistrationService>());
+        services.AddScoped<IPendingRegistrationPurger>(provider => provider.GetRequiredService<PendingRegistrationService>());
+
+        // La versión vigente de las condiciones de uso (spec 021 R8, D7): validada al arrancar. Vacía, el registro está cerrado.
+        services.AddOptions<LegalOptions>()
+            .Bind(configuration.GetSection(LegalOptions.SectionName))
+            .Validate(options => options.Validate() is null, "La sección Legal no vale: revisa TermsVersion (una etiqueta corta, como 2026-11).")
+            .ValidateOnStart();
+        services.AddSingleton<ILegalTerms, LegalTerms>();
         services.AddScoped<IPlatformTokenService, PlatformTokenService>();
 
         return services.AddAccountStore(configuration);

@@ -38,6 +38,12 @@ try
         .Bind(builder.Configuration.GetSection(ForgotPasswordTimingOptions.SectionName))
         .Validate(options => options.Validate() is null, "La sección ForgotPassword no vale: revisa ResponseFloor (entre 0 y 5 segundos).")
         .ValidateOnStart();
+
+    // Spec 021 R2: el suelo de tiempo de «pedir el registro», con su propia opción. Se valida al arrancar igual que el anterior.
+    builder.Services.AddOptions<RegistrationTimingOptions>()
+        .Bind(builder.Configuration.GetSection(RegistrationTimingOptions.SectionName))
+        .Validate(options => options.Validate() is null, "La sección Registration no vale: revisa ResponseFloor (entre 0 y 5 segundos).")
+        .ValidateOnStart();
     builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
 
     // ADR-017: CORS. El navegador solo deja que una web de otro origen (el frontend) lea las respuestas de la API si la

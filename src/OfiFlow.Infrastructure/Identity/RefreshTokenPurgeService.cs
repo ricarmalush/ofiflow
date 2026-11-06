@@ -60,10 +60,10 @@ internal sealed partial class RefreshTokenPurgeService(
     }
 
     /// <summary>
-    /// Un ciclo entero: lotes hasta que no queda nada que borrar, primero de refresh tokens y después de tokens de restablecimiento de contraseña (spec 018 R18,
+    /// Un ciclo entero: lotes hasta que no queda nada que borrar, primero de refresh tokens, después de tokens de restablecimiento de contraseña y por último de registros pendientes (specs 018 y 021 R18,
     /// D11: una sola tarea de mantenimiento, el mismo margen y el mismo borrado por lotes). Público para el test, que lo llama sin esperar al temporizador.
     /// </summary>
-    /// <returns>Cuántas filas borró en total, de las dos tablas.</returns>
+    /// <returns>Cuántas filas borró en total, de las tres tablas.</returns>
     internal async Task<int> RunCycleAsync(CancellationToken cancellationToken)
     {
         // R1: caducadas hace MÁS de RetentionDays. El corte lo calcula este ciclo con la hora de ahora; el borrado solo compara con él.
@@ -82,7 +82,14 @@ internal sealed partial class RefreshTokenPurgeService(
             LogResetTokensPurged(logger, resetTokens, cutoff);
         }
 
-        return refreshTokens + resetTokens;
+        // Spec 021 R18: los registros pendientes caducados (datos personales de gente que quizá nunca llegó a tener cuenta). El mismo margen y el mismo borrado por lotes.
+        var pendingRegistrations = await PurgeInBatchesAsync<IPendingRegistrationPurger>((purger, size, token) => purger.PurgeBatchAsync(cutoff, size, token), cancellationToken);
+        if (pendingRegistrations > 0)
+        {
+            LogPendingRegistrationsPurged(logger, pendingRegistrations, cutoff);
+        }
+
+        return refreshTokens + resetTokens + pendingRegistrations;
     }
 
     // Lotes de UNA tabla hasta que un lote sale incompleto (nada más por debajo del corte). Un ámbito por lote: el contexto de base de datos no acumula
@@ -121,6 +128,11 @@ internal sealed partial class RefreshTokenPurgeService(
     [LoggerMessage(EventId = SecurityEventIds.PasswordResetTokensPurged, Level = LogLevel.Information,
         Message = "Purga de tokens de restablecimiento: {DeletedCount} filas borradas (caducadas antes de {Cutoff:O})")]
     private static partial void LogResetTokensPurged(ILogger logger, int deletedCount, DateTime cutoff);
+
+    // Solo cuántos y el corte: nunca emails ni nombres (spec 021 R20).
+    [LoggerMessage(EventId = SecurityEventIds.PendingRegistrationsPurged, Level = LogLevel.Information,
+        Message = "Purga de registros pendientes: {DeletedCount} filas borradas (caducadas antes de {Cutoff:O})")]
+    private static partial void LogPendingRegistrationsPurged(ILogger logger, int deletedCount, DateTime cutoff);
 
     // Sin EventId de seguridad: es mantenimiento. Un fallo aquí lo ve quien mire el registro, con su excepción.
     [LoggerMessage(Level = LogLevel.Error, Message = "Falló un ciclo de la purga de refresh tokens; se reintentará en el ciclo siguiente.")]

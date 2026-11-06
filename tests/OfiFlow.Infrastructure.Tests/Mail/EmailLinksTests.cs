@@ -90,4 +90,68 @@ public class EmailLinksTests
     {
         Assert.Throws<InvalidOperationException>(() => For(baseUrl).ResetPassword("tok"));
     }
+
+    // ===== El enlace de completar el registro (spec 021 R4) =====
+
+    [Theory]
+    [InlineData("https://app.ofiflow.example")]
+    [InlineData("https://app.ofiflow.example:8443")]
+    [InlineData("http://localhost:4200")]
+    public void TheRegistrationLink_StartsWithTheConfiguredBase_AndKeepsTheTokenInTheFragment(string baseUrl)
+    {
+        Assert.Equal($"{baseUrl}/auth/complete-registration#token=abc-DEF_123", For(baseUrl).CompleteRegistration("abc-DEF_123"));
+    }
+
+    [Fact]
+    public void TheRegistrationLink_IsADifferentPage_ThanTheOtherTwoTokenLinks()
+    {
+        var links = For("https://app.ofiflow.example");
+
+        Assert.NotEqual(links.CompleteRegistration("tok"), links.AcceptInvitation("tok"));
+        Assert.NotEqual(links.CompleteRegistration("tok"), links.ResetPassword("tok"));
+        Assert.Contains("/auth/complete-registration#", links.CompleteRegistration("tok"));
+    }
+
+    [Fact]
+    public void TheRegistrationToken_GoesAfterTheHash_NeverInTheQuery_AndIsEncoded()
+    {
+        var link = For("https://app.ofiflow.example").CompleteRegistration("a b&c=d#e?f/../g");
+
+        Assert.Equal("https://app.ofiflow.example/auth/complete-registration#token=a%20b%26c%3Dd%23e%3Ff%2F..%2Fg", link);
+        Assert.Single(link, '#');
+        Assert.DoesNotContain('?', link);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void WithoutAConfiguredBase_TheRegistrationLinkFailsLoudly(string? baseUrl)
+    {
+        Assert.Throws<InvalidOperationException>(() => For(baseUrl).CompleteRegistration("tok"));
+    }
+
+    // ===== El enlace del aviso «ya tienes una cuenta» (spec 021 R6) =====
+
+    [Theory]
+    [InlineData("https://app.ofiflow.example")]
+    [InlineData("http://localhost:4200")]
+    public void TheForgotPasswordLink_IsThePageWithoutAnyToken(string baseUrl)
+    {
+        var link = For(baseUrl).ForgotPassword();
+
+        Assert.Equal($"{baseUrl}/auth/forgot-password", link);
+        // Es la pantalla de recuperar la contraseña, que no concede nada por sí sola: ni fragmento ni consulta.
+        Assert.DoesNotContain('#', link);
+        Assert.DoesNotContain('?', link);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void WithoutAConfiguredBase_TheForgotPasswordLinkFailsLoudly(string? baseUrl)
+    {
+        Assert.Throws<InvalidOperationException>(() => For(baseUrl).ForgotPassword());
+    }
 }

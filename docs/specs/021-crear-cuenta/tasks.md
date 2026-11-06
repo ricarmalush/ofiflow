@@ -1,0 +1,112 @@
+# Tasks — 021-crear-cuenta
+
+**Spec relacionada:** [./spec.md](./spec.md)
+**ADR relacionadas:** [ADR-007](../../adr/ADR-007-identity-refresh-token.md), [ADR-009](../../adr/ADR-009-seguridad-base.md), [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) y [ADR-020](../../adr/ADR-020-correo-saliente.md) (se anotan «Ampliada por ADR-023»), [ADR-019](../../adr/ADR-019-purga-de-sesiones-y-datos-del-dispositivo.md) (la purga), [ADR-021](../../adr/ADR-021-recuperacion-de-contrasena.md) (el patrón que se repite) y la nueva **ADR-023** («Crear una cuenta: sin cuenta hasta abrir el enlace»)
+**Estado general:** En curso (spec aprobada el 2026-11-06; bloque 1 hecho y verificado, pendiente de commit)
+
+---
+
+## Convención
+
+- Cada tarea completable y verificable en una sesión.
+- Se marca `[x]` solo cuando cumple la Definición de «Done»: compila, tests en verde, mutaciones detectadas, comprobado en vivo y manual al día.
+- **Nivel de riesgo de las pruebas: alto.** Es un flujo anónimo, que envía correo, que puede revelar si un email tiene cuenta (por el contenido y **por el tiempo**) y que crea una empresa y su `Owner`. Se aplica la batería completa: respuestas idénticas byte a byte, **medición estadística del tiempo**, carreras reales contra SQL Server, escaneos de arquitectura y mutaciones sobre todo lo que decide.
+- Las mutaciones se hacen a mano sobre el código real, con copia de seguridad y **`touch` al restaurar**; solo cuenta como «detectada» una con tests en rojo (`[FAIL]`); un test colgado o un error de compilación no cuentan. Los guiones van **en ficheros** (nunca en `node -e` con comillas invertidas dentro).
+- Verificación en vivo con la receta de siempre (base desechable, API real, script fuera del repositorio) y **Mailpit** para leer los correos; en el frontend, `ng serve` y el navegador integrado.
+- Las suites se lanzan **por proyecto, una detrás de otra**.
+- **Los bloques 1 a 3 solo añaden** (el registro viejo sigue funcionando y los tests no se tocan): cada uno termina en verde y se puede entregar solo. **El bloque 4 es el único que rompe un contrato** (retira `POST /auth/register`) y el más laborioso.
+- **Nombres en la ruta:** hasta el bloque 4 conviven `POST /auth/register` (viejo) y `POST /auth/registration` (nuevo); las políticas de límite se llaman distinto (`auth-register` y `auth-registration`).
+
+---
+
+## Bloques
+
+### Bloque 1 — La base: pendientes, condiciones y purga (Domain + Application + Infrastructure)
+- [x] **Domain.** `PendingRegistration` (cuenta global, sin `TenantId`): `Id`, `Email`, `CompanyName`, `UserName`, `TermsVersion`, `TermsAcceptedAt`, `TokenHash`, `CreatedAt`, `ExpiresAt`, `UsedAt?`; `Create`, `IsUsableAt`, `Consume` (un solo error `registration.invalid` para usado, caducado o anulado) e `Invalidate` (anula conservando la fecha del primer uso). Longitudes máximas con las **constantes que ya usa EF** (`Tenant.NameMaxLength`, `User.NameMaxLength`, `Email.MaxLength`) y una nueva para la versión de las condiciones.
+- [x] **`User`** gana `TermsVersion?` y `TermsAcceptedAt?` (con una forma de crearlo que las recibe); las cuentas existentes se quedan en `null` (spec, R19).
+- [x] **Errores nuevos** en el diccionario (el test del diccionario completo los exige): `registration.invalid` (400) y `registration.terms_not_accepted` (error de campo).
+- [x] **Infrastructure.** Configuración de EF y migración **`AddPendingRegistrations`**: tabla con índice único por `TokenHash`, **índice único filtrado por el email mientras `UsedAt` es nulo** (un solo pendiente vigente, R5), índice por `ExpiresAt` para la purga, columna de versión de fila, **sin clave foránea**; y las dos columnas nuevas de `User`. Revisar el SQL que genera.
+- [x] **Opciones.** `Legal:TermsVersion` (la versión vigente; vacía = registro cerrado) y `Registration:ResponseFloor` (por defecto 250 ms, de 0 a 5 s, **validada al arrancar** como la de la spec 018).
+- [x] **Puerto y servicio.** `IPendingRegistrationService` (Application) y su implementación en Infrastructure, **el único fichero que lee la tabla**: `IssueAsync` (anula el anterior, aplica el límite de 3 por hora y por email **en silencio**, devuelve el token en claro solo para encolarlo) y `ConsumeAsync` (busca por el hash, rechaza con el **motivo real** y marca el canje **sin confirmar**, como `PasswordResetService`). La tabla va a la **lista de entidades globales** del test de arquitectura con su motivo.
+- [x] **Correos.** `IEmailLinks.CompleteRegistration(token)` (la misma regla que `AcceptInvitation` y `ResetPassword`: solo la configuración, token en el fragmento y codificado; el test de arquitectura que vigila `#token=` lo cubre) y dos plantillas de función pura, de texto fijo y con CRLF: `RegistrationEmail` (el enlace) y `AccountExistsEmail` (el aviso, con un enlace **sin token** a recuperar la contraseña).
+- [x] **Purga.** `RefreshTokenPurgeService` borra también los pendientes caducados hace más de 7 días, por lotes y con su evento (solo si borró algo, sin emails ni Ids de cuenta); y el total que devuelve la purga los cuenta.
+- [x] **Eventos de seguridad.** Constantes en la familia `10xx` a continuación de `1017` (pedido, pedido limitado, completado, rechazado y purga) con su doc; los números se fijan aquí.
+- [x] **Tests.** *Domain:* la entidad (vigencia, **el corte exacto**, consumo, anulación, validaciones de `Create`). *Infrastructure (SQL Server real):* el esquema (**sin clave foránea**, hash único, **un solo vigente por email**, índices), dos canjes a la vez (**gana uno**), la purga con el corte exacto y el orden, el límite de 3 por hora en el borde exacto, y que el email se guarda normalizado. *Application:* las plantillas (asunto literal, CRLF, que solo cambia el enlace, sin datos personales). Dictionary y arquitectura al día.
+  - **Resultado (2026-11-06):** Domain 339, Application 875, Infrastructure 767, Api 697 = **2.678 tests en verde**, lanzados por proyecto. Nuevos: `PendingRegistrationTests` y `UserTermsTests` (Domain), `RegistrationEmailsTests` (Application), `PendingRegistrationIssueTests` (17), `PendingRegistrationConsumeTests` (12), `PendingRegistrationStoreTests` (20), `LegalTermsTests` (30), `PendingRegistrationWiringTests` (10) y ampliaciones de `EmailLinksTests` (Infrastructure), `RegistrationTimingOptionsTests` (9, Api).
+  - **Contra SQL Server real, dos riesgos descartados con tests:** el orden UPDATE/INSERT del `IssueAsync` con el índice único filtrado **no** da problemas (incluido el caso de un pendiente caducado sin canjear, que sigue con `UsedAt` nulo), y dos canjes a la vez con dos contextos reales dejan ganar a uno y el otro recibe `DbUpdateConcurrencyException`.
+- [x] **Mutaciones:** caducidad de 25 horas, caducar en el instante exacto, un usado que sigue valiendo, consumir sin comprobar, anular que pisa la fecha, el límite de 3 en 4, la purga que borra lo reciente, el token en claro en la tabla.
+  - **Resultado:** 77 mutaciones a mano (`mutate021b1.js`), **75 detectadas** y 2 equivalentes. Una superviviente era un **hueco real** de un test: el de cableado de `ValidateOnStart` de la sección `Legal` era tan flojo que se cumplía con las otras secciones; se sustituyó por uno de comportamiento (`IStartupValidator`, que es lo que ejecuta el arranque, y que exige que falle **esa** sección) y la mutación se detecta. Las dos equivalentes: (a) buscar por el email sin pasarlo a mayúsculas, porque la collation por defecto de SQL Server no distingue mayúsculas y lo guardado ya va en mayúsculas (el código sigue sin depender de la collation); (b) quitar `IsRequired()` de `Email`, porque el campo es `string` no nulo con tipos anulables activos y EF ya lo infiere obligatorio.
+  - **Limpieza durante el bloque:** se quitó de `ConsumeAsync` un bucle que anulaba «el resto de vigentes» del mismo email: era código muerto, porque el índice único filtrado hace imposible que existan dos vigentes con ese email, y costaba una consulta de más en cada canje.
+- [~] **[manual]** Diferido al **bloque 6**, que ya lo recoge (capítulos 6 y 9 con la Parte nueva sobre crear una cuenta): el manual se escribe una vez con lo implementado, no por bloques.
+- [ ] [externo] Commit del bloque 1
+
+### Bloque 2 — Pedir el registro (Application + Api)
+- [ ] `RequestRegistrationCommand(CompanyName, UserName, Email, AcceptedTermsVersion)` (anónimo), su validador (R3: longitudes máximas con las constantes de Domain, formato común del email, la versión igual a la vigente) y su `Handler`: con el correo apagado o sin versión configurada **no hace nada más que avisar** (R8); si el email **ya tiene cuenta** (de una empresa o de un operador) encola `AccountExistsEmail` y no crea nada (R6); si no, pide el token a `IPendingRegistrationService.IssueAsync` y encola `RegistrationEmail`. **Nunca** llama a `SendAsync` (solo a la cola) y su `ToString` no imprime nada personal.
+- [ ] `POST /api/v1/auth/registration` (anónimo): `202` sin cuerpo y `Cache-Control: no-store` en **todos** los casos (R1); **suelo de tiempo aplicado en el endpoint después del trabajo** (`ResponseTimeFloor`, como `forgot-password`) y política de límite `auth-registration` de 3 por hora y por IP; documentación en `OfiFlow.Api.http`. La operación entra en la tabla de `OperationPermissionsTests` como anónima.
+- [ ] **Medición del tiempo** (en proceso, API real + SQL Server real, series alternadas con y sin cuenta, t de Welch y Mann-Whitney): **sin suelo**, para ver si hay diferencia, y **con él**. Si se distingue, el suelo se queda; si no, se anota igualmente. Los números van a la ADR-023.
+- [ ] Eventos de seguridad (pedido, con si el email ya tenía cuenta **solo en el registro**, y pedido limitado), sin email, token ni enlace.
+- [ ] **Tests.** *Application* (el handler con dobles: cada resultado, **nunca `SendAsync`**, el email, el nombre y el token ausentes de todos los registros, correo apagado, condiciones sin configurar). *Infrastructure* (pedir crea solo el hash; sustituir el anterior; el límite por email en silencio). *Api, de extremo a extremo:* **las respuestas son idénticas byte a byte** con y sin cuenta (y con la de un operador), que el enlace del correo y el hash guardado coinciden, que un `Host` u `Origin` falsos **no** cambian el enlace, el cuarto pedido de la hora no crea ni envía, el `429` al cuarto desde una IP, versión de condiciones ausente o vieja (`400` de campo, nada creado), correo apagado y condiciones sin configurar (`202` y nada creado), y el suelo de tiempo (que no termina antes, con cuenta y sin ella, y que se aplica **después**).
+- [ ] **Mutaciones:** crear la cuenta al pedir, pedir token con el correo apagado, que no encole, que encole el correo con un email que ya tiene cuenta, que el aviso lleve un token, que se envíe a otra dirección, que registre el email, el nombre o el token, el límite por email en 4, sin límite por IP, la respuesta `200`, el suelo que no espera o que se aplica antes, sin `no-store`.
+- [ ] **Comprobación en vivo** (API real, base desechable, Mailpit): el correo llega solo al email nuevo y el aviso solo al que ya tiene cuenta; las dos respuestas son idénticas y tardan lo mismo; la tabla guarda el hash y no el token; pedir otra vez anula el anterior; el registro de la API no lleva el email.
+- [ ] **[manual]** Anotar en el capítulo 6 (Parte nueva sobre crear una cuenta) y en el 8.
+- [ ] [externo] Commit del bloque 2
+
+### Bloque 3 — Completar el registro y las condiciones de la invitación (Application + Infrastructure + Api)
+- [ ] `CompleteRegistrationCommand(Token, NewPassword)` (anónimo; su `ToString` no imprime los secretos), validador (forma exacta del token con el **mismo código** `registration.invalid`; contraseña de 8 a 128 como siempre, **sin gastar el token** si es mala) y `Handler`: canjea el pendiente (`ConsumeAsync`) → si el email **ya tiene cuenta** desde que se pidió, el mismo `registration.invalid` → crea el usuario, la empresa, el usuario de negocio con las condiciones aceptadas y la pertenencia como `Owner` **en una sola `SaveChangesAsync`** (lo que hacía `RegisterCommandHandler`). Un conflicto de concurrencia es `registration.invalid`, no un `500`.
+- [ ] `POST /api/v1/auth/registration/complete` (anónimo): `204` sin cuerpo y `no-store`; política `auth-registration-complete` de 10 por hora y por IP; **no devuelve tokens** (se entra con el acceso de siempre). `OfiFlow.Api.http` y `OperationPermissionsTests`.
+- [ ] **Condiciones en la invitación.** `AcceptInvitationCommand` gana `AcceptedTermsVersion` (validada contra `Legal:TermsVersion`; guardada en el `User`); actualizar su validador, su endpoint y sus tests.
+- [ ] Eventos de seguridad: completado (empresa y usuario) y rechazado (el **motivo real**: desconocido, usado o sustituido, caducado, email ya registrado, concurrente), sin contraseña, token ni email.
+- [ ] **Escaneos de arquitectura** (al estilo de `PasswordResetArchitectureTests`): una sola confirmación en el caso de uso, el canje sin `SaveChanges` ni `ExecuteUpdate`, sin `IEmailSender`, y que **nadie más** crea un `Tenant` fuera de este caso de uso y de la invitación.
+- [ ] **Tests.** *Application* (cada rechazo con el mismo error y su motivo en el registro, **nada cambia** si el token no sirve, una sola confirmación, el email ya registrado, la contraseña corta no gasta el token). *Infrastructure* contra SQL Server real, con **una carrera de verdad** (dos contextos que leen el pendiente vigente y confirman: gana uno y la perdedora **no deja nada**). *Api, de extremo a extremo:* el flujo completo por HTTP (pedir, leer el enlace del correo, completar y **entrar** con esa contraseña, y no antes), **los motivos del rechazo con la misma respuesta completa**, la contraseña corta, el email que se registró entre medias, seis rondas de dos peticiones simultáneas, y quien registró **el email de otra persona** sin su buzón **no consigue nada**.
+- [ ] **Mutaciones:** completar con un token que no sirve, el rechazo que no lanza, crear la empresa sin su `Owner`, no guardar las condiciones, confirmar dos veces o por separado, no canjear el pendiente, no comprobar el email ya registrado, el conflicto convertido en `500`, la contraseña en claro o hasheada de otra forma, registrar la contraseña, el token o el email, el `ToString` con los secretos, los límites.
+- [ ] **Comprobación en vivo** (API real, base desechable, Mailpit): pedir, leer el correo, completar con una contraseña corta (`400` y el token sigue sirviendo), completar (`204`), entrar; reutilizar el token y uno inventado dan el **mismo** `400`; una invitación aceptada con y sin versión de condiciones.
+- [ ] **[manual]** Anotar en el capítulo 6, el 8 y el 9.
+- [ ] [externo] Commit del bloque 3
+
+### Bloque 4 — Retirar el registro inmediato y migrar tests y documentación de puesta en marcha (Api + tests)
+- [ ] **Ayudante de tests.** `RegisterCompanyAsync(...)` en `SqlServerApiFactory` (o en una clase de apoyo): pide el registro, **lee el enlace del correo capturado** (como ya hace `ForgotPasswordEndToEndTests`), completa con la contraseña y devuelve lo que los tests necesitan (el `TenantId` sale de `GET /account/me` tras entrar).
+- [ ] **Migrar los 10 ficheros de test** que llaman a `auth/register` (13 llamadas), sin cambiar lo que comprueban: `TwoTenantsFixture`, `RolesFixture`, `MembersFixture`, `MfaFlowFixture`, `PlatformFlowFixture`, `UserManagementAcceptanceTests`, las de seguridad y los demás que salgan de buscarlos. Los límites de peticiones de los fixtures (3 registros por hora y por IP) se revisan: el nuevo ayudante cuenta contra `auth-registration`.
+- [ ] **Retirar** `RegisterCommand`, `RegisterCommandHandler`, `RegisterCommandValidator`, `POST /auth/register` y la política `auth-register`, junto con sus tests (los que probaban el alta atómica pasan a probarla en `CompleteRegistration`). Quitar `register` de `OperationPermissionsTests` (el contador baja) y comprobar que el diccionario y los escaneos de arquitectura siguen en verde. **Decidir qué pasa con `user.email_already_registered`** (¿lo sigue lanzando algún camino?) y dejarlo o quitarlo con su mensaje.
+- [ ] **Colección `.http`:** el alta pasa a «pedir» y «completar», con una nota de dónde leer el token en local (Mailpit); y todo lo demás de la colección que dependía del registro inmediato.
+- [ ] **Puesta en marcha** (capítulo 1 del manual y `README.md`): arrancar en local ahora exige **correo (Mailpit) y `Legal__TermsVersion`**; cómo crear la primera cuenta de pruebas sin pantalla.
+- [ ] **Tests, por proyecto, todos en verde**, y **comprobación en vivo** de que `POST /auth/register` ya no existe y el flujo nuevo es el único camino.
+- [ ] **Mutaciones** solo de lo que cambia aquí: que el ayudante cree la cuenta sin pasar por el correo (un test que debería fallar si el flujo se rompe).
+- [ ] [externo] Commit del bloque 4
+
+### Bloque 5 — Frontend (`ofiflow-frontend`)
+- [ ] `AuthService.requestRegistration` y `completeRegistration` (sin tocar la sesión, que la API no abre).
+- [ ] **«¿No tienes cuenta? Crea una»** en el acceso (solo en el paso de la contraseña, no en el del código del segundo factor) y pantalla **`/auth/register`**: empresa, nombre, email y la **casilla de condiciones** con los enlaces a los textos y a la política (`environment`); la versión vigente como constante del frontend que viaja en la petición. Tras pedir, **siempre el mismo mensaje**, sin afirmar nada («Si el email es válido, te hemos enviado un enlace…»). Los `400` de campo se pintan en su campo.
+- [ ] Pantalla **`/auth/complete-registration`** (ruta pública que coincide con el enlace del correo): lee el token del fragmento con `readFragmentToken` y **lo borra de la barra de direcciones y del historial al entrar**; dos campos de contraseña con las reglas de la API; un `registration.invalid` esconde el formulario y ofrece pedirlo otra vez; un fallo reintentable conserva el formulario y el token; tras el éxito, al acceso con un aviso.
+- [ ] **La casilla de condiciones también en la pantalla de aceptar una invitación** (D8).
+- [ ] **Tests (specs):** el servicio (qué se envía, que no abre sesión), las dos pantallas (qué se olvida y qué se enseña con cada respuesta, el mismo mensaje con cualquier `202`, doble envío, la casilla obligatoria), el enlace del acceso (solo en el paso de la contraseña), la invitación con su casilla y las rutas (públicas; la de completar coincide con la del correo). Los specs de pantallas sustituyen el configurador de tema por un doble vacío.
+- [ ] **Mutaciones:** el mensaje que afirma el envío, el email sin recortar o que se queda en memoria, el error que no se borra al reintentar, el token que no se borra de la barra, la casilla que no se exige, el enlace del acceso que sale también en el paso del código.
+- [ ] **Comprobación en vivo** (navegador integrado, API real, Mailpit): crear una cuenta de punta a punta (pedir, abrir el enlace del correo, la barra sin el token, elegir la contraseña, entrar), un email que ya tiene cuenta (mismo mensaje, llega el aviso), y el ancho de móvil.
+- [ ] [externo] Commit del frontend (en `ofiflow-frontend`)
+
+### Bloque 6 — Documentación
+- [ ] **ADR-023** (`docs/adr/ADR-023-crear-una-cuenta.md`): el modelo de amenazas del alta (el *pre-hijacking* y por qué «sin cuenta hasta abrir el enlace»), la respuesta uniforme y **el tiempo medido** con sus cifras, la contraseña elegida al completar, las condiciones de uso, el registro viejo retirado, lo que cambió al implementar, riesgos aceptados, la recomendación de despliegue y lo que queda abierto.
+- [ ] Anotaciones «Ampliada por ADR-023» en **ADR-007**, **ADR-009** (los eventos nuevos y los datos personales de los pendientes), **ADR-013** (el patrón de token) y **ADR-020** (tercer uso del puerto de correo); `docs/README.md`, el roadmap del `README.md` y `docs/ideas.md` (la entrada de «crear cuenta» pasa a hecha).
+- [ ] Manual: capítulo 0 (qué se puede hacer hoy y qué no), 1 (arrancar con Mailpit y las condiciones), 6 (una **Parte nueva** sobre crear una cuenta, y el límite 3 cerrado), 7 (los códigos nuevos y el recuento real), 8 (límites, eventos y el mapa de amenazas), 9 (cifras, la sección de la spec 021, mutaciones, lecciones y errores reales), 12 (glosario e índices) y el anexo del tribunal.
+- [ ] `spec.md` pasa a «Implementada» y este `tasks.md` queda completo, con la Definición de Done al día.
+- [ ] [externo] Commit del bloque 6 y de `tasks.md`
+- [ ] [externo] Push de las dos ramas y PR (backend y frontend), con tu orden
+
+---
+
+## Definición de Done (por bloque)
+
+- Compila sin avisos nuevos y los tests de **todos los proyectos afectados** pasan, lanzados por proyecto.
+- Cada regla de la spec tiene al menos un test que falla si se rompe; lo que decide (respuesta idéntica, tiempo, token, canje, carrera, límites, condiciones) tiene además su mutación detectada.
+- Comprobado en vivo contra la API real con Mailpit y, en el bloque 5, en el navegador.
+- **Ni el email, ni la contraseña, ni el token, ni el enlace, ni el nombre** en logs, eventos, errores, ejemplos ni tests.
+- Gitleaks en local con la misma imagen que la CI: sin hallazgos nuevos.
+- Manual y ADR al día en el mismo bloque o en el 6, nunca desfasados al cerrar la spec.
+
+## Notas / bloqueos
+
+- **Los textos de las condiciones de uso y de la política de privacidad los redacta el dueño del proyecto** y hacen falta **antes** de abrir el registro a clientes reales. El código solo compara la versión (R17). Mientras `Legal:TermsVersion` esté vacía, el registro está cerrado: es lo que se quiere.
+- **El registro abierto depende del correo real** (ADR-020): proveedor SMTP con dominio propio y SPF/DKIM/DMARC, y una **prueba real de punta a punta** con ese proveedor (pedir, recibir, abrir, completar, entrar) antes de dar nada por hecho. Sin ello, el enlace acabará en el spam.
+- **Este flujo mueve las cuentas de prueba del desarrollo local:** tras el bloque 4 hay que arrancar con Mailpit y la versión de condiciones configurada (capítulo 1 del manual).
+- **Orden de PR sugerido:** backend (bloques 1 a 4 y 6) y después frontend (bloque 5). El frontend no sirve sin el backend; el backend retira `POST /auth/register` en el bloque 4 (nadie lo usa fuera de los tests y la colección `.http`).
+- **Migraciones nuevas** que se suman a las pendientes de aplicar (specs 016, 018 y 020): `AddPendingRegistrations` (la tabla y las dos columnas de `User`).
+- **Commits, push y PR solo con orden expresa**, uno por uno.
