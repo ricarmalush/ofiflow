@@ -56,3 +56,52 @@ Un cliente escribe al profesional (por WhatsApp, por ejemplo) y el profesional *
 ### Qué NO hacer todavía
 
 Nada de código ni de spec hasta tener presupuestos y un canal de mensajes. Es posterior al primer piloto con un autónomo.
+
+---
+
+## Crear cuenta desde la web y confirmar el email (registro autoservicio)
+
+**Origen:** observación del dueño del proyecto viendo la pantalla de acceso, 2026-11-06: «¿cómo se registra alguien la primera vez si solo hay "olvidé mi contraseña"?». **Estado:** **la siguiente spec** (número provisional **021**; el 019 sigue reservado a «cambiar la contraseña estando dentro»). No espera a ningún prerrequisito para empezar su parte sin correo; la confirmación del email sí necesita el correo real.
+
+### El hueco (comprobado el 2026-11-06)
+
+- **API:** `POST /api/v1/auth/register` ya existe (spec 002). Recibe el nombre de la empresa, el de la persona, el email y la contraseña, y crea de una vez, en una sola confirmación, la empresa y su primer usuario como `Owner`. Límite de 3 por hora y por IP. **No devuelve tokens**: después hay que iniciar sesión.
+- **Frontend:** las rutas públicas de `/auth` son `login`, `accept-invitation`, `forgot-password`, `reset-password`, `access` y `error`. **No hay pantalla de registro, ni enlace a ella, ni llamada a `register`** en ningún servicio.
+- **Hoy se entra así:** una persona de una empresa que ya existe, por invitación (spec 017, tiene pantalla). La **primera persona de una empresa nueva**, solo llamando a la API a mano: no lo puede hacer un cliente.
+
+### Qué problema resuelve
+
+Un cliente piloto no puede empezar solo. Es el primer paso del flujo de valor y está sin construir, por delante de agenda, presupuestos o facturas: sin cuenta no hay nada de lo demás.
+
+### Alcance que se propone (a decidir al hacer la spec)
+
+1. **Pantalla `/auth/register`** pública, con enlace desde el acceso («¿No tienes cuenta? Crea una») y desde la de recuperar contraseña si procede. Empresa, nombre, email y contraseña (las reglas de siempre, de 8 a 128). Tras el éxito, al acceso con un aviso. Sin cambios en la API si solo se hace esto.
+2. **Confirmar el email**, que cierra el límite conocido de que el registro **revela si un email ya está en uso** (capítulo 6 del manual, límite 3). Un enlace de un solo uso, como las invitaciones y la recuperación. Aquí sí hay API nueva.
+3. **Aceptar las condiciones y la política de privacidad** al registrarse (RGPD), con la fecha y la versión aceptadas guardadas.
+
+### Decisiones abiertas
+
+- **¿La confirmación del email va en la misma spec o en otra?** Recomendado: la **misma**, como segundo bloque, porque es lo que hace seguro el registro abierto. El primer bloque (la pantalla) se puede entregar solo.
+- **¿Se puede iniciar sesión sin haber confirmado el email?** Recomendado: no, con un mensaje que lo diga y un reenvío del enlace (limitado). Decisión con impacto en la experiencia del piloto.
+- **Textos legales:** quién los redacta y dónde viven. **No es una decisión de código**: hay que tenerlos antes de abrir el registro a clientes reales.
+- **Abuso:** 3 por hora y por IP puede frenar a una oficina entera que comparta salida a internet, y no frena a quien rota IP. Valorar una comprobación anti-robots más adelante, no ahora.
+- **Alternativa: piloto cerrado.** Las empresas las da de alta el equipo de OfiFlow (con una herramienta de administración) y entrega las credenciales. Más rápido, pero no escala ni sirve de demo autoservicio. Se descarta salvo que se quiera retrasar el registro abierto.
+
+### Riesgos que ya se ven
+
+- **Enumeración de cuentas:** mientras no haya confirmación, el registro dice «ese email ya está registrado». Es el límite que esta spec cierra.
+- **Empresas falsas o basura:** un registro abierto llena la base de empresas que nadie usa; hace falta saber purgarlas (empresas sin confirmar a los N días).
+- **El primer usuario es `Owner` y por ahora sin segundo factor:** coincide con el límite 3b de ADR-014 («MFA obligatorio para `Owner` y `Admin`»), que sigue pendiente y gana importancia con el registro abierto.
+- **Datos personales:** nombre y email de quien se registra, y la aceptación de las condiciones (con fecha), nunca en el registro de eventos.
+- **Correo saliente:** la confirmación depende del proveedor SMTP con dominio propio y SPF/DKIM/DMARC (ya pendiente antes del piloto).
+
+### Lo que ya tenemos y ayudará
+
+- El registro de la API, atómico, con su límite por IP y probado (spec 002, capítulo 6 del manual).
+- Las pantallas de **invitación** y de **recuperar la contraseña** como modelo: el token que se lee del fragmento y se borra de la barra de direcciones, los mensajes que no afirman nada, y la utilidad `readFragmentToken`.
+- El puerto de correo, la cola en memoria y las plantillas de correo (ADR-020 y ADR-021).
+- La purga de datos caducados (ADR-019) para las empresas sin confirmar.
+
+### Qué NO hacer todavía
+
+No se escribe la spec hasta cerrar la 020 (queda el bloque 4: ADR-022 y manual). Orden previsto: **020 → 021 (crear cuenta y confirmar email)**, y después, ya con el registro abierto, MFA obligatorio para `Owner`/`Admin` y «cambiar la contraseña estando dentro» (019).

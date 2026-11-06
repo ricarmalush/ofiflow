@@ -56,25 +56,35 @@ Los roles que existen (`TenantRole`) son: `Owner`, `Admin`, `Manager`, `Technici
 Un `Job` tiene un **estado** (`JobStatus`) que va cambiando:
 
 ```
-   New ──Start──▶ InProgress ──Complete──▶ Completed
-    │                 │
-    └──── Cancel ─────┴──▶ Cancelled      (un trabajo Completed ya no se puede cancelar)
+        ┌── Schedule (reprogramar) ──┐
+        │                            │
+   New ──Schedule──▶ Scheduled ◀─────┘
+    │ ▲                  │
+    │ └───Unschedule─────┘
+    │                    │
+    └────── Start ───────┴──▶ InProgress ──Complete──▶ Completed
+
+   Cancel (desde New, Scheduled o InProgress) ──▶ Cancelled    (un trabajo Completed ya no se puede cancelar)
 ```
 
 Las reglas actuales:
 
 - Un trabajo recién creado está en `New`.
-- Solo se puede **empezar** (`Start`) un trabajo en `New`.
+- Se puede **programar** (`Schedule`) un trabajo en `New` o en `Scheduled` (reprogramarlo): pasa a `Scheduled` con su fecha y, si se sabe, su duración (spec 020).
+- Se puede **quitar de la agenda** (`Unschedule`) un trabajo en `Scheduled`: vuelve a `New` y pierde fecha y duración.
+- Se puede **empezar** (`Start`) un trabajo en `New` o en `Scheduled` (un trabajo no tiene por qué planificarse). Si estaba programado, **conserva su fecha**.
 - Solo se puede **completar** (`Complete`) un trabajo en `InProgress`.
-- Se puede **cancelar** (`Cancel`) un trabajo salvo que ya esté `Completed`.
+- Se puede **cancelar** (`Cancel`) un trabajo salvo que ya esté `Completed`. Un trabajo cancelado conserva su fecha, pero deja de salir en la agenda.
 
-El enumerado también incluye los estados `Pending` y `Scheduled`, pero **todavía no hay transiciones que lleven a ellos**: están reservados para la agenda de la fase 2.
+El enumerado también incluye el estado `Pending`, pero **todavía no hay transiciones que lleven a él**: un estado sin una regla de negocio que lo use sería un estado muerto (ADR-022).
+
+**La fecha de un trabajo es un instante, no una hora de pared** (spec 020, ADR-022): entra con su desfase horario (`2026-11-10T09:00:00+01:00` o terminada en `Z`), la API la guarda en UTC y la devuelve siempre en UTC con la `Z`. Una fecha **sin** desfase se rechaza con un `400`, porque la API no sabe en qué huso la escribió quien la mandó y adivinarlo sería un error silencioso de horas. Qué es «hoy» y «esta semana» lo decide el navegador, no el servidor.
 
 Estas reglas viven en un solo sitio, el código de [`Job`](../../src/OfiFlow.Domain/Jobs/Job.cs), de modo que da igual por dónde llegue la petición: nunca se puede completar un trabajo que no se ha empezado. En el capítulo 2 verás por qué.
 
 ## Qué se puede hacer hoy
 
-OfiFlow, por ahora, es **solo una API** (un servidor al que se le hacen peticiones HTTP y responde con JSON). No tiene todavía pantallas: el frontend en Angular y la app móvil llegarán en fases posteriores. Estas son todas las operaciones que existen:
+Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y responde con JSON). Las pantallas viven en **otro repositorio**, `ofiflow-frontend` (Angular): hoy tiene el acceso, la recuperación de contraseña, clientes, trabajos, la agenda, el equipo y la seguridad de la cuenta; la app móvil llegará en una fase posterior. Estas son todas las operaciones que existen:
 
 | Grupo | Operación | Ruta |
 |---|---|---|
@@ -96,6 +106,8 @@ OfiFlow, por ahora, es **solo una API** (un servidor al que se le hacen peticion
 | **Trabajos** (requiere sesión) | Crear / ver uno / listar / modificar | `POST`, `GET`, `GET`, `PUT` en `/api/v1/jobs` |
 | | Empezar / completar / cancelar | `POST /api/v1/jobs/{id}/start`, `/complete`, `/cancel` |
 | | Asignar a un técnico | `POST /api/v1/jobs/{id}/assign` |
+| | Programar / reprogramar (fecha y duración) y quitar de la agenda (spec 020) | `PUT /api/v1/jobs/{id}/schedule`, `DELETE /api/v1/jobs/{id}/schedule` |
+| | La agenda: los trabajos con fecha en un rango de hasta 42 días (spec 020) | `GET /api/v1/jobs/agenda?from=&to=` |
 | **Plataforma** (solo operadores, otra sesión; spec 011) | Iniciar sesión en dos pasos (pública) | `POST /api/v1/platform/auth/login`, `POST /api/v1/platform/auth/verify` |
 | | Listar / suspender / reactivar empresas (requiere sesión de plataforma) | `GET /api/v1/platform/tenants`, `POST /api/v1/platform/tenants/{id}/suspend`, `/reactivate` |
 
@@ -129,8 +141,8 @@ OfiFlow lo construye **una sola persona** con unas 25 horas a la semana, con un 
 
 Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 
-- **Pantallas:** no hay frontend; solo la API.
-- **Agenda, presupuestos, facturas y pagos:** son las fases 2 a 4 del roadmap.
+- **Crear una cuenta desde la web:** la API tiene registro (`POST /auth/register`), pero el frontend **no tiene pantalla** para usarlo: hoy, la primera persona de una empresa nueva solo puede crearla llamando a la API a mano (las demás entran por invitación). Es **la siguiente spec**, junto con confirmar el email (`docs/ideas.md`). Tampoco hay todavía app móvil.
+- **Agenda completa, presupuestos, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Presupuestos, facturas y pagos son las fases 3 y 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
 - **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009) y, con el correo configurado, **se envían por correo** (spec 017; sin correo configurado el token se le entrega a quien invita, como antes). Falta elegir proveedor de correo y dominio, y que una cuenta pueda pertenecer a varias empresas: hoy cada cuenta pertenece a una sola.
 - **Del panel de operador de la plataforma** (spec 011) falta lo que la propia spec dejó fuera: plan o tarifa, el motivo y el aviso de una suspensión, buscar por nombre, varios operadores con permisos distintos y la aprobación entre dos. Lo que existe (listar, suspender y reactivar con segundo factor obligatorio) está en los capítulos 6 y 8.

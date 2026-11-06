@@ -179,11 +179,12 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 
 | Permiso | Owner | Admin | Manager | Employee | Technician |
 |---|:-:|:-:|:-:|:-:|:-:|
-| Ver clientes / trabajos | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Ver clientes / trabajos **y la agenda** (`Jobs.Read`; la agenda, spec 020) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Crear y modificar clientes | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Eliminar clientes | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Crear y modificar trabajos | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Asignar / cancelar trabajos | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Programar** un trabajo, reprogramarlo y quitarlo de la agenda (`Jobs.Schedule`; spec 020) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Iniciar y completar trabajos | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Ver los miembros de la empresa (`Users.Read`) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Invitar, cambiar el rol y quitar usuarios (`Users.Manage`) | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -194,6 +195,8 @@ Esto ya lo conoces, y aquí queda en su sitio dentro del conjunto:
 **«Quién soy» (spec 012).** `GET /api/v1/account/me` responde a la persona con su nombre y email, su empresa, el Id de su pertenencia, su rol **efectivo** y los permisos de ese rol (`Customers.Read`, `Jobs.Assign`...). Es una lectura de **uno mismo**, y tiene tres rasgos que conviene saber defender: **(1)** no lleva ningún parámetro: la cuenta sale del token, así que nadie puede preguntar por otra persona (un `userId` o un `tenantId` en la consulta se ignora y hay un test que lo prueba); **(2)** el rol sale de la **base de datos**, no del token, como el resto de decisiones de la API: tras un cambio de rol, el mismo token ya recibe el rol nuevo; **(3)** la persona y la empresa se leen **a través de la pertenencia filtrada por empresa** (una sola sentencia), de modo que nada de otra empresa puede salir por aquí. La respuesta lleva `Cache-Control: no-store` y un test comprueba que tiene exactamente ocho campos y que ningún secreto (hash, secreto del segundo factor, códigos de recuperación, tokens) puede colarse. **Límite honesto:** los permisos que devuelve son **informativos, para pintar la interfaz**; quien decide es siempre la API en cada operación, así que un cliente que los falsifique solo consigue botones que dan 403.
 
 **«Cerrar todas mis sesiones» (spec 014).** `DELETE /api/v1/account/sessions`, permiso `Account.CloseSessions` (los cinco roles). Responde `204` sin cuerpo y con `Cache-Control: no-store`, **haya o no sesiones activas**, y revoca todos los refresh tokens activos de quien la pide. Como `/me`, no lleva ningún Id ni parámetro: la cuenta sale del token y un `userId` ajeno en la ruta, la consulta o el cuerpo se ignora (en la ruta, `/account/sessions/{id}` ni existe: `404`). Exige una sesión de **empresa** (sin token, con basura o con una sesión de plataforma da `401`; una empresa suspendida, `403 tenant.suspended`; un miembro quitado con el token aún válido, `403`). Deja el evento `1008` con el recuento. **Límite honesto:** el access token ya emitido sigue valiendo hasta que caduque (30 minutos); lo que se corta es poder renovarlo.
+
+**La agenda (spec 020).** Programar un trabajo es `Jobs.Schedule` (`Owner`, `Admin` y `Manager`, los mismos que `Jobs.Assign` pero un permiso aparte) y leer la agenda es `Jobs.Read` (los cinco roles). Qué enseña este apartado de seguridad: **(1)** *la entrada acotada*: la fecha solo se acepta con su desfase horario y entre los años 2000 y 2099, la duración entre 1 y 1440 minutos y el rango de la agenda no puede pasar de **42 días**, de modo que una sola petición no pide toda la historia de una empresa; **(2)** *una hora sin desfase se rechaza* en vez de leerse con el huso del servidor, un error silencioso de horas que ningún atacante necesita; **(3)** *el aislamiento*: la consulta de la agenda pasa por el filtro de empresa y el índice empieza por `TenantId`; un trabajo de otra empresa da el mismo `404` que uno que no existe; **(4)** *no hay eventos nuevos*: programar no es una operación de seguridad (los `403` ya los registra la autorización) y ni el título, ni el cliente, ni las fechas aparecen en el registro. Un límite que conviene conocer: un `Technician` ve la agenda de **toda** la empresa, como ya veía la lista de trabajos; «Solo mis trabajos» es un filtro de la pantalla, no una restricción.
 
 **Las rutas (spec 009).** Cada una exige sesión (salvo aceptar), y quién puede lo decide el permiso más la jerarquía, no el endpoint:
 

@@ -1,6 +1,6 @@
 # Spec — 020-agenda-minima
 
-**Estado:** Aprobada (2026-11-03). Decisiones D1–D10 aprobadas tal como estaban escritas
+**Estado:** Implementada (2026-11-06). Decisiones D1–D10 aprobadas el 2026-11-03 tal como estaban escritas
 **Fecha:** 2026-11-03
 **Bounded Context:** Jobs (el contexto `Scheduling` del documento maestro, §7, empieza aquí dentro de Jobs: no hay todavía reglas que justifiquen separarlo)
 **Depende de:** spec 003 (el `Job` y su ciclo de vida), spec 008 y ADR-012 (permisos por rol), spec 012 (`GET /account/me`: el Id de mi pertenencia), ADR-006 (el estado como enum con métodos de transición), ADR-002 (aislamiento por empresa)
