@@ -26,6 +26,13 @@ public enum Permission
     /// <summary>Jobs.Assign: asignar un trabajo a un TenantUser.</summary>
     JobsAssign,
 
+    /// <summary>
+    /// Jobs.Schedule: poner fecha y hora a un trabajo, reprogramarlo y quitarlo de la agenda (spec 020). Es una acción distinta de
+    /// <see cref="JobsAssign"/> y de <see cref="JobsWrite"/>: compromete el tiempo de una persona y la cita con un cliente. Leer la
+    /// agenda es <see cref="JobsRead"/>.
+    /// </summary>
+    JobsSchedule,
+
     /// <summary>Jobs.Cancel: cancelar un trabajo.</summary>
     JobsCancel,
 

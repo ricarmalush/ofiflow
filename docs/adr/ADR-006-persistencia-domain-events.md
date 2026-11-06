@@ -116,7 +116,7 @@ Se decide:
 - No implementar soft delete, Event Sourcing ni State Pattern para `Job` mientras no exista una necesidad real y justificada.
 
 ### Qué queda abierto para revisar más adelante
-- Revisar si el enum `JobStatus` sigue siendo suficiente cuando se aborden Scheduling/Quoting/Invoicing (fases 3-4).
+- Revisar si el enum `JobStatus` sigue siendo suficiente cuando se aborden Scheduling/Quoting/Invoicing (fases 3-4). *(Scheduling, parte de la agenda mínima: el enum ha bastado, véase ADR-022; quedan presupuestos y facturas.)*
 - Revisar si conviene introducir IDs fuertemente tipados solo para las entidades donde históricamente se hayan producido errores de mezcla de IDs.
 - Diseñar Integration Events cuando se aborden background jobs (WhatsApp, emails) en fases posteriores — no confundir con Domain Events.
 - ~~Mecanismo para los tests de integración... contra SQL Server real~~ — **cerrado en ADR-008** (2026-09-22): LocalDB con base de datos de nombre único por ejecución, no Testcontainers.
@@ -134,3 +134,4 @@ Aclaraciones posteriores a la decisión, sin cambiarla:
 ## Relación con otros ADR
 
 - Depende de: ADR-001 (SQL Server + EF Core), ADR-002 (Multi-Tenancy — usa `ITenantContext` y extiende el Global Query Filter con el mecanismo genérico por `ITenantOwned`), ADR-003 (CQRS — cierra la librería de validación del Pipeline Behavior, y reutiliza MediatR para publicar Domain Events), ADR-005 (Modular Monolith — estas convenciones se aplican de forma uniforme en todos los contextos).
+- **Ampliada por:** la spec 020 y la [ADR-022](ADR-022-agenda.md): el estado de `Job` gana tres transiciones con el mismo modelo (enum y métodos con guardas, sin State Pattern): `Schedule()` (de `New` o `Scheduled` a `Scheduled`, que además guarda la fecha y la duración), `Unschedule()` (de `Scheduled` a `New`, que las borra) y un `Start()` más ancho (desde `New` **o** `Scheduled`, conservando la fecha). `Pending` sigue sin transición. El enum ha sido suficiente para la agenda mínima; el punto «revisar si `JobStatus` sigue siendo suficiente» queda abierto para presupuestos y facturas.

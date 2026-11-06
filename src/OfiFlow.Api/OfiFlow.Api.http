@@ -264,6 +264,46 @@ Content-Type: application/json
   "tenantUserId": "00000000-0000-0000-0000-000000000001"
 }
 
+### Programar el trabajo (spec 020): fija cuándo empieza y, si se sabe, cuánto dura (204). Necesita Jobs.Schedule (Owner, Admin y Manager).
+### La fecha lleva SU DESFASE (+01:00 o Z) y se guarda en UTC; el trabajo pasa a Scheduled. Sustituye la programación entera: sin duración, se borra la anterior.
+### Solo se programa un trabajo New o Scheduled; en otro estado -> 400 job.cannot_schedule. Una fecha pasada se admite.
+PUT {{host}}/api/v1/jobs/{{jobId2}}/schedule
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "scheduledDate": "2026-11-10T09:00:00+01:00",
+  "estimatedDurationMinutes": 90
+}
+
+### Ver el trabajo: scheduledDate vuelve en UTC con la Z (2026-11-10T08:00:00Z) y el estado es Scheduled
+GET {{host}}/api/v1/jobs/{{jobId2}}
+Authorization: Bearer {{tokenA}}
+
+### Una fecha SIN desfase se rechaza (400 validation.failed, campo ScheduledDate, código job.schedule_date_invalid): no se adivina el huso
+PUT {{host}}/api/v1/jobs/{{jobId2}}/schedule
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "scheduledDate": "2026-11-10T09:00:00"
+}
+
+### Quitar el trabajo de la agenda (204): vuelve a New, sin fecha ni duración. Si no estaba programado -> 400 job.cannot_unschedule
+DELETE {{host}}/api/v1/jobs/{{jobId2}}/schedule
+Authorization: Bearer {{tokenA}}
+
+### La agenda (spec 020): los trabajos con fecha dentro de [from, to), por fecha. Salen Scheduled, InProgress y Completed; no los cancelados ni los sin fecha.
+### Los dos extremos son obligatorios y llevan SU DESFASE (Z o +01:00). El rango es semiabierto (un trabajo a las 00:00 exactas de «to» no sale), el final
+### va después del principio y no puede pasar de 42 días. Mal rango -> 400 validation.failed (campo From o To, código job.agenda_range_invalid).
+### Cualquier rol con Jobs.Read la lee. Si usas un desfase con «+», CODIFÍCALO como %2B: un «+» sin codificar llega como un espacio y se rechaza.
+GET {{host}}/api/v1/jobs/agenda?from=2026-11-09T00:00:00Z&to=2026-11-16T00:00:00Z
+Authorization: Bearer {{tokenA}}
+
+### La misma semana pedida con el desfase de Madrid (el «+» va como %2B)
+GET {{host}}/api/v1/jobs/agenda?from=2026-11-09T00:00:00%2B01:00&to=2026-11-16T00:00:00%2B01:00
+Authorization: Bearer {{tokenA}}
+
 ### Cancelar el segundo trabajo (204)
 POST {{host}}/api/v1/jobs/{{jobId2}}/cancel
 Authorization: Bearer {{tokenA}}

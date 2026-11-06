@@ -96,13 +96,28 @@
     <value>El título del trabajo es obligatorio.</value>
   </data>
   <data name="job.cannot_start" xml:space="preserve">
-    <value>Solo se puede iniciar un trabajo nuevo.</value>
+    <value>Solo se puede iniciar un trabajo nuevo o programado.</value>
   </data>
   <data name="job.cannot_complete" xml:space="preserve">
     <value>Solo se puede completar un trabajo que está en curso.</value>
   </data>
   <data name="job.cannot_cancel_completed" xml:space="preserve">
     <value>No se puede cancelar un trabajo ya completado.</value>
+  </data>
+  <data name="job.cannot_schedule" xml:space="preserve">
+    <value>Solo se puede programar un trabajo nuevo o ya programado.</value>
+  </data>
+  <data name="job.cannot_unschedule" xml:space="preserve">
+    <value>Solo se puede quitar de la agenda un trabajo programado.</value>
+  </data>
+  <data name="job.schedule_date_invalid" xml:space="preserve">
+    <value>La fecha debe indicar su desfase horario (por ejemplo 2026-11-10T09:00:00+01:00 o terminar en Z) y estar entre los años 2000 y 2099.</value>
+  </data>
+  <data name="job.estimated_duration_invalid" xml:space="preserve">
+    <value>La duración debe ser un número entero de minutos entre 1 y 1440.</value>
+  </data>
+  <data name="job.agenda_range_invalid" xml:space="preserve">
+    <value>El rango de la agenda debe indicar "from" y "to" con su desfase horario (por ejemplo 2026-11-09T00:00:00Z), terminar después de empezar y no pasar de 42 días.</value>
   </data>
   <data name="job.not_found" xml:space="preserve">
     <value>No se ha encontrado el trabajo.</value>

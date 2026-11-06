@@ -16,6 +16,7 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 |---|---|---|
 | **AAA** (*Arrange, Act, Assert*) | La estructura de un test: preparar, ejecutar, comprobar | 9 |
 | **ADR** (*Architecture Decision Record*) | Un documento corto que recoge una decisión de arquitectura: el contexto, las opciones, qué se decidió y qué consecuencias tiene | 2, 11 |
+| **Agenda** | La vista de los trabajos que tienen fecha dentro de un rango (hoy, una semana). Es una consulta (`GET /jobs/agenda`), no una entidad nueva: sus datos son los de `Job` | 0, 8 |
 | **Agregado** (*aggregate*) | Un grupo de objetos que se trata como una unidad y se guarda de una vez (por ejemplo, `Job`, `Invitation`). Solo se entra por su raíz | 3 |
 | **Autenticación** (*authentication*) | Saber **quién** eres (el login) | 6 |
 | **Autorización** (*authorization*) | Saber **qué puedes hacer** (permisos y roles) | 6, 8 |
@@ -33,6 +34,7 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **CQRS** | Separar las operaciones que cambian datos de las que los leen | 2 |
 | **CSP** (*Content-Security-Policy*) | Cabecera que le dice al navegador qué puede cargar o ejecutar una respuesta | 8 |
 | **Desafío** (*challenge*) | Lo que recibe quien pone bien la contraseña en una cuenta con segundo factor: un valor opaco (no un JWT) que caduca en 5 minutos, se canjea una vez con un código y muere a los 5 intentos | 6 |
+| **Desfase horario** (*offset*) | La diferencia con UTC con la que se escribe una hora (`+01:00`, o `Z` si es cero). Sin él, una hora no es un momento exacto y la API no la acepta | 0 |
 | **DAST** | Probar la aplicación **en ejecución**, desde fuera, como un atacante (OWASP ZAP) | 10 |
 | **DDD** (*Domain-Driven Design*) | Modelar el código alrededor de las reglas del negocio | 2 |
 | **Defensa en profundidad** (*defense in depth*) | Varias protecciones seguidas, para que si una falla la siguiente aún proteja | 8 |
@@ -52,6 +54,8 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Hash** | Resultado de una función de un solo sentido: no se puede volver al original. Así se guardan contraseñas y tokens | 6 |
 | **HSTS** | Cabecera que ordena al navegador usar siempre HTTPS con ese sitio | 8 |
 | **Infrastructure** | La capa que habla con lo de fuera: base de datos, tokens, contraseñas | 3 |
+| **Instante** (*instant*) | Un momento exacto del tiempo, sin ambigüedad de huso (`2026-11-10T08:00:00Z`). La API guarda y devuelve así las fechas de la agenda; la «hora de pared» (las 09:00) solo la ve y la escribe el navegador | 0 |
+| **Intervalo semiabierto** | El rango `[from, to)`: incluye el principio y **no** el final. Así un trabajo a las 00:00 exactas del lunes siguiente es de la semana siguiente y no sale en dos agendas | 0, 9 |
 | **Invitación** (*invitation*) | La forma de que una persona entre en una empresa que ya existe: un token de un solo uso con caducidad | 6 |
 | **JWT** (*JSON Web Token*) | Un token firmado que dice quién eres y en qué empresa estás | 6 |
 | **Jerarquía de roles** (`ManageableRoles`) | La tabla que dice a qué roles puede conceder, cambiar y quitar cada rol | 8 |
@@ -64,6 +68,7 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **Mínimo privilegio** (*least privilege*) | Cada rol recibe solo lo que necesita | 8 |
 | **Multi-tenancy** | Que muchos clientes (empresas) compartan el mismo sistema sin ver los datos de los demás | 5 |
 | **Mutación** (*mutation testing*) | Romper el código a propósito y comprobar que algún test se pone en rojo | 9 |
+| **Mutante equivalente** | Una mutación que no cambia lo que hace el código (por ejemplo, quitar una comprobación que otra barrera ya repite): ningún test puede detectarla. Se explica en vez de forzar un test falso | 9 |
 | **OpenAPI / Swagger** | La descripción de la API en JSON y la pantalla para probarla desde el navegador | 1 |
 | **Oráculo** (*oracle*) | Cualquier cosa que, sin querer, responde a una pregunta que el atacante no debería poder hacer («¿existe esta cuenta?»). Puede ser la respuesta, **el tiempo que tarda**, o un límite que se activa. Se evita haciendo que todos los casos se vean igual por fuera | 6, 8 |
 | **OWASP** | Organización que publica listas de riesgos y herramientas de seguridad web (como ZAP) | 8, 10 |
@@ -134,6 +139,7 @@ Cada ADR está en [`docs/adr/`](../adr/). El manual **explica cómo funciona**; 
 | [019](../adr/ADR-019-purga-de-sesiones-y-datos-del-dispositivo.md) Purga y datos del dispositivo | El primer servicio en segundo plano (purga de refresh tokens caducados) y qué se guarda de cada sesión: IP truncada y el navegador como etiqueta de un conjunto cerrado | 6, 8 |
 | [020](../adr/ADR-020-correo-saliente.md) Correo saliente | Un puerto `IEmailSender` y un transporte SMTP (MailKit); la invitación se envía por correo y el token deja de devolverse; sin cola de momento porque el correo lleva un secreto; el enlace sale solo de la configuración | 6, 8 |
 | [021](../adr/ADR-021-recuperacion-de-contrasena.md) Recuperar la contraseña | Respuesta idéntica y **tiempo medido** (un suelo de 250 ms), correo por una **cola en memoria** (el token no se guarda en claro), token de una hora y un solo uso, y restablecer **cierra todas las sesiones** en una sola confirmación sin tocar el segundo factor | 1, 6, 8 |
+| [022](../adr/ADR-022-agenda.md) La agenda | Las fechas son **instantes UTC con desfase obligatorio** (una hora sin desfase se rechaza), el día lo decide el navegador con la medianoche local (no con 168 horas), `Jobs.Schedule` es un permiso aparte, la agenda es un rango obligatorio de hasta 42 días sobre un índice que empieza por la empresa, y se difieren los conflictos de horario, el huso por empresa y la concurrencia |
 
 ## Las especificaciones
 
@@ -159,10 +165,11 @@ Cada spec está en [`docs/specs/`](../specs/) con su `spec.md` y su `tasks.md`.
 | **016** Purga y sesiones | Purga de refresh tokens caducados en segundo plano; ver y cerrar mis sesiones concretas |
 | **017** Correo e invitaciones | Un puerto de correo con transporte SMTP; la invitación se envía por correo (sin token para quien invita), con límite de 20 por hora y por persona y eventos `1407`/`1408` |
 | **018** Recuperar la contraseña | `POST /auth/forgot-password` (siempre `202`, con un suelo de tiempo medido) y `POST /auth/reset-password` (cierra todas las sesiones, reinicia el bloqueo y avisa por correo), con una cola de correo en memoria; los eventos `1012`–`1017`; y las dos pantallas del frontend |
+| **020** La agenda mínima | Programar, reprogramar y quitar de la agenda un trabajo (`PUT` y `DELETE /jobs/{id}/schedule`, permiso `Jobs.Schedule`), `Start` también desde `Scheduled`, y `GET /jobs/agenda` (un rango semiabierto de hasta 42 días); en el frontend, la pantalla de la agenda y la sección «Programación» del trabajo |
 
 ## Lo que viene
 
-Lo que **aún no existe** está explicado con honestidad en cada capítulo (sección "Dónde están hoy los límites") y resumido en el [capítulo 0](./00-que-es-ofiflow.md). Lo más relevante: el panel de operador de la plataforma, la agenda y la asignación de técnicos (Fase 2), el envío de invitaciones por email, el segundo factor obligatorio (para `Owner` y `Admin`, con pantallas) y las *passkeys*, recuperar y cambiar la contraseña, y que un técnico solo vea sus trabajos.
+Lo que **aún no existe** está explicado con honestidad en cada capítulo (sección "Dónde están hoy los límites") y resumido en el [capítulo 0](./00-que-es-ofiflow.md). Lo más relevante: **crear una cuenta desde la web y confirmar el email** (la siguiente spec: la API tiene el registro, pero el frontend no tiene pantalla), el segundo factor obligatorio (para `Owner` y `Admin`, con pantallas) y las *passkeys*, cambiar la contraseña estando dentro, de la agenda los conflictos de horario y el huso por empresa, que un técnico solo vea sus trabajos, y los presupuestos y las facturas (fases 3 y 4).
 
 ## Siguiente capítulo
 

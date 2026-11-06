@@ -23,6 +23,8 @@ public class RolePermissionsTests
         "JobsRead           X     X     X       X        X",
         "JobsWrite          X     X     X       X        -",
         "JobsAssign         X     X     X       -        -",
+        // Spec 020: programar es una acción distinta de asignar, aunque hoy la tengan los mismos roles. Quien da las citas es quien gestiona.
+        "JobsSchedule       X     X     X       -        -",
         "JobsCancel         X     X     X       -        -",
         "JobsExecute        X     X     X       -        X",
         // Añadidas por la spec 009: el Manager ve quién hay (para asignar), pero no gestiona usuarios.

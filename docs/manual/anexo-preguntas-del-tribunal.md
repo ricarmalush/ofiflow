@@ -145,6 +145,32 @@ Que restablecer **cierra todas las sesiones** de la cuenta, en todas sus empresa
 **¿Y si dos personas usan el mismo enlace a la vez?**
 Gana una. El token lleva una columna de versión de fila; las dos preparan sus cambios, pero solo un `UPDATE` encuentra la fila como la leyó, y la perdedora falla al confirmar —sin cambiar la contraseña ni cerrar sesiones— y recibe el mismo `password_reset.invalid`. Se probó con una carrera de verdad contra SQL Server. *(Cap. 6)*
 
+### La agenda (spec 020)
+
+**¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
+Porque «09:00» no es un momento: el mismo texto significa instantes distintos en Madrid y en Bogotá, y no existe (o existe dos veces) la noche en que cambia la hora. La fecha entra con su desfase (`2026-11-10T09:00:00+01:00` o terminada en `Z`), la API la guarda en UTC y la devuelve **siempre en UTC con la `Z`**; solo el navegador convierte a la hora de quien mira. Comparar, ordenar y pedir rangos son entonces operaciones sobre instantes y no dependen de ningún huso. *(ADR-022, opción A.)*
+
+**¿Y si llega una hora sin desfase?**
+Se rechaza con un `400` de campo. El motivo es concreto: `DateTimeOffset.TryParse` daría por buena esa hora con el **huso del servidor**, y la cita quedaría a la hora del servidor, no a la de quien la escribió, sin que nada falle. Por eso la fecha viaja como texto y la lee `IsoInstant` (forma exacta, longitud acotada, cultura invariante, `[0-9]` y no `\d`, que en .NET acepta dígitos de otros alfabetos).
+
+**¿Quién decide qué es «hoy» y «esta semana»? ¿Por qué no se suman 24 horas por día?**
+El navegador, con su huso: la agenda pide el intervalo de la semana como la medianoche local del lunes y la del lunes siguiente. Se construye con los **componentes de la fecha** (año, mes, día), nunca sumando 168 horas: la semana en que cambia la hora dura 167 o 169, y sumar 168 deja el final a las 23:00 o a las 01:00 con un día descuadrado. Hay un test que recorre todas las semanas de un año. El límite honesto: una empresa con personas en husos distintos ve el mismo instante a horas distintas (correcto) pero puede repartirlo en días distintos; un huso por empresa queda para más adelante.
+
+**¿Cómo se evita que la agenda sirva para pedir toda la historia de una empresa?**
+El rango es **obligatorio**, con desfase, el final es posterior al principio y no pasa de **42 días**; fuera de eso, `400`. Es semiabierto (`[from, to)`): un trabajo a las 00:00 exactas del lunes siguiente es de la semana siguiente y no sale en dos agendas. La consulta pasa por el filtro de empresa y la sirve un índice `(TenantId, ScheduledDate)`, con la empresa primero.
+
+**¿Cómo sabes que ese índice se usa de verdad?**
+Se mide, y la primera medición estaba mal. Mi test usaba `ToQueryString()`, que genera variables locales que SQL Server no inspecciona, sobre una tabla pequeña, y salía un recorrido de tabla. Se rehízo ejecutando la consulta **real** de EF con la caché de planes vacía, sobre 8.000 trabajos y un rango de un día: el plan en caché es un *Index Seek*. Con pocas filas, recorrer la tabla sería correcto (el índice no cubre la consulta); lo que se prueba es que, con datos suficientes, el índice **puede** usarse.
+
+**¿Por qué programar tiene su propio permiso y no se reutiliza «asignar»?**
+Programar compromete el tiempo de una persona y la cita con un cliente; hoy lo tienen los mismos roles que asignar (`Owner`, `Admin` y `Manager`), pero son dos acciones que pueden separarse mañana, y cambiarlo después es editar una tabla. Leer la agenda es `Jobs.Read`, de los cinco roles: un técnico ve la agenda de **toda** la empresa, como ya veía la lista de trabajos; «solo mis trabajos» es un filtro de la pantalla, no una restricción.
+
+**¿Qué no hace la agenda y qué riesgos aceptas?**
+No detecta conflictos de horario (dos trabajos del mismo técnico a la vez se aceptan; la vista de semana los deja ver), no tiene control de concurrencia (si dos personas programan el mismo trabajo a la vez, gana la última escritura), admite fechas pasadas (se marcan «Vencido») y un trabajo es un único intervalo de hasta 24 horas. Está todo en la ADR-022 como riesgos aceptados, con lo que habría que hacer para cerrarlos.
+
+**¿Qué error del propio proceso te enseñó algo en esta spec?**
+Una mutación sobrevivió **por azar**: ordenar la agenda por `Id` en vez de por fecha pasaba los tests porque los `Id` son aleatorios y, con tres trabajos, coinciden una vez de cada seis. Un test cuya detección depende de la suerte no demuestra nada; con doce trabajos en desorden, acertar por casualidad es 1 entre 479 millones y la mutación se detecta siempre.
+
 ### El operador de la plataforma (spec 011)
 
 **¿Cómo puede un operador ver todas las empresas si el aislamiento lo impide?**

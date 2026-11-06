@@ -11,7 +11,7 @@
 
 - [ProyectoOFIFLOW.txt](./producto/ProyectoOFIFLOW.txt): prompt maestro, unas 105 secciones
 - [Calendario del Proyecto.txt](./producto/Calendario%20del%20Proyecto.txt): roadmap 2027-2028
-- [ideas.md](./ideas.md): ideas de producto que aún no son una spec (hoy: el chatbot que prepara un presupuesto cuando el profesional no contesta)
+- [ideas.md](./ideas.md): ideas de producto que aún no son una spec (hoy: el chatbot que prepara un presupuesto cuando el profesional no contesta, y **crear cuenta desde la web y confirmar el email, que es la siguiente spec**)
 
 ## ADRs
 
@@ -38,6 +38,7 @@
 | [019](./adr/ADR-019-purga-de-sesiones-y-datos-del-dispositivo.md) | Purga de refresh tokens caducados en segundo plano (primer servicio de fondo) y datos del dispositivo de cada sesión (IP truncada, navegador como etiqueta fija) | Aceptado |
 | [020](./adr/ADR-020-correo-saliente.md) | Correo saliente: puerto `IEmailSender`, transporte SMTP (MailKit) y la invitación por correo en vez de entregar el token (cierra el riesgo de ADR-013) | Aceptado |
 | [021](./adr/ADR-021-recuperacion-de-contrasena.md) | Recuperar la contraseña: respuesta idéntica y tiempo medido (suelo de 250 ms), cola de correo en memoria, token de una hora y un solo uso, y restablecer cierra todas las sesiones sin tocar el segundo factor | Aceptado |
+| [022](./adr/ADR-022-agenda.md) | La agenda: fechas como instante UTC con desfase obligatorio, el día lo decide el navegador (medianoche local, no 168 horas), el permiso `Jobs.Schedule`, un rango obligatorio de hasta 42 días y qué se difiere (conflictos, huso por empresa, concurrencia) | Aceptado |
 
 ## Specs
 
@@ -61,6 +62,7 @@
 | [016-sessions-purge-and-list](./specs/016-sessions-purge-and-list/spec.md) | Purga de refresh tokens caducados (servicio en segundo plano) y ver y cerrar mis sesiones concretas: `GET` y `DELETE /account/sessions/{id}`, con datos del dispositivo (amplía ADR-007 y ADR-018, crea ADR-019) | Implementada |
 | [017-email-invitations](./specs/017-email-invitations/spec.md) | Correo de OfiFlow: puerto `IEmailSender` con transporte SMTP y, como primer uso, la invitación de un miembro por correo en lugar de pasar el token a mano (cierra la nota de ADR-013, crea ADR-020) | Implementada |
 | [018-password-recovery](./specs/018-password-recovery/spec.md) | Recuperar la contraseña olvidada: `POST /auth/forgot-password` (siempre la misma respuesta) y `POST /auth/reset-password` (cierra todas las sesiones), con una cola de correo en memoria; segundo uso del puerto de correo (amplía ADR-007 y ADR-014, crea ADR-021) | Implementada (API y frontend) |
+| [020-agenda-minima](./specs/020-agenda-minima/spec.md) | La agenda mínima: programar, reprogramar y quitar de la agenda un trabajo (`PUT` y `DELETE /jobs/{id}/schedule`, permiso `Jobs.Schedule`), `Start` también desde `Scheduled` y `GET /jobs/agenda` (rango semiabierto de hasta 42 días); en el frontend, la pantalla de la agenda y la sección «Programación» (amplía ADR-006 y ADR-012, crea ADR-022) | Implementada (API y frontend) |
 
 Plantillas para specs nuevas: [TEMPLATE-spec.md](./specs/TEMPLATE-spec.md) y [TEMPLATE-tasks.md](./specs/TEMPLATE-tasks.md).
 

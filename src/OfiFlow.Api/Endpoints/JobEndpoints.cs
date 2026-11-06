@@ -4,8 +4,11 @@ using OfiFlow.Application.Jobs.Commands.AssignJob;
 using OfiFlow.Application.Jobs.Commands.CancelJob;
 using OfiFlow.Application.Jobs.Commands.CompleteJob;
 using OfiFlow.Application.Jobs.Commands.CreateJob;
+using OfiFlow.Application.Jobs.Commands.ScheduleJob;
 using OfiFlow.Application.Jobs.Commands.StartJob;
+using OfiFlow.Application.Jobs.Commands.UnscheduleJob;
 using OfiFlow.Application.Jobs.Commands.UpdateJob;
+using OfiFlow.Application.Jobs.Queries.GetAgenda;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
 using OfiFlow.Domain.Jobs;
@@ -44,6 +47,16 @@ public static class JobEndpoints
             })
             .WithName("GetJobs")
             .WithSummary("Lista los trabajos del tenant activo.");
+
+        // «agenda» no choca con «/{id:guid}»: la restricción :guid hace que esa ruta solo case con un Guid (un test lo fija).
+        group.MapGet("/agenda", async (string? from, string? to, ISender sender, CancellationToken cancellationToken) =>
+            {
+                // Un extremo ausente llega como null y lo rechaza el validador con un 400 de campo, no el enlazado de parámetros.
+                var jobs = await sender.Send(new GetAgendaQuery(from!, to!), cancellationToken);
+                return Results.Ok(jobs);
+            })
+            .WithName("GetAgenda")
+            .WithSummary("Lista los trabajos con fecha dentro de [from, to): Scheduled, InProgress y Completed, por fecha. Los extremos llevan su desfase horario; máximo 42 días.");
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateJobRequest request, ISender sender, CancellationToken cancellationToken) =>
             {
@@ -85,9 +98,28 @@ public static class JobEndpoints
             })
             .WithName("AssignJob")
             .WithSummary("Asigna un trabajo a un TenantUser del tenant activo.");
+
+        group.MapPut("/{id:guid}/schedule", async (Guid id, ScheduleJobRequest request, ISender sender, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(new ScheduleJobCommand(id, request.ScheduledDate, request.EstimatedDurationMinutes), cancellationToken);
+                return Results.NoContent();
+            })
+            .WithName("ScheduleJob")
+            .WithSummary("Programa o reprograma un trabajo (New o Scheduled → Scheduled). La fecha lleva su desfase horario.");
+
+        group.MapDelete("/{id:guid}/schedule", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(new UnscheduleJobCommand(id), cancellationToken);
+                return Results.NoContent();
+            })
+            .WithName("UnscheduleJob")
+            .WithSummary("Quita un trabajo de la agenda (Scheduled → New, sin fecha ni duración).");
     }
 
     internal sealed record UpdateJobRequest(string Title, string? Description, JobPriority Priority);
 
     internal sealed record AssignJobRequest(Guid TenantUserId);
+
+    // La fecha va como TEXTO: una hora sin desfase se rechaza con un 400 de campo en vez de leerse con el huso del servidor (spec 020 R4).
+    internal sealed record ScheduleJobRequest(string ScheduledDate, int? EstimatedDurationMinutes);
 }
