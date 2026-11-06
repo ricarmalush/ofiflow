@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using OfiFlow.Api.Tests.Common;
 using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Platform;
 using OfiFlow.Domain.Tenancy;
@@ -248,7 +249,7 @@ public sealed class PlatformPanelAttacksEndToEndTests(PlatformFlowFixture fixtur
         Assert.Equal(HttpStatusCode.NoContent, (await Suspend(token, a.TenantId)).StatusCode);
 
         // A: nadie acepta su invitación, y su miembro no renueva la sesión.
-        var accept = await _fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/accept-invitation", new { token = pendingToken, name = "Persona", password = MembersFixture.NewPassword() });
+        var accept = await _fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/accept-invitation", new { token = pendingToken, name = "Persona", password = MembersFixture.NewPassword(), acceptedTermsVersion = SqlServerApiFactory.TermsVersion });
         Assert.Equal(HttpStatusCode.BadRequest, accept.StatusCode);
         Assert.Equal("invitation.invalid", await CodeOfAsync(accept));
         Assert.Equal(HttpStatusCode.Unauthorized, (await _fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = a.Owner.RefreshToken })).StatusCode);

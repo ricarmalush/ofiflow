@@ -116,7 +116,7 @@ public sealed class MembersFixture : IAsyncLifetime
     /// </summary>
     public Task<HttpResponseMessage> AcceptInvitationAsync(string token, string name, string password)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/accept-invitation") { Content = JsonContent.Create(new { token, name, password }) };
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/accept-invitation") { Content = JsonContent.Create(new { token, name, password, acceptedTermsVersion = SqlServerApiFactory.TermsVersion }) };
         request.Headers.Add(TestClientIpStartupFilter.HeaderName, TestClientIpStartupFilter.NewIp());
 
         return Anonymous.SendAsync(request);

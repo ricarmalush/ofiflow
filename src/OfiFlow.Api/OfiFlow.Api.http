@@ -99,6 +99,19 @@ Content-Type: application/json
   "acceptedTermsVersion": "2026-11"
 }
 
+### Completar el registro (spec 021): anónimo; la credencial es el token del enlace del correo (el valor que va tras «#token=»; en local lo lees en Mailpit).
+### AQUÍ nace la cuenta: en una sola confirmación se crean la empresa, el usuario (con la versión y la fecha de las condiciones aceptadas al pedirlo) y su pertenencia como Owner.
+### 204 si sirvió. 400 registration.invalid, siempre el MISMO, si el token no sirve (desconocido, caducado, ya usado, sustituido por otro pedido o con el email ya registrado entre medias);
+### el motivo real solo queda en el registro. 400 de campo (sin gastar el token) si la contraseña no tiene de 8 a 128 caracteres.
+### NO inicia sesión (entra con el login de siempre). Máximo 10 por hora y por IP (429).
+POST {{host}}/api/v1/auth/registration/complete
+Content-Type: application/json
+
+{
+  "token": "PEGA-AQUI-EL-TOKEN-DEL-CORREO",
+  "newPassword": "{{password}}"
+}
+
 ### Restablecer la contraseña (spec 018): anónimo; la credencial es el token del enlace del correo (el valor que va tras «#token=»).
 ### 204 si sirvió: cambia la contraseña, cierra TODAS las sesiones de la cuenta (también sus access tokens), quita el bloqueo y envía un aviso por correo, todo o nada.
 ### 400 password_reset.invalid, siempre el MISMO, si el token no sirve (desconocido, caducado, ya usado o anulado por otro pedido); el motivo real solo queda en el registro.
@@ -483,14 +496,16 @@ Content-Type: application/json
 }
 
 ### Ana acepta la invitación con el token. NO lleva Authorization (todavía no tiene cuenta) y ELLA elige
-### su nombre y su contraseña. Responde 204 sin cuerpo: para entrar usa el login de siempre.
+### su nombre y su contraseña, y acepta las condiciones de uso («acceptedTermsVersion» debe ser la versión vigente, Legal:TermsVersion; sin ella o con otra, 400 de campo
+### registration.terms_not_accepted). Responde 204 sin cuerpo: para entrar usa el login de siempre.
 POST {{host}}/api/v1/auth/accept-invitation
 Content-Type: application/json
 
 {
   "token": "{{inviteToken}}",
   "name": "Ana Pérez",
-  "password": "{{password}}"
+  "password": "{{password}}",
+  "acceptedTermsVersion": "2026-11"
 }
 
 ### El mismo token otra vez -> 400 invitation.invalid (igual que si estuviera caducado, revocado o inventado:
@@ -501,7 +516,8 @@ Content-Type: application/json
 {
   "token": "{{inviteToken}}",
   "name": "Otra Persona",
-  "password": "{{password}}"
+  "password": "{{password}}",
+  "acceptedTermsVersion": "2026-11"
 }
 
 ### Ana inicia sesión con la contraseña que eligió: su token lleva el rol Technician

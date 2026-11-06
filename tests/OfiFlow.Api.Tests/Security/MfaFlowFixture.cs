@@ -184,7 +184,7 @@ public class MfaFlowFixture : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, invite.StatusCode);
         var token = (await JsonOf(invite)).GetProperty("token").GetString();
 
-        var accept = await SendAsync(HttpMethod.Post, "/api/v1/auth/accept-invitation", new { token, name = $"Miembro {Guid.NewGuid():N}", password = member.Password });
+        var accept = await SendAsync(HttpMethod.Post, "/api/v1/auth/accept-invitation", new { token, name = $"Miembro {Guid.NewGuid():N}", password = member.Password, acceptedTermsVersion = SqlServerApiFactory.TermsVersion });
         Assert.Equal(HttpStatusCode.NoContent, accept.StatusCode);
 
         await LoginPlainAsync(member);

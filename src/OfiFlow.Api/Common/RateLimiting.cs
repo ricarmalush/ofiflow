@@ -26,6 +26,12 @@ public static partial class RateLimiting
     /// </summary>
     public const string Registration = "auth-registration";
 
+    /// <summary>
+    /// Completar el registro con el token del correo (anónimo y caro: hashea la contraseña con PBKDF2): <b>10 por hora y por IP</b> (spec 021 R15, D9), como restablecer la contraseña. El token
+    /// es de 256 bits y no se puede adivinar: el límite protege la CPU, no el secreto. Cubo propio: no gasta el de pedir el registro.
+    /// </summary>
+    public const string RegistrationComplete = "auth-registration-complete";
+
     /// <summary>Cerrar sesión (anónimo; una consulta por índice y a lo sumo una escritura): 20 por minuto y por IP, con cubo propio para no gastar el de renovar (spec 013).</summary>
     public const string Logout = "auth-logout";
 
@@ -72,6 +78,8 @@ public static partial class RateLimiting
             options.AddPolicy(Register, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
             // Anónima y con envío de correo: sin límite sería una vía de abuso (llenar de correo a un tercero) y de enumeración (spec 021 R7).
             options.AddPolicy(Registration, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
+            // Anónima y cara (PBKDF2 sobre la contraseña elegida): sin límite sería una vía de agotamiento de CPU (spec 021 R15).
+            options.AddPolicy(RegistrationComplete, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
             // Mismo número que renovar pero otro cubo: el frontend cierra sesión siempre (aunque ya no haya sesión) y eso no debe gastar el presupuesto de renovar (spec 013 R8).
             options.AddPolicy(Logout, context => PerIp(context, permitLimit: 20, TimeSpan.FromMinutes(1)));
             // Acción rara y explícita de una persona identificada: pocas por hora basta y frena una sesión robada usada para molestar (spec 014 R7).

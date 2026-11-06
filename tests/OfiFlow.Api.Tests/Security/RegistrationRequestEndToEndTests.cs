@@ -60,10 +60,8 @@ public class RegistrationRequestEndToEndTests : IClassFixture<MembersFixture>, I
         _fixture.Factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Email:LinkBaseUrl", LinkBase);
-            if (termsVersion is not null)
-            {
-                builder.UseSetting("Legal:TermsVersion", termsVersion);
-            }
+            // Nulo = sin configurar: hay que vaciarla a propósito, porque la factoría base ya trae una vigente.
+            builder.UseSetting("Legal:TermsVersion", termsVersion ?? string.Empty);
 
             foreach (var (key, value) in settings)
             {

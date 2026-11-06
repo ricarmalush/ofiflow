@@ -59,7 +59,7 @@ public class AcceptInvitationIntegrationTests(SqlServerContainerFixture fixture)
             Assert.Empty(await anonymousDb.Invitations.Where(i => i.TenantId == tenantId).ToListAsync());
 
             // ...y aun así el handler la encuentra, porque la busca por el hash de su token ignorando el filtro.
-            await handler.Handle(new AcceptInvitationCommand(token, "Ana Pérez", Password), CancellationToken.None);
+            await handler.Handle(new AcceptInvitationCommand(token, "Ana Pérez", Password, "2026-11"), CancellationToken.None);
         }
 
         // La cuenta nació en la empresa de la invitación, con su rol, y entra con su contraseña.
@@ -81,7 +81,7 @@ public class AcceptInvitationIntegrationTests(SqlServerContainerFixture fixture)
         var handler = AnonymousHandler(out var db);
         await using (db)
         {
-            await handler.Handle(new AcceptInvitationCommand(first.Token, "Ana Pérez", Password), CancellationToken.None);
+            await handler.Handle(new AcceptInvitationCommand(first.Token, "Ana Pérez", Password, "2026-11"), CancellationToken.None);
         }
 
         await using var checkFirst = _fixture.CreateDbContext(first.TenantId);
@@ -106,7 +106,7 @@ public class AcceptInvitationIntegrationTests(SqlServerContainerFixture fixture)
             {
                 try
                 {
-                    await handler.Handle(new AcceptInvitationCommand(token, name, Password), CancellationToken.None);
+                    await handler.Handle(new AcceptInvitationCommand(token, name, Password, "2026-11"), CancellationToken.None);
                     return null;
                 }
                 catch (Exception exception)

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using OfiFlow.Api.Common;
 using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
+using OfiFlow.Application.Identity.Commands.CompleteRegistration;
 using OfiFlow.Application.Identity.Commands.ForgotPassword;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
@@ -51,6 +52,20 @@ public static class AuthEndpoints
             .WithName("RequestRegistration")
             .WithSummary("Pide crear una cuenta (empresa y primer usuario). Responde 202 sin cuerpo siempre (sea el email nuevo o ya tenga cuenta); no crea ninguna cuenta: envía por correo un enlace de un solo uso que caduca a las 24 horas, y la cuenta nace al abrirlo. 400 si falta algún dato o la versión de las condiciones no es la vigente.")
             .RequireRateLimiting(RateLimiting.Registration);
+
+        // Spec 021: completar el registro con el token del correo. Anónima: la credencial es el token. AQUÍ nace la cuenta (empresa, usuario y Owner, todo o nada). Un token que no sirve
+        // (desconocido, caducado, usado, sustituido o con el email ya registrado) da SIEMPRE el mismo 400 registration.invalid. No inicia sesión: se entra con el login de siempre.
+        group.MapPost("/registration/complete", async (CompleteRegistrationCommand command, ISender sender, HttpContext httpContext, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(command, cancellationToken);
+
+                httpContext.Response.Headers.CacheControl = "no-store";
+
+                return Results.NoContent();
+            })
+            .WithName("CompleteRegistration")
+            .WithSummary("Completa el registro con el token del enlace del correo y la contraseña elegida: crea la empresa, el usuario y su pertenencia como Owner. 204 si sirvió; 400 registration.invalid, siempre el mismo, si el token no sirve. No inicia sesión.")
+            .RequireRateLimiting(RateLimiting.RegistrationComplete);
 
         group.MapPost("/login", async (LoginCommand command, ISender sender, HttpContext httpContext, CancellationToken cancellationToken) =>
             {

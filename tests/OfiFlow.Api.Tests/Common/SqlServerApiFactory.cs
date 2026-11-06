@@ -34,6 +34,12 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
 
     public string JwtIssuer => "OfiFlow.Api.Tests";
 
+    /// <summary>
+    /// La versión vigente de las condiciones de uso (`Legal:TermsVersion`, spec 021). Aceptar una invitación y pedir un registro exigen enviarla (D8, R3): con ella configurada de serie, los
+    /// tests que crean cuentas por invitación solo tienen que mandarla, y el caso «condiciones sin configurar» se prueba vaciándola a propósito.
+    /// </summary>
+    public const string TermsVersion = "2026-11";
+
     public string JwtAudience => "OfiFlow.Api.Tests.Client";
 
     /// <summary>Todo lo que la API ha registrado en el log, para comprobar eventos de seguridad (ADR-009 R5).</summary>
@@ -80,6 +86,7 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
         // Se prueba aparte, contra SQL Server real, llamando al ciclo directamente.
         builder.UseSetting("RefreshTokenPurge:Enabled", "false");
         builder.UseSetting("Jwt:Audience", JwtAudience);
+        builder.UseSetting("Legal:TermsVersion", TermsVersion);
 
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
 

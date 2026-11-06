@@ -243,7 +243,7 @@ public sealed class RolesFixture : IAsyncLifetime
     /// <summary>Acepta una invitación desde una IP propia (ver <see cref="TestClientIpStartupFilter"/>), para no gastar el límite de aceptar.</summary>
     private Task<HttpResponseMessage> AcceptWithOwnIpAsync(string token, string name, string password)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/accept-invitation") { Content = JsonContent.Create(new { token, name, password }) };
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/accept-invitation") { Content = JsonContent.Create(new { token, name, password, acceptedTermsVersion = SqlServerApiFactory.TermsVersion }) };
         request.Headers.Add(TestClientIpStartupFilter.HeaderName, TestClientIpStartupFilter.NewIp());
 
         return Anonymous.SendAsync(request);

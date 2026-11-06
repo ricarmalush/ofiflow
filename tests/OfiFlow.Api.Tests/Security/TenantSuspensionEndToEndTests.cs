@@ -294,7 +294,7 @@ public sealed class TenantSuspensionEndToEndTests : IAsyncLifetime
         PostAnonymousAsync("/api/v1/auth/refresh", new { refreshToken });
 
     private Task<HttpResponseMessage> AcceptAsync(string token, string name) =>
-        PostAnonymousAsync("/api/v1/auth/accept-invitation", new { token, name, password = Password });
+        PostAnonymousAsync("/api/v1/auth/accept-invitation", new { token, name, password = Password, acceptedTermsVersion = SqlServerApiFactory.TermsVersion });
 
     /// <summary>Cada petición anónima declara una IP distinta: los límites por IP son otra defensa y aquí no deben intervenir.</summary>
     private Task<HttpResponseMessage> PostAnonymousAsync(string url, object body)

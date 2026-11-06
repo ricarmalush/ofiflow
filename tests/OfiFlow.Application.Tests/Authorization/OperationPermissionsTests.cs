@@ -9,6 +9,7 @@ using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Identity.Commands.CloseAllSessions;
 using OfiFlow.Application.Identity.Commands.CloseSession;
 using OfiFlow.Application.Identity.Commands.ForgotPassword;
+using OfiFlow.Application.Identity.Commands.CompleteRegistration;
 using OfiFlow.Application.Identity.Commands.RequestRegistration;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
@@ -52,7 +53,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 46 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta y, de la spec 018, las de «he olvidado mi contraseña» y restablecerla y, de la spec 020, las de programar un trabajo y quitarlo de la agenda y la de leer la agenda y, de la spec 021, la de pedir crear una cuenta) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 47 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta y, de la spec 018, las de «he olvidado mi contraseña» y restablecerla y, de la spec 020, las de programar un trabajo y quitarlo de la agenda y la de leer la agenda y, de la spec 021, las de pedir crear una cuenta y completarla) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -109,7 +110,8 @@ public class OperationPermissionsTests
         typeof(VerifyPlatformChallengeCommand), // spec 011: anónima, el desafío de plataforma es la credencial
         typeof(ForgotPasswordCommand), // spec 018: anónima, quien la olvidó no puede identificarse; no devuelve nada y el correo es la prueba de que la cuenta es suya
         typeof(ResetPasswordCommand), // spec 018: anónima, el token del correo es la credencial
-        typeof(RequestRegistrationCommand) // spec 021: anónima, quien se registra aún no tiene cuenta; no devuelve nada y el correo es la prueba de que el buzón es suyo
+        typeof(RequestRegistrationCommand), // spec 021: anónima, quien se registra aún no tiene cuenta; no devuelve nada y el correo es la prueba de que el buzón es suyo
+        typeof(CompleteRegistrationCommand) // spec 021: anónima, el token del correo es la credencial; aquí nace la cuenta
     ];
 
     // Spec 011: las operaciones del panel no piden un permiso de empresa (un operador no tiene ninguna): piden ser un operador activo.
@@ -205,7 +207,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(46, inTheTable.Count);
+        Assert.Equal(47, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

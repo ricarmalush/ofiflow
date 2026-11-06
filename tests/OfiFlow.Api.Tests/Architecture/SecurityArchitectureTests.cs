@@ -146,6 +146,7 @@ public class SecurityArchitectureTests
     private static readonly string[] TenantMembershipCreators =
     [
         "src/OfiFlow.Application/Identity/Commands/Register/RegisterCommandHandler.cs",
+        "src/OfiFlow.Application/Identity/Commands/CompleteRegistration/CompleteRegistrationCommandHandler.cs",
         "src/OfiFlow.Application/Identity/Commands/AcceptInvitation/AcceptInvitationCommandHandler.cs"
     ];
 
@@ -156,10 +157,10 @@ public class SecurityArchitectureTests
 
         var offenders = creators.Where(path => !TenantMembershipCreators.Contains(path)).ToList();
         Assert.True(offenders.Count == 0,
-            "Solo el registro y aceptar una invitación pueden crear una pertenencia, y siempre para una cuenta recién creada " +
+            "Solo el registro (inmediato o al completarlo) y aceptar una invitación pueden crear una pertenencia, y siempre para una cuenta recién creada " +
             $"(spec 011 R1: un operador nunca es miembro de una empresa). Aparece en: {string.Join(", ", offenders)}");
 
-        // Control positivo: los dos sitios permitidos siguen creando pertenencias. Si uno dejara de hacerlo, la lista estaría
+        // Control positivo: los sitios permitidos siguen creando pertenencias. Si uno dejara de hacerlo, la lista estaría
         // describiendo un código que ya no existe.
         Assert.All(TenantMembershipCreators, path => Assert.Contains(path, creators));
     }

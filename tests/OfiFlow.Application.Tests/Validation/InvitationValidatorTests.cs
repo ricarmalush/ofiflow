@@ -4,6 +4,7 @@ using OfiFlow.Application.Identity;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
 using OfiFlow.Application.Tenancy;
 using OfiFlow.Application.Tenancy.Commands.InviteUser;
+using OfiFlow.Application.Tests.Common;
 using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Tenancy;
@@ -14,7 +15,10 @@ namespace OfiFlow.Application.Tests.Validation;
 public class InvitationValidatorTests
 {
     private readonly InviteUserCommandValidator _invite = new();
-    private readonly AcceptInvitationCommandValidator _accept = new();
+    private readonly FakeLegalTerms _terms = new("2026-11");
+    private readonly AcceptInvitationCommandValidator _accept;
+
+    public InvitationValidatorTests() => _accept = new AcceptInvitationCommandValidator(_terms);
 
     // ===== Invitar =====
 
@@ -53,7 +57,7 @@ public class InvitationValidatorTests
     // ===== Aceptar =====
 
     private static AcceptInvitationCommand ValidAccept() =>
-        new(OpaqueToken.Generate().Value, "Ana Pérez", "contraseña-segura");
+        new(OpaqueToken.Generate().Value, "Ana Pérez", "contraseña-segura", "2026-11");
 
     [Fact]
     public void Accept_AValidCommand_Passes()
@@ -97,6 +101,51 @@ public class InvitationValidatorTests
         {
             result.ShouldHaveValidationErrorFor(x => x.Name);
         }
+    }
+
+    // ===== Las condiciones de uso (spec 021 D8, R16) =====
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("2026-10")]
+    [InlineData("2026-11 ")]
+    [InlineData(" 2026-11")]
+    public void Accept_WithoutTheCurrentTermsVersion_IsAFieldError_WithTheTermsCode(string? sent)
+    {
+        var result = _accept.TestValidate(ValidAccept() with { AcceptedTermsVersion = sent! });
+
+        result.ShouldHaveValidationErrorFor(x => x.AcceptedTermsVersion).WithErrorCode(IdentityErrors.TermsNotAccepted);
+    }
+
+    [Fact]
+    public void Accept_TheTermsVersion_IsComparedExactly_NotIgnoringCase()
+    {
+        _terms.CurrentVersion = "V2026-11";
+
+        _accept.TestValidate(ValidAccept() with { AcceptedTermsVersion = "v2026-11" }).ShouldHaveValidationErrorFor(x => x.AcceptedTermsVersion);
+        _accept.TestValidate(ValidAccept() with { AcceptedTermsVersion = "V2026-11" }).ShouldNotHaveValidationErrorFor(x => x.AcceptedTermsVersion);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void Accept_WithTheTermsNotConfigured_NoVersionIsTheCurrentOne_SoNoAccountIsBornWithoutTerms(string? configured)
+    {
+        // Fail-closed, como el registro (R8): sin Legal:TermsVersion no nace una cuenta sin condiciones aceptadas.
+        _terms.CurrentVersion = configured;
+
+        _accept.TestValidate(ValidAccept()).ShouldHaveValidationErrorFor(x => x.AcceptedTermsVersion).WithErrorCode(IdentityErrors.TermsNotAccepted);
+    }
+
+    [Fact]
+    public void Accept_ABadTermsVersion_DoesNotDependOnTheTokenBeingGood()
+    {
+        // Un error de CAMPO: depende solo de lo enviado. No cuenta nada del token ni de la invitación.
+        var result = _accept.TestValidate(ValidAccept() with { AcceptedTermsVersion = "otra" });
+
+        result.ShouldNotHaveValidationErrorFor(x => x.Token);
     }
 
     [Theory]
