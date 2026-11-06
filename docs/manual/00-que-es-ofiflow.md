@@ -84,15 +84,17 @@ Estas reglas viven en un solo sitio, el código de [`Job`](../../src/OfiFlow.Dom
 
 ## Qué se puede hacer hoy
 
-Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y responde con JSON). Las pantallas viven en **otro repositorio**, `ofiflow-frontend` (Angular): hoy tiene el acceso, la recuperación de contraseña, clientes, trabajos, la agenda, el equipo y la seguridad de la cuenta; la app móvil llegará en una fase posterior. Estas son todas las operaciones que existen:
+Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y responde con JSON). Las pantallas viven en **otro repositorio**, `ofiflow-frontend` (Angular): hoy tiene el acceso, **crear una cuenta**, la recuperación de contraseña, clientes, trabajos, la agenda, el equipo y la seguridad de la cuenta; la app móvil llegará en una fase posterior. Estas son todas las operaciones que existen:
 
 | Grupo | Operación | Ruta |
 |---|---|---|
-| **Cuenta** (pública, sin iniciar sesión) | Registrarse | `POST /api/v1/auth/register` |
+| **Cuenta** (pública, sin iniciar sesión) | Pedir crear una cuenta (siempre `202`, no crea nada todavía; spec 021) | `POST /api/v1/auth/registration` |
+| | Completar el registro con el enlace del correo y elegir la contraseña: **aquí nace la cuenta** (spec 021) | `POST /api/v1/auth/registration/complete` |
 | | Iniciar sesión | `POST /api/v1/auth/login` |
 | | Renovar la sesión | `POST /api/v1/auth/refresh` |
 | | Cerrar la sesión (revoca el refresh token; spec 013) | `POST /api/v1/auth/logout` |
-| | Aceptar una invitación (elige nombre y contraseña) | `POST /api/v1/auth/accept-invitation` |
+| | Aceptar una invitación (elige nombre y contraseña y acepta las condiciones de uso) | `POST /api/v1/auth/accept-invitation` |
+| | Recuperar una contraseña olvidada: pedir el enlace / elegir la nueva (spec 018) | `POST /api/v1/auth/forgot-password`, `POST /api/v1/auth/reset-password` |
 | | Segundo paso del login (cuentas con segundo factor) | `POST /api/v1/auth/mfa/verify` |
 | **Mi cuenta** (requiere sesión; spec 012) | Quién soy: mis datos, mi empresa, mi rol **efectivo** y mis permisos | `GET /api/v1/account/me` |
 | | Cerrar **todas** mis sesiones, en todos mis dispositivos (spec 014) | `DELETE /api/v1/account/sessions` |
@@ -111,7 +113,7 @@ Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y
 | **Plataforma** (solo operadores, otra sesión; spec 011) | Iniciar sesión en dos pasos (pública) | `POST /api/v1/platform/auth/login`, `POST /api/v1/platform/auth/verify` |
 | | Listar / suspender / reactivar empresas (requiere sesión de plataforma) | `GET /api/v1/platform/tenants`, `POST /api/v1/platform/tenants/{id}/suspend`, `/reactivate` |
 
-Una cosa que sorprende al principio: **registrarse crea una empresa nueva**. Al registrarte indicas el nombre de la empresa, tu nombre, tu email y tu contraseña, y el sistema crea de una vez el `Tenant` (tu empresa), el `User` (tú) y el `TenantUser` que te convierte en `Owner` de esa empresa.
+Una cosa que sorprende al principio: **crear una cuenta crea una empresa nueva**. Pides el registro indicando el nombre de la empresa, tu nombre, tu email y que aceptas las condiciones de uso; te llega un correo con un enlace, y **al abrirlo eliges tu contraseña** y el sistema crea de una vez el `Tenant` (tu empresa), el `User` (tú) y el `TenantUser` que te convierte en `Owner` de esa empresa. **Hasta que abres el enlace no existe ninguna cuenta**: es lo que impide que alguien registre tu email y se quede con ella (capítulo 6, Parte 10). Por eso crear una cuenta necesita el correo configurado.
 
 Después, al iniciar sesión recibes un **token** (un JWT, se explica en el capítulo 6). Ese token dice quién eres y en qué empresa estás trabajando, y se envía en cada petición posterior. Así el sistema sabe qué datos puede enseñarte.
 
@@ -141,13 +143,13 @@ OfiFlow lo construye **una sola persona** con unas 25 horas a la semana, con un 
 
 Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 
-- **Crear una cuenta desde la web:** la API tiene registro (`POST /auth/register`), pero el frontend **no tiene pantalla** para usarlo: hoy, la primera persona de una empresa nueva solo puede crearla llamando a la API a mano (las demás entran por invitación). Es **la siguiente spec**, junto con confirmar el email (`docs/ideas.md`). Tampoco hay todavía app móvil.
+- **App móvil, y unos textos legales:** no hay todavía app móvil. Y crear una cuenta ya funciona desde la web (spec 021), pero **las condiciones de uso y la política de privacidad que se aceptan al registrarse aún no están redactadas**: las escribe el dueño del proyecto, la API solo compara su versión y la pantalla las nombra sin enlazarlas hasta que existan. Hay que tenerlas antes de abrir el registro a clientes reales.
 - **Agenda completa, presupuestos, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Presupuestos, facturas y pagos son las fases 3 y 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
 - **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009) y, con el correo configurado, **se envían por correo** (spec 017; sin correo configurado el token se le entrega a quien invita, como antes). Falta elegir proveedor de correo y dominio, y que una cuenta pueda pertenecer a varias empresas: hoy cada cuenta pertenece a una sola.
 - **Del panel de operador de la plataforma** (spec 011) falta lo que la propia spec dejó fuera: plan o tarifa, el motivo y el aviso de una suspensión, buscar por nombre, varios operadores con permisos distintos y la aprobación entre dos. Lo que existe (listar, suspender y reactivar con segundo factor obligatorio) está en los capítulos 6 y 8.
 - **Que un técnico solo vea los trabajos que tiene asignados:** hoy un `Technician` puede ver y ejecutar cualquier trabajo de su empresa, no solo los suyos.
-- **Segundo factor obligatorio, *passkeys* y cambiar la contraseña estando dentro:** el segundo factor (TOTP) existe y es opcional (spec 010), junto con el bloqueo de cuenta por intentos fallidos; obligarlo para `Owner` y `Admin` exige pantallas, y el TOTP no resiste al *phishing* (las *passkeys* sí). La contraseña olvidada **sí se puede recuperar** (spec 018: un enlace por correo, de un solo uso, que al usarse cierra todas las sesiones); lo que todavía no se puede es cambiarla estando dentro (spec 019). Y sin segundo factor, quien controla el buzón de una cuenta controla la cuenta: por eso obligarlo a `Owner` y `Admin` es lo siguiente más importante.
+- **Segundo factor obligatorio (que ahora importa más: la cuenta recién creada nace sin él), *passkeys* y cambiar la contraseña estando dentro:** el segundo factor (TOTP) existe y es opcional (spec 010), junto con el bloqueo de cuenta por intentos fallidos; obligarlo para `Owner` y `Admin` exige pantallas, y el TOTP no resiste al *phishing* (las *passkeys* sí). La contraseña olvidada **sí se puede recuperar** (spec 018: un enlace por correo, de un solo uso, que al usarse cierra todas las sesiones); lo que todavía no se puede es cambiarla estando dentro (spec 019). Y sin segundo factor, quien controla el buzón de una cuenta controla la cuenta: por eso obligarlo a `Owner` y `Admin` es lo siguiente más importante.
 
 El roadmap completo (fases 0 a 12) está en el [README del repositorio](../../README.md#roadmap-por-fases). Las fases 0 y 1 (arquitectura y MVP: empresa, usuario, cliente y trabajo) están hechas.
 
@@ -156,9 +158,9 @@ El roadmap completo (fases 0 a 12) está en el [README del repositorio](../../RE
 1. ¿Qué significa que OfiFlow sea *multi-tenant*, y cuál es la garantía más importante que de ahí se deriva?
 2. ¿Por qué existe `TenantUser` en vez de poner el rol dentro de `User`?
 3. Marta crea un trabajo y lo completa sin haberlo empezado. ¿Qué pasa y dónde está escrita la regla que lo impide?
-4. ¿Qué crea el sistema, exactamente, cuando alguien se registra?
+4. ¿Qué crea el sistema, exactamente, cuando alguien completa su registro, y cuándo existe la cuenta?
 
-*(Respuestas: 1 = muchas empresas comparten aplicación y base de datos, y los datos de una nunca deben verse desde otra. 2 = una persona puede estar en varias empresas con roles distintos. 3 = el sistema rechaza la operación porque solo se puede completar un trabajo `InProgress`; la regla está en `Job.Complete()`. 4 = un `Tenant`, un `User` y un `TenantUser` con rol `Owner`.)*
+*(Respuestas: 1 = muchas empresas comparten aplicación y base de datos, y los datos de una nunca deben verse desde otra. 2 = una persona puede estar en varias empresas con roles distintos. 3 = el sistema rechaza la operación porque solo se puede completar un trabajo `InProgress`; la regla está en `Job.Complete()`. 4 = un `Tenant`, un `User` (con las condiciones aceptadas) y un `TenantUser` con rol `Owner`, junto con la cuenta de acceso, en una sola confirmación; y la cuenta no existe hasta que se abre el enlace del correo.)*
 
 ## Siguiente capítulo
 

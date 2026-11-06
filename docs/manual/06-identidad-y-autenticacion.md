@@ -3,11 +3,12 @@
 ## Qué vas a aprender
 
 - Qué es autenticar y en qué se diferencia de autorizar.
-- Cómo se registra alguien en OfiFlow y por qué ese registro es atómico.
+- Cómo se crea una cuenta en OfiFlow, por qué **no existe hasta que se abre el enlace del correo** y por qué esa creación es atómica (Partes 1 y 10).
 - Cómo se guarda una contraseña (y por qué nunca "se guarda" de verdad).
 - Qué es un token JWT, qué lleva dentro y por qué no se puede falsificar.
 - Para qué sirve el *refresh token*, cómo rota y cómo detecta un robo.
 - Cómo se recupera una contraseña olvidada sin regalar la cuenta: respuesta uniforme, un tiempo medido y todas las sesiones cerradas (Parte 9).
+- Cómo se crea una cuenta sin regalar la lista de clientes ni abrir el *pre-hijacking*: sin cuenta hasta abrir el enlace, contraseña elegida al completar, respuesta y tiempo uniformes y condiciones aceptadas (Parte 10).
 - Qué ataques frena este flujo, y qué límites tiene hoy.
 
 Este capítulo explica el **token** que ya has visto en los capítulos 4 y 5: de dónde sale, qué contiene y cómo se protege.
@@ -29,7 +30,8 @@ Estas son las rutas **anónimas** de la primera hora (no exigen sesión, porque 
 
 | Ruta | Qué hace | Límite de peticiones |
 |---|---|---|
-| `POST /api/v1/auth/register` | Crea una empresa y su primer usuario | 3 por hora y por IP |
+| `POST /api/v1/auth/registration` | Pide crear una cuenta; **siempre `202`, tenga ya cuenta el email o no, y no crea ninguna cuenta** (Parte 10) | 3 por hora y por IP, y 3 por hora y por email en silencio |
+| `POST /api/v1/auth/registration/complete` | Elige la contraseña con el token del correo: **aquí nacen** la empresa, el usuario y el `Owner` (Parte 10) | 10 por hora y por IP |
 | `POST /api/v1/auth/login` | Comprueba la contraseña y entrega los tokens | 5 por minuto y por IP |
 | `POST /api/v1/auth/refresh` | Cambia un *refresh token* por un par nuevo | 20 por minuto y por IP |
 | `POST /api/v1/auth/logout` | Cierra la sesión de un *refresh token* (lo revoca; spec 013, Parte 5) | 20 por minuto y por IP (cubo propio, distinto del de renovar) |
@@ -38,19 +40,21 @@ Estas son las rutas **anónimas** de la primera hora (no exigen sesión, porque 
 | `POST /api/v1/auth/forgot-password` | Pide el enlace para recuperar una contraseña olvidada; **siempre `202`, exista la cuenta o no** (Parte 9) | 5 por hora y por IP, y 3 por hora y por cuenta en silencio |
 | `POST /api/v1/auth/reset-password` | Elige la contraseña nueva con el token del correo; cierra todas las sesiones (Parte 9) | 10 por hora y por IP |
 
-(Los límites están en [`RateLimiting.cs:44-46`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
+(Los límites están en [`RateLimiting.cs`](../../src/OfiFlow.Api/Common/RateLimiting.cs) y se aplican en [`AuthEndpoints.cs`](../../src/OfiFlow.Api/Endpoints/AuthEndpoints.cs).)
 
 ---
 
 ## Parte 1 — Registrarse
 
-`RegisterCommand` recibe el nombre de la empresa, el nombre de la persona, el email y la contraseña. El handler ([`RegisterCommandHandler.cs`](../../src/OfiFlow.Application/Identity/Commands/Register/RegisterCommandHandler.cs)) crea **cuatro cosas** de una vez:
+> **Esta parte describe qué se crea y por qué en una sola transacción.** *Cuándo* se crea cambió con la spec 021: ya no existe el registro inmediato (`POST /auth/register`, retirado). La cuenta nace **al abrir el enlace del correo**, y todo ese recorrido (y lo que le niega al atacante) está en la **Parte 10**.
+
+`CompleteRegistrationCommand` recibe el token del correo y la contraseña que elige quien lo abre; el nombre de la empresa, el de la persona y el email salieron del pedido anterior y estaban guardados en el pendiente. El handler ([`CompleteRegistrationCommandHandler.cs`](../../src/OfiFlow.Application/Identity/Commands/CompleteRegistration/CompleteRegistrationCommandHandler.cs)) crea **cuatro cosas** de una vez:
 
 | Se crea | Qué es | Dónde vive |
 |---|---|---|
 | `ApplicationUser` | Las **credenciales**: email y hash de la contraseña | Infrastructure |
 | `Tenant` | La empresa | Domain |
-| `User` | La persona (nombre y email de contacto) | Domain |
+| `User` | La persona (nombre, email de contacto y las condiciones de uso que aceptó, con versión y fecha) | Domain |
 | `TenantUser` con rol `Owner` | "Esta persona es la dueña de esa empresa" | Domain |
 
 ### Por qué todo ocurre en una sola transacción
@@ -59,7 +63,7 @@ Si se guardara primero el usuario y fallara la creación de la empresa, quedarí
 
 ```csharp
 // IdentityService.cs:40-41
-// Deliberadamente sin SaveChangesAsync: RegisterCommandHandler confirma esta fila
+// Deliberadamente sin SaveChangesAsync: CompleteRegistrationCommandHandler (o AcceptInvitationCommandHandler) confirma esta fila
 // junto con Tenant/User/TenantUser en una única transacción (spec 002).
 dbContext.ApplicationUsers.Add(user);
 ```
@@ -68,13 +72,13 @@ dbContext.ApplicationUsers.Add(user);
 
 **Y el token de acceso que ya tuviera no le sirve de nada.** El token sigue sin caducar hasta 30 minutos (un JWT no se puede anular por sí solo), pero ya no importa, por dos barreras que se comprueban en **cada** petición. La primera, desde la spec 015: el token lleva el Id de su sesión y esa sesión ya no existe (la baja borró sus refresh tokens), así que recibe un **401** en su siguiente petición (ver «El token muere con su sesión», más abajo). La segunda, la de la spec 009: se comprueba en la base de datos que la persona sigue en la empresa y con qué rol (capítulo 8), y si ya no es miembro pero su sesión seguía activa, recibe un **403**. En ningún caso a los 30 minutos.
 
-Solo anota "este usuario es nuevo". Es `SaveChangesAsync`, que llama el handler **una única vez** al final (línea 33), quien escribe las cuatro filas juntas: o se guardan todas, o ninguna. Hay un test que lo demuestra: [`Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing`](../../tests/OfiFlow.Application.Tests/Identity/RegisterCommandHandlerTests.cs).
+Solo anota "este usuario es nuevo". Es `SaveChangesAsync`, que llama el handler **una única vez** al final, quien escribe las filas juntas (y marca el pendiente como canjeado): o se guardan todas, o ninguna. Dos tests lo demuestran: [`EverythingIsConfirmedTogether_InASingleSave`](../../tests/OfiFlow.Application.Tests/Identity/CompleteRegistrationCommandHandlerTests.cs) (una sola confirmación) y, contra SQL Server real, [`IfAnAccountSlipsInBetweenTheCheckAndTheSave_NothingIsLeftBehind_AndItIsTheSameError`](../../tests/OfiFlow.Infrastructure.Tests/Persistence/CompleteRegistrationIntegrationTests.cs) (una cuenta que se cuela justo antes de confirmar: no queda ni la empresa, ni el usuario, ni el pendiente gastado).
 
 ### El email es único
 
 `ApplicationUser` tiene un **índice único** sobre el email normalizado en mayúsculas ([`ApplicationUserConfiguration.cs`](../../src/OfiFlow.Infrastructure/Persistence/Configurations/ApplicationUserConfiguration.cs)): `Marta@x.com` y `marta@X.com` son la misma persona. Se comprueba antes de crear (`IdentityService.cs:27-35`) y la base de datos lo garantiza además, por si dos registros llegaran a la vez.
 
-El registro **no devuelve tokens**: devuelve el `tenantId`. Para entrar hay que hacer login después.
+Completar el registro **no devuelve tokens** (ni nada: `204`). Para entrar hay que hacer login después.
 
 ---
 
@@ -817,6 +821,125 @@ Ninguno lleva el email, el token, el enlace ni la contraseña.
 
 ---
 
+## Parte 10 — Crear una cuenta (spec 021)
+
+Hasta la spec 021, la **primera persona de una empresa nueva** solo podía crearse llamando a la API a mano, y el registro que existía (`POST /auth/register`) tenía dos defectos graves: decía «ese email ya está registrado» (regalaba la lista de clientes a quien probara emails) y **no demostraba nada del buzón**: quien escribía un email obtenía una cuenta con ese email, fuese suyo o no. Esta parte va de **cuándo existe una cuenta** y de qué se le niega al atacante en cada paso. Las decisiones están en la [ADR-023](../adr/ADR-023-crear-una-cuenta.md).
+
+### La decisión que condiciona todo: sin cuenta hasta abrir el enlace
+
+La alternativa obvia es **crear la cuenta al registrarse, sin confirmar**, y bloquear el login hasta que se confirme. Parece razonable y abre un ataque con nombre propio, el ***pre-hijacking***:
+
+```
+Atacante: se registra con el email de la VÍCTIMA y SU contraseña   → existe una cuenta (sin confirmar)
+Víctima:  recibe un correo «confirma tu cuenta» y pulsa el enlace   → la cuenta queda confirmada
+Atacante: entra con la contraseña que él eligió                     → controla la cuenta
+```
+
+Con **«pedir → enlace → completar»** el ataque no tiene dónde agarrarse: pedir el registro **no crea ninguna cuenta**, solo guarda lo escrito en una tabla de *pendientes* y envía un enlace. Si la víctima abre un enlace que no pidió, **la contraseña la elige ella**. Y quien registró su email sin acceso a su buzón **no consigue nada**: no hay cuenta, y no puede completar sin el token.
+
+### El recorrido
+
+```
+1. Pides el registro     POST /auth/registration  { companyName, userName, email, acceptedTermsVersion }
+                          → 202 sin cuerpo, SIEMPRE lo mismo. No se crea ninguna cuenta.
+2. Te llega un correo    enlace: {LinkBaseUrl}/auth/complete-registration#token=…   (caduca a las 24 h, un solo uso)
+3. Eliges la contraseña  POST /auth/registration/complete  { token, newPassword }
+                          → 204; AQUÍ nacen la empresa, el usuario y su pertenencia de Owner. No abre sesión.
+4. Entras                el login de siempre
+```
+
+Fíjate en lo que **no** hay en el paso 1: contraseña. Se elige al abrir el enlace, no antes, y por eso OfiFlow no guarda ni siquiera el hash de una contraseña de alguien que todavía no ha demostrado nada.
+
+### Pedir el registro: el patrón de la Parte 9, por tercera vez
+
+[`RequestRegistrationCommandHandler`](../../src/OfiFlow.Application/Identity/Commands/RequestRegistration/RequestRegistrationCommandHandler.cs) repite lo aprendido con la recuperación de contraseña, así que aquí solo se cuentan las diferencias:
+
+- **Siempre `202`, sin cuerpo y con las mismas cabeceras**, sea el email nuevo, tenga ya cuenta (de una empresa **o de un operador de la plataforma**), se haya pasado el límite del email, esté el correo apagado o falten las condiciones. Solo un dato **mal formado** da `400`, y eso se decide sin consultar nada.
+- **Si el email ya tiene cuenta, no se crea nada y se envía un aviso fijo** («Ya tienes una cuenta de OfiFlow»), con un enlace **sin token** a recuperar la contraseña. Es lo que evita que quien tecleó bien su email, y ya estaba registrado, se quede esperando un correo que no llega, sin contarle a nadie más que existe esa cuenta.
+- **Un solo pendiente vigente por email**: lo garantiza un **índice único filtrado** (`UsedAt IS NULL`) de la base de datos, no el código. Pedir otra vez anula el anterior y **hace de «reenviar»**; no hay un endpoint aparte.
+- **Sin correo, o sin `Legal:TermsVersion`, el registro está cerrado** (`202`, nada se crea y un `Warning`). Es *fail-closed*: lo contrario dejaría abierta una cuenta sin demostrar nada si en producción se olvida configurar el correo.
+- **Las condiciones de uso**: se envía la versión que la persona vio y debe ser la vigente. Qué dicen las condiciones **no lo decide el código** (lo redacta el dueño del proyecto); la API solo compara una etiqueta como `2026-11`. Quien tenga abierta una pantalla antigua recibe un `400` en vez de aceptar sin saber qué.
+
+### El tiempo, medido otra vez
+
+Misma lección que en la Parte 9: **no se supuso, se midió**, con la API real y SQL Server real, **200 + 200 peticiones alternadas**, cada una desde una IP distinta (para que el límite por IP no cortara la prueba) y tras 20 + 20 de calentamiento:
+
+| | Mediana con cuenta | Mediana email nuevo | ¿Se distinguen? |
+|---|---|---|---|
+| **Sin suelo** | 11,38 ms | 14,80 ms | **Sí, sin dudar** (t de Welch = −9,40; Mann-Whitney z = −10,62) |
+| **Con suelo de 250 ms** | 266,45 ms | 266,35 ms | No (t = 1,03; z = 0,75) |
+
+Dos cosas que enseña la tabla. Primera, la diferencia es de solo **3,4 ms**, **menor que los 12 ms de la recuperación**, porque aquí el camino de «ya tiene cuenta» **también hace trabajo** (la consulta y el limitador del aviso); aun así se distingue con una prueba estadística de manual, y a ojo nadie lo habría defendido. Segunda, el suelo (`Registration:ResponseFloor`, [`RegistrationTiming.cs`](../../src/OfiFlow.Api/Common/RegistrationTiming.cs)) se aplica **después** del trabajo; la prueba funcional lo comprueba de verdad: un decorador retrasa el servicio 600 ms con un suelo de 900 y la respuesta debe tardar unos 900, no 1.500.
+
+### Tres límites, porque abusan de cosas distintas
+
+| Límite | Valor | Dónde vive | Qué frena |
+|---|---|---|---|
+| **Pedir, por IP** | 3 por hora (`429` al cuarto) | Limitador global | A quien prueba muchos emails desde una máquina |
+| **Pendientes, por email**, **en silencio** | 3 por hora, vengan de la IP que vengan | La base de datos (cuenta filas) | A quien llena de enlaces el buzón de una **víctima** desde muchas IP |
+| **Avisos, por email**, **en silencio** | 3 por hora | **Memoria**, por instancia ([`RegistrationNoticeThrottle`](../../src/OfiFlow.Infrastructure/Identity/RegistrationNoticeThrottle.cs)) | A quien llena de **avisos** el buzón de alguien que ya tiene cuenta |
+
+**El tercero no estaba en la spec, y lo encontró escribir el código.** El límite «3 por email» de los pendientes cuenta filas, y con un email que **ya tiene cuenta no se crea ninguna fila** (la regla de no revelar nada): no hay nada que contar. Sin otro freno, quien conociera un email con cuenta podía llenarle el buzón de avisos desde muchas IP, y el límite por IP no lo impide. Por eso el aviso tiene su propio limitador, en memoria como el de las invitaciones, con una **huella** del email normalizado como clave (no el email) y registrado como *singleton* (si fuera *scoped* se crearía uno por petición y no limitaría nada). Riesgo aceptado: reiniciar la API lo pone a cero y, con varias instancias, el límite efectivo es la suma.
+
+### Completar: aquí nace la cuenta
+
+[`CompleteRegistrationCommandHandler`](../../src/OfiFlow.Application/Identity/Commands/CompleteRegistration/CompleteRegistrationCommandHandler.cs) hace, **en una sola confirmación**, lo que antes hacía el registro: canjea el pendiente y crea la cuenta de acceso (el hash PBKDF2), la empresa, el usuario (con la versión y la fecha de las condiciones que aceptó **al pedir**, no al abrir el enlace) y su pertenencia como `Owner`. Todo o nada.
+
+**El orden es deliberado:**
+
+1. **Primero el canje** (barato). Un token que no sirve se rechaza aquí, y **no llega a pagar el hash lento**: este endpoint es anónimo y el hash es lo caro.
+2. **Después la cuenta de acceso** (el hash). Si el email se ocupó entre que se comprobó el pendiente y ahora, es el mismo «el enlace ya no sirve».
+3. **Después las filas** (empresa, usuario, pertenencia) y **al final, una única confirmación.**
+
+Una **contraseña mala** (corta o larga) da un `400` de campo **antes de tocar el token**: el enlace sigue sirviendo y se puede reintentar. Y **un solo error** para todo lo demás: token desconocido, caducado, ya usado, sustituido por otro pedido **o cuyo email ya tiene cuenta desde que se pidió** dan siempre `400 registration.invalid`. El motivo real va al registro (evento `1021`), nunca a la respuesta; un test compara la respuesta completa de los cinco casos y es la misma.
+
+**Dos aperturas a la vez con el mismo token: gana una.** El pendiente lleva una columna de versión de fila; las dos leen «sin usar», las dos preparan sus cambios, y solo un `UPDATE` encuentra la fila como la leyó. La perdedora falla al confirmar —con su empresa y su usuario— y recibe `registration.invalid`, **sin dejar nada**. Un detalle que ya costó un `500` en la Parte 6 de las invitaciones, aplicado aquí desde el principio: la base de datos puede rechazar a la perdedora **de dos formas** (la versión de fila, o el índice único del email si la ganadora llegó a crear la cuenta), y el código captura **las dos juntas** como `DbUpdateException`; capturar solo la de concurrencia dejaría escapar la otra.
+
+Y, como en la recuperación, **no abre sesión**: `204`, sin cuerpo y `no-store`. *Un enlace de correo no es una llave de entrada.*
+
+### Qué se guarda de quien aún no tiene cuenta
+
+[`PendingRegistration`](../../src/OfiFlow.Domain/Identity/PendingRegistration.cs) guarda el nombre, la empresa y el email de alguien que **todavía no es nadie**, y por eso:
+
+- **Es una tabla global** (no hay empresa todavía): sin `TenantId`, sin clave foránea y con **un solo fichero** que la lee ([`PendingRegistrationService`](../../src/OfiFlow.Infrastructure/Identity/PendingRegistrationService.cs)), vigilado por el test de aislamiento.
+- **El token solo como hash** y **la contraseña, nunca**.
+- **Caduca a las 24 horas** (más que la hora de recuperar la contraseña: aquí no hay ninguna cuenta en juego hasta abrirlo y la persona puede tardar) y **se purga a los 7 días** de caducar, con la misma purga de las sesiones (ADR-019): son datos personales y no se guardan más de lo necesario.
+
+### El registro viejo se retiró
+
+Dos formas de crear una cuenta serían dos formas de saltarse la confirmación del buzón, así que `POST /auth/register` **ya no existe** (`404`): se retiraron el comando, el endpoint y su política de límite. Es un cambio de contrato **sin clientes que lo sufran**: solo lo usaban los tests, la colección `.http` y la documentación. Los tests crean ahora sus empresas por el flujo real con un ayudante ([`AccountRegistrar`](../../tests/OfiFlow.Api.Tests/Common/AccountRegistrar.cs)) que pide el registro, lee el enlace del **correo capturado** y lo completa: si el flujo se rompiera, fallarían todos los tests que lo usan. Un test de arquitectura fija que **solo el caso de uso de completar crea una empresa**.
+
+### En el navegador
+
+Dos pantallas públicas, además del enlace «¿No tienes cuenta? Crea una» en el acceso (solo en el paso de la contraseña, no en el del código del segundo factor). La de pedir **no pide contraseña** y, tras pedir, dice siempre lo mismo y **sin afirmar nada**: «Si el email es válido, recibirás un correo…», nunca «te hemos enviado», porque la API responde `202` igual en los cuatro casos. La de completar (`/auth/complete-registration`, la ruta del enlace) lee el token del fragmento y **lo borra de la barra de direcciones y del historial al entrar**. La casilla de aceptar las condiciones es un componente compartido, también usado al aceptar una invitación.
+
+### Las condiciones también en la invitación
+
+Toda persona que crea una cuenta acepta las condiciones, no solo quien registra la empresa: `AcceptInvitationCommand` lleva `AcceptedTermsVersion`, comparada con la vigente y guardada en el `User` con su fecha. Aquí es *fail-closed* (sin versión configurada ninguna es la vigente): no hay un camino «cerrado» que dé `202`, y no debe nacer una cuenta sin condiciones. Consecuencia práctica: **para aceptar invitaciones en local hay que configurar `Legal__TermsVersion`**, igual que para registrarse.
+
+### Los eventos de seguridad
+
+| Id | Qué dice |
+|---|---|
+| `1018` | Se pidió crear una cuenta: si el email ya tenía cuenta (solo en el registro) |
+| `1019` | Un pedido frenado por el límite del email (de pendientes o de avisos) |
+| `1020` | Registro completado: `TenantId` y `UserId` |
+| `1021` | Rechazado al completar: el motivo real (`Unknown`, `UsedOrReplaced`, `Expired`, `EmailTaken`, `Concurrent`) |
+| `1022` | Purga de pendientes caducados (cuántos) |
+
+Ninguno lleva el email, los nombres, el token, el enlace ni la contraseña.
+
+### Lo que enseñó la spec 021
+
+- **La decisión de «cuándo existe la cuenta» valió más que cualquier control posterior.** Con «sin cuenta hasta abrir el enlace» desaparecen a la vez el *pre-hijacking*, el caso «login bloqueado hasta confirmar», la purga de empresas sin confirmar y la migración de `EmailConfirmed`.
+- **El límite que falta suele estar donde no hay nada que contar.** El aviso a un email con cuenta no deja ninguna fila, y por eso no lo cubría el límite basado en filas; apareció escribiendo el código, no leyendo la spec.
+- **Un ayudante de tests también tiene efectos secundarios.** El primero entraba para saber el Id de la empresa y dejaba una sesión de más, que rompió cuatro tests que cuentan sesiones. Ahora lee el Id de la base de datos y no inicia sesión.
+- **Un test de tiempo con cota superior es el único que puede fallar por carga.** Falló una vez en paralelo; se arregló por diseño (una petición de calentamiento descartada y márgenes más anchos), no repitiendo hasta que pasara.
+- **Una mutación mal planteada no mide nada.** Varias «sobrevivieron» porque quitaban la comprobación y no la petición, o registraban la palabra «token» y no el token; se rehicieron quitando de verdad lo que dicen quitar.
+- **Los entornos de prueba también mienten.** Mailpit en Docker Desktop tardaba 2–10 s en saludar por SMTP (búsqueda DNS inversa) y el primer correo se perdía; `MP_SMTP_DISABLE_RDNS=true` lo arregla. Y `sqlcmd` arranca con `QUOTED_IDENTIFIER` apagado, que SQL Server exige encendido para escribir en una tabla con un índice filtrado: un `UPDATE` fallaba **en silencio**.
+
+---
+
 ## Cómo se protege todo el flujo
 
 Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenazas final del manual). Las técnicas **T1110** son de MITRE ATT&CK, que verás en CyberOps:
@@ -825,10 +948,10 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 |---|---|---|---|
 | **Fuerza bruta** de contraseñas (T1110) | Límite de 5 logins por minuto y por IP, **y bloqueo por cuenta** (5 fallos / 15 min, con el intento reservado antes de comprobar) | `RateLimiting.cs:44`, `AccountLockout.cs` | `RateLimitingTests`, `FiftySimultaneousWrongAttempts_PerformExactlyFiveRealVerifications_AndLockTheAccount` |
 | Contraseñas filtradas si roban la base de datos | Hash lento con sal (PBKDF2) | `IdentityService.cs:18,38` | `IdentityServiceTests` prueba crear y validar, pero **ninguno comprueba que lo guardado no sea la contraseña** (ver "Controles sin test") |
-| Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `Register_WithPasswordLongerThanMax_Returns400_Not500` |
+| Saturar el servidor con contraseñas enormes | Máximo de 128 caracteres | `PasswordRules.cs` | `CompleteRegistration_WithPasswordLongerThanMax_Returns400_Not500` |
 | Saber qué emails están registrados | Un único 401 para email desconocido o contraseña mala | `AuthEndpoints.cs:45` | `Handle_WithInvalidCredentials_IsRejected` |
 | Datos personales en los logs | El log no incluye email ni contraseña | `IdentityService.cs` (`LogLoginFailed` y los dos eventos del bloqueo) | `TheEvents_AreLoggedOncePerFact_AndContainNoEmailNorPassword` (SQL real) y `TheSecurityEvents_AreLoggedWithoutTheEmailNorThePassword` (HTTP) |
-| Registro a medias (persona sin empresa) | Una sola transacción | `RegisterCommandHandler.cs:33` | `Handle_WhenEmailAlreadyRegistered_ThrowsAndPersistsNothing` |
+| Registro a medias (persona sin empresa) | Una sola transacción | `CompleteRegistrationCommandHandler.cs` | `EverythingIsConfirmedTogether_InASingleSave`, `IfAnAccountSlipsInBetweenTheCheckAndTheSave_NothingIsLeftBehind_AndItIsTheSameError` (SQL real) |
 | Falsificar o modificar un token | Firma HMAC-SHA256 | `DependencyInjection.cs:105` | `AnAccessTokenWithAnAlteredTenantId_IsRejected` |
 | Token de acceso robado **tras cerrar la sesión** | La sesión del token ya no está activa (`sid`, spec 015): `401` en la petición siguiente | `SessionTokenValidation.cs` + `TokenService.IsSessionActiveAsync` | `TheAccessTokenOfTheClosedSession_IsRejectedAtOnce_NotAfter30Minutes`, `SessionTokenEndToEndTests` (19) |
 | Token de acceso robado **sin cerrar la sesión** | Caduca a los 30 minutos (`ValidateLifetime`, sin margen) | `DependencyInjection.cs:106-107` | **Sin test propio** (ver "Controles sin test") |
@@ -851,6 +974,12 @@ Una tabla para ver qué amenaza frena cada control (el germen del mapa de amenaz
 | Un atacante **conserva su sesión** tras el cambio de contraseña | Restablecer cierra todas las sesiones en la misma confirmación | `ResetPasswordCommandHandler.cs` | `TheWholeFlow_ChangesThePassword_ClosesTheSessions_AndSendsTheNotice`, `TheResetUseCase_ClosesTheSessionsWithTheVariantThatDoesNotConfirm` |
 | **Entrar con solo controlar el buzón** | El restablecimiento no abre sesión ni toca el segundo factor | `ResetPasswordCommandHandler.cs` | `AnAccountWithASecondFactor_StillNeedsTheCode_AfterResetting` |
 | Contraseña, token o enlace de recuperación **en los logs** | Los eventos `1014`–`1017` llevan solo Ids y el motivo; el comando no imprime sus secretos | `ResetPasswordCommand.cs` | `TheLogs_HaveTheEvents_WithoutThePasswordTheTokenOrTheAddress`, `TheCommand_NeverPrintsItsSecrets` |
+| ***Pre-hijacking*** (registrar el email de otra persona para quedarse su cuenta) | **No existe ninguna cuenta hasta abrir el enlace** y la contraseña la elige quien lo abre | `PendingRegistration.cs`, `CompleteRegistrationCommandHandler.cs` | `WhoRegisteredSomeoneElsesEmail_WithoutTheirMailbox_GetsNothing` |
+| **Saber qué emails tienen cuenta** al registrarse | Siempre `202` idéntico, un aviso fijo si ya la tiene, **y un suelo de tiempo** de 250 ms que oculta la diferencia medida (≈ 3,4 ms) | `RequestRegistrationCommandHandler.cs`, `RegistrationTiming.cs` | `ANewAndAnExistingEmail_GetTheSameResponse_ByteForByte`, `TheFloor_IsAppliedAfterTheWork_NotOnTopOfIt` |
+| **Llenar de correo** el buzón de una víctima con el registro | 3 por hora y por IP, y 3 pendientes y 3 avisos por email y hora **en silencio** | `PendingRegistrationService.cs`, `RegistrationNoticeThrottle.cs` | `TheFourthRequestOfTheHourForTheSameEmail_...`, `RegistrationNoticeThrottleTests` |
+| Probar tokens de registro, o usarlos dos veces o a la vez | 256 bits; un solo error `registration.invalid` para cinco motivos; versión de fila: gana uno y la perdedora no deja nada | `OpaqueToken.cs`, `CompleteRegistrationCommandHandler.cs` | `ATokenThatDoesNotServe_GivesTheSameCompleteResponse_WhateverTheReason`, `TwoSimultaneousCompletions_..._AndTheLoserLeavesNothing` (SQL real) |
+| Una **empresa o cuenta creada por otro camino** que se salte el correo | Solo el caso de uso de completar crea una empresa; `POST /auth/register` ya no existe | `CompleteRegistrationArchitectureTests.cs` | `OnlyTheCompletionUseCase_CreatesATenant`, `TheOldImmediateRegistration_NoLongerExists_SoThereIsNoWayAroundTheMailbox` |
+| Datos personales de quien aún no tiene cuenta, **de más** o **en los logs** | Caducan a las 24 h y se purgan a los 7 días; el token solo como hash; los eventos `1018`–`1022` no llevan email, nombres, token ni contraseña | `PendingRegistrationService.cs`, `RefreshTokenPurgeService.cs` | `TheCompletionIsLogged_WithTheNewIds_AndNothingPersonal`, `TheCommand_NeverPrintsItsSecrets` |
 | Secreto débil o ausente | La aplicación no arranca sin él | `DependencyInjection.cs:78-84` | **Sin test propio** (ver "Controles sin test") |
 | El rol del token no se lee bien | `MapInboundClaims = false`, probado con la configuración real | `DependencyInjection.cs:96` | `ATokenIssuedByTokenService_AndValidatedWithTheProductionJwtBearerConfig_...` |
 
@@ -862,13 +991,13 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **1. ✅ Cerrado (spec 010): hay bloqueo de cuenta.** Antes, el límite de peticiones era solo **por IP**: un ataque de *credential stuffing* (T1110.004: probar pares email/contraseña filtrados en otros sitios) repartido entre miles de IPs, con un intento por IP, no lo habría visto. Ahora hay un contador por cuenta (5 fallos → 15 minutos) que resiste las peticiones simultáneas (Parte 3). **Riesgo aceptado:** se puede mantener bloqueada una cuenta ajena fallando a propósito.
 
-**2. ✅ Cerrado (spec 010): el tiempo de respuesta del login ya no delata si un email existe.** Antes, un email inexistente respondía enseguida y uno existente tardaba lo que cuesta el hash. Ahora se hace la misma verificación completa en los tres casos (desconocido, bloqueada, contraseña errónea). Sigue abierto, aparte, que el **registro** diga «el email ya está registrado».
+**2. ✅ Cerrado (spec 010): el tiempo de respuesta del login ya no delata si un email existe.** Antes, un email inexistente respondía enseguida y uno existente tardaba lo que cuesta el hash. Ahora se hace la misma verificación completa en los tres casos (desconocido, bloqueada, contraseña errónea). El registro, que también lo decía, se cerró en la spec 021 (límite 3).
 
-**3. El registro revela si un email ya está en uso.** Responde "el email ya está registrado". Es cómodo para el usuario, pero permite comprobar si alguien tiene cuenta. Se revisará cuando exista confirmación de email.
+**3. ✅ Cerrado (spec 021): el registro ya no revela si un email está en uso.** Antes respondía «el email ya está registrado». Ahora pedir el registro responde siempre `202` idéntico, con el mismo tiempo (suelo de 250 ms medido) y con límites silenciosos, y la cuenta solo nace al abrir el enlace del correo (Parte 10). **Lo que sigue abierto:** invitar a un email que ya tiene cuenta responde un error (`user.email_already_registered`), pero lo ve **quien invita**, que está autenticado y es de la empresa.
 
 **4. ✅ Cerrado (specs 013, 014 y 015): hay cierre de sesión en el servidor, de una o de todas, y corta también el token de acceso.** `POST /auth/logout` revoca el refresh token y `DELETE /account/sessions` los de todas las sesiones (Parte 5); desde la spec 015 el *token de acceso* de esas sesiones también deja de valer en la petición siguiente (lleva el Id de su sesión, `sid`; ver «El token muere con su sesión»). Siguen abiertos: listar mis sesiones y cerrar una concreta, y purgar los refresh tokens caducados o revocados (las filas se acumulan).
 
-**5. ✅ Cerrado a medias (spec 018): hay recuperación de contraseña, pero no confirmación de email.** La recuperación existe (Parte 9); la confirmación de email sigue pendiente y es lo que cerraría la enumeración por el registro (límite 3). Tampoco se puede **cambiar la contraseña estando dentro** (spec 019, que exigirá la contraseña actual). Y, sin segundo factor, **quien controla el buzón de una cuenta controla la cuenta**: es el modelo de amenazas de cualquier recuperación por correo, y el remedio de fondo es obligar el segundo factor a `Owner` y `Admin` (ADR-014, límite 3b).
+**5. ✅ Cerrado (specs 018 y 021): hay recuperación de contraseña y la cuenta solo nace tras demostrar el buzón.** La recuperación existe (Parte 9) y crear una cuenta exige abrir el enlace del correo (Parte 10), que es lo que cerró la enumeración por el registro (límite 3). Tampoco se puede **cambiar la contraseña estando dentro** (spec 019, que exigirá la contraseña actual). Y, sin segundo factor, **quien controla el buzón de una cuenta controla la cuenta**: es el modelo de amenazas de cualquier recuperación por correo, y el remedio de fondo es obligar el segundo factor a `Owner` y `Admin` (ADR-014, límite 3b). **Con el registro abierto gana importancia:** el primer usuario de cada empresa nace sin segundo factor.
 
 **6. ✅ Resuelto (spec 015): un token de acceso se puede anular antes de caducar.** Por ser un JWT sin estado no se podía (valía hasta 30 minutos); ahora lleva el Id de su sesión y la API comprueba en cada petición que esa sesión siga activa (ADR-018). **Lo que sigue abierto:** un token robado *mientras nadie cierra la sesión* sigue valiendo hasta que caduque, y es una consulta más por petición (medida, ver «El token muere con su sesión»).
 
@@ -876,9 +1005,11 @@ Un buen diseño conoce sus límites. Estos son los de este flujo, y casi todos e
 
 **8. El login toma la primera empresa del usuario.** Hoy cada usuario tiene una sola, así que no hay ambigüedad (capítulo 5).
 
-**9. Los límites de peticiones viven en memoria**, por IP. Se reinician con cada despliegue y no se comparten entre instancias (ADR-009).
+**9. Los límites de peticiones viven en memoria**, por IP. Se reinician con cada despliegue y no se comparten entre instancias (ADR-009). Lo mismo vale para el límite de **avisos** de «ya tienes cuenta» (spec 021); en cambio, el de pendientes por email vive en la base de datos y sí se comparte.
 
-**10. Hay correo de salida, pero no de entrada, ni cola persistida, ni rebotes (spec 017 y 018).** La API puede enviar la invitación, pero: «el servidor lo aceptó» no es «llegó a la bandeja» (hace falta SPF, DKIM y DMARC); no hay cola ni reintentos (si el proveedor está caído, la invitación da `502` y se repite a mano); y un correo que el destino rechaza después de que el proveedor lo aceptara no vuelve a OfiFlow. Además, **quien lea el buzón del invitado puede aceptar su invitación**: es el modelo de amenazas de cualquier enlace por correo, y se mitiga con la caducidad a 7 días y el uso único. El límite de 20 invitaciones por hora vive, como los demás, en memoria y por instancia. **Desde la spec 018 sí hay una cola, pero en memoria** (para el correo de recuperación, que lleva un secreto que no se puede guardar en claro): si la API se reinicia, lo pendiente se pierde, y la persona vuelve a pedirlo.
+**10. Hay correo de salida, pero no de entrada, ni cola persistida, ni rebotes (spec 017 y 018).** La API puede enviar la invitación, pero: «el servidor lo aceptó» no es «llegó a la bandeja» (hace falta SPF, DKIM y DMARC); no hay cola ni reintentos (si el proveedor está caído, la invitación da `502` y se repite a mano); y un correo que el destino rechaza después de que el proveedor lo aceptara no vuelve a OfiFlow. Además, **quien lea el buzón del invitado puede aceptar su invitación**: es el modelo de amenazas de cualquier enlace por correo, y se mitiga con la caducidad a 7 días y el uso único. El límite de 20 invitaciones por hora vive, como los demás, en memoria y por instancia. **Desde la spec 018 sí hay una cola, pero en memoria** (para el correo de recuperación, que lleva un secreto que no se puede guardar en claro; la spec 021 la usa por tercera vez para el enlace de crear una cuenta): si la API se reinicia, lo pendiente se pierde, y la persona vuelve a pedirlo.
+
+**11. Lo que deja abierto crear una cuenta (spec 021).** Los **textos legales** (condiciones y política de privacidad) los redacta el dueño del proyecto y hay que tenerlos antes de abrir el registro a clientes reales; las **cuentas que ya existían** no han aceptado ninguna condición; **una cuenta pertenece a una sola empresa**; no hay comprobación **anti-robots**; y el límite de **3 por hora y por IP** puede frenar a una oficina entera que comparta salida a internet.
 
 ### Controles sin test propio
 
@@ -910,8 +1041,12 @@ Son los tres candidatos más baratos para la próxima ronda de endurecimiento, c
 14. ¿Por qué el correo de recuperación se encola en memoria en vez de enviarse en la petición o guardarse en una cola de la base de datos?
 15. Al restablecer, ¿qué cuatro cosas cambian, por qué se confirman en un único `SaveChanges` y qué pasa si dos personas usan el mismo enlace a la vez?
 16. Una persona con segundo factor activo restablece su contraseña desde un buzón comprometido. ¿Qué puede hacer el atacante y qué no?
+17. ¿Por qué `POST /auth/registration` **no crea la cuenta** y qué ataque evita eso? ¿Qué pasaría si la creara «sin confirmar»?
+18. Un atacante registra el email de otra persona. ¿Qué consigue, qué ve la víctima y quién elige la contraseña?
+19. El límite «3 pendientes por email» no frenaba un abuso concreto. ¿Cuál, por qué, y cómo se cerró?
+20. En `complete`, ¿por qué el orden «canjear el token, luego hashear la contraseña, luego guardar» importa, y qué pasa con una contraseña corta o con dos aperturas a la vez?
 
-*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos). 8 = solo el hash SHA-256; no lleva sal porque el token ya es aleatorio de 256 bits (no hay diccionario que atacar) y hace falta un hash determinista para buscarlo en el índice. 9 = no puede adivinar 256 bits aleatorios; además la forma del token se valida antes de buscar y recibe siempre el mismo error (`invitation.invalid`) sea cual sea el motivo; el analista ve eventos `1403` con el motivo real (y la IP), sin el token ni el email. 10 = la invitación tiene una columna de versión de fila y, además, el índice único del email impide dos cuentas iguales: solo una confirma y la otra recibe `invitation.invalid`; el test con SQL real cazó que la perdedora recibía una violación del índice único (que acababa en un 500) y no el error de concurrencia esperado, porque una base en memoria no aplica índices únicos. 11 = `"token": null` y `"emailSent": true`: quien invita no conoce el token, así que no puede aceptar la invitación en nombre de otra persona (el riesgo que ADR-013 había dejado aceptado). 12 = solo de `Email:LinkBaseUrl`, que fija el despliegue; si saliera de la petición, quien la envía decidiría adónde lleva el correo que recibe la víctima (envenenamiento por cabecera Host), y el correo, al salir de OfiFlow, sería de fiar. 13 = para que no se pueda obtener la lista de clientes probando emails; la otra fuga es el **tiempo** (crear el token tarda ≈ 12 ms más que no crearlo, y se distingue estadísticamente), que se descubrió **midiendo** con la API y SQL Server reales y se cerró con un suelo de 250 ms aplicado después del trabajo. 14 = en la petición tardaría segundos solo cuando la cuenta existe (otro oráculo de tiempo); en la base de datos obligaría a guardar el token en claro, que es lo que el diseño evita (solo hay hash); en memoria el token vive unos segundos, a costa de perder lo pendiente si la API se reinicia, algo asumible porque pedirlo otra vez es gratis. 15 = la contraseña, el token (usado, y los demás de la cuenta anulados), las sesiones (todas cerradas) y el contador y bloqueo (a cero); en una sola confirmación para que sea todo o nada, sin dejar la contraseña cambiada con sesiones vivas; y si dos personas lo usan a la vez gana una, porque el token lleva una versión de fila y la perdedora falla al confirmar, sin cambiar nada, y recibe `password_reset.invalid`. 16 = puede elegir una contraseña nueva, pero no entrar: el login con ella sigue pidiendo el código del segundo factor, que el restablecimiento no toca; además la persona recibe el aviso de cambio y sus sesiones se cierran.)*
+*(Respuestas: 1 = autenticar es saber quién eres (el login con contraseña); autorizar es saber qué puedes hacer (que un `Technician` no pueda borrar clientes). 2 = solo hashes: el de las contraseñas es irreversible, con sal y lento de calcular; el de los refresh tokens es SHA-256 de 64 bytes aleatorios, que no se pueden adivinar ni deshacer. 3 = porque una contraseña la elige una persona y es previsible, así que la lentitud frena a quien prueba millones; un refresh token son 64 bytes aleatorios, sin nada que adivinar. 4 = la firma deja de corresponder al contenido y el servidor lo rechaza con un 401; solo con el secreto se podría firmar un token válido. 5 = cada refresh token se usa una vez y queda revocado; si alguien presenta uno ya revocado, es que lo copiaron, y el sistema revoca todos los tokens activos del usuario y registra el evento 1003. 6 = porque el hash es lento a propósito: sin tope, enviar contraseñas enormes gastaría CPU y tumbaría el servidor. 7 = por ejemplo, no hay bloqueo de cuenta (se cerraría con un contador de fallos por cuenta) y el tiempo de respuesta delata si un email existe (se cerraría haciendo el mismo trabajo de hash en ambos casos). 8 = solo el hash SHA-256; no lleva sal porque el token ya es aleatorio de 256 bits (no hay diccionario que atacar) y hace falta un hash determinista para buscarlo en el índice. 9 = no puede adivinar 256 bits aleatorios; además la forma del token se valida antes de buscar y recibe siempre el mismo error (`invitation.invalid`) sea cual sea el motivo; el analista ve eventos `1403` con el motivo real (y la IP), sin el token ni el email. 10 = la invitación tiene una columna de versión de fila y, además, el índice único del email impide dos cuentas iguales: solo una confirma y la otra recibe `invitation.invalid`; el test con SQL real cazó que la perdedora recibía una violación del índice único (que acababa en un 500) y no el error de concurrencia esperado, porque una base en memoria no aplica índices únicos. 11 = `"token": null` y `"emailSent": true`: quien invita no conoce el token, así que no puede aceptar la invitación en nombre de otra persona (el riesgo que ADR-013 había dejado aceptado). 12 = solo de `Email:LinkBaseUrl`, que fija el despliegue; si saliera de la petición, quien la envía decidiría adónde lleva el correo que recibe la víctima (envenenamiento por cabecera Host), y el correo, al salir de OfiFlow, sería de fiar. 13 = para que no se pueda obtener la lista de clientes probando emails; la otra fuga es el **tiempo** (crear el token tarda ≈ 12 ms más que no crearlo, y se distingue estadísticamente), que se descubrió **midiendo** con la API y SQL Server reales y se cerró con un suelo de 250 ms aplicado después del trabajo. 14 = en la petición tardaría segundos solo cuando la cuenta existe (otro oráculo de tiempo); en la base de datos obligaría a guardar el token en claro, que es lo que el diseño evita (solo hay hash); en memoria el token vive unos segundos, a costa de perder lo pendiente si la API se reinicia, algo asumible porque pedirlo otra vez es gratis. 15 = la contraseña, el token (usado, y los demás de la cuenta anulados), las sesiones (todas cerradas) y el contador y bloqueo (a cero); en una sola confirmación para que sea todo o nada, sin dejar la contraseña cambiada con sesiones vivas; y si dos personas lo usan a la vez gana una, porque el token lleva una versión de fila y la perdedora falla al confirmar, sin cambiar nada, y recibe `password_reset.invalid`. 16 = puede elegir una contraseña nueva, pero no entrar: el login con ella sigue pidiendo el código del segundo factor, que el restablecimiento no toca; además la persona recibe el aviso de cambio y sus sesiones se cierran. 17 = porque entonces quien registra el email de **otra persona** deja una cuenta con **su** contraseña, y si la víctima pulsa el enlace de confirmación, el atacante ya la controla (*pre-hijacking*); pedir solo guarda un pendiente y envía un enlace, y la cuenta nace al abrirlo. 18 = nada: no hay cuenta ni puede completar sin el token, que solo llega al buzón de la víctima; la víctima recibe un correo que dice que, si no lo pidió, lo ignore, y si abre el enlace **elige ella** la contraseña. 19 = el aviso «ya tienes una cuenta» a un email que ya tiene cuenta: no se crea ninguna fila que contar, así que se podía llenar ese buzón de avisos desde muchas IP; se cerró con un limitador propio de 3 por hora y por email, en memoria. 20 = un token que no sirve se rechaza **antes** de pagar el hash lento (el endpoint es anónimo y el hash es lo caro), y la única confirmación al final hace que sea todo o nada; una contraseña corta da un `400` de campo **sin gastar el enlace**; y con dos aperturas a la vez gana una (versión de fila del pendiente o índice único del email) y la otra recibe `registration.invalid` sin dejar nada.)*
 
 ## Siguiente capítulo
 

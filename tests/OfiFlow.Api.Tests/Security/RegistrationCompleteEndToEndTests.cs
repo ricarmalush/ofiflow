@@ -32,6 +32,10 @@ public class RegistrationCompleteEndToEndTests : IClassFixture<MembersFixture>, 
     private const string CompleteRoute = "/api/v1/auth/registration/complete";
     private const string Chosen = "Clave-Elegida-Muy-Secreta-2026!";
 
+    // Una contraseña que NO debe aparecer en ningún registro: se genera en cada ejecución (como el resto de datos de prueba, sin credenciales escritas a mano; una cadena fija con forma de clave
+    // la confunde el escáner de secretos). Sirve solo para buscarla en el registro.
+    private static readonly string NeverInTheLog = $"Marca-{Guid.NewGuid():N}-9!";
+
     private readonly MembersFixture _fixture;
     private readonly RecordingEmailSender _email = new();
     private WebApplicationFactory<Program> _factory = null!;
@@ -300,14 +304,14 @@ public class RegistrationCompleteEndToEndTests : IClassFixture<MembersFixture>, 
         var token = await RequestAsync(email, $"Empresa {Guid.NewGuid():N}");
         Assert.Equal(HttpStatusCode.NoContent, (await CompleteAsync(token)).StatusCode);
 
-        Assert.Equal(HttpStatusCode.BadRequest, (await CompleteAsync(token, "Contraseña-que-NO-debe-salir-9!")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await CompleteAsync(token, NeverInTheLog)).StatusCode);
 
         var rejection = Events(SecurityEventIds.RegistrationRejected).Last(e => e.Message.Contains("UsedOrReplaced"));
         Assert.Contains("Motivo UsedOrReplaced", rejection.Message);
         foreach (var entry in _fixture.Factory.Logs.Entries)
         {
             Assert.DoesNotContain(token, entry.Message);
-            Assert.DoesNotContain("Contraseña-que-NO-debe-salir-9!", entry.Message);
+            Assert.DoesNotContain(NeverInTheLog, entry.Message);
             Assert.DoesNotContain(Chosen, entry.Message);
             Assert.DoesNotContain(email, entry.Message, StringComparison.OrdinalIgnoreCase);
         }
@@ -467,7 +471,7 @@ public class RegistrationCompleteEndToEndTests : IClassFixture<MembersFixture>, 
         var email = NewEmail();
         var company = $"Empresa Secretísima {Guid.NewGuid():N}";
         var token = await RequestAsync(email, company, "Persona Secretísima");
-        Assert.Equal(HttpStatusCode.NoContent, (await CompleteAsync(token, "Contraseña-que-NO-debe-salir-9!")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await CompleteAsync(token, NeverInTheLog)).StatusCode);
 
         var tenant = Assert.Single(await TenantsNamedAsync(company));
         var completed = Events(SecurityEventIds.RegistrationCompleted).Last(e => e.Message.Contains(tenant.Id.ToString()));
@@ -476,7 +480,7 @@ public class RegistrationCompleteEndToEndTests : IClassFixture<MembersFixture>, 
         foreach (var entry in _fixture.Factory.Logs.Entries)
         {
             Assert.DoesNotContain(token, entry.Message);
-            Assert.DoesNotContain("Contraseña-que-NO-debe-salir-9!", entry.Message);
+            Assert.DoesNotContain(NeverInTheLog, entry.Message);
             Assert.DoesNotContain(email, entry.Message, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Secretísim", entry.Message);
         }

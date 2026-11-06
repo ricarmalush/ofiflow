@@ -72,7 +72,7 @@ Dentro de la propia API: rate limiting en autenticación, cabeceras de seguridad
 | Fase | Contenido |
 |---|---|
 | 0 | Arquitectura (ADRs, esqueleto de solución, Identity, Multi-tenancy) — **hecha** |
-| 1 | MVP: Tenant, User, TenantUser, Customer, Job — **hecha** |
+| 1 | MVP: Tenant, User, TenantUser, Customer, Job — **hecha**; y desde la spec 021 **una persona puede crear su cuenta sola** desde la web (pedir el registro, abrir el enlace del correo y elegir su contraseña), aceptando las condiciones de uso |
 | 2 | Agenda, estados de trabajo, asignación de técnicos — **agenda mínima hecha** (spec 020: programar un trabajo y ver la semana); faltan los conflictos de horario y el huso por empresa |
 | 3 | Presupuestos, PDF |
 | 4 | Facturas, pagos, seguimiento |

@@ -26,3 +26,8 @@ a813dceacda1f78f3de0b3dd1a80cf6898e6e576:tests/OfiFlow.Api.Tests/Security/RbacEn
 # clave por su forma (regla generic-api-key). El commit ya está publicado en el PR #58, así que se registra aquí en vez de
 # reescribir una rama publicada. Si algún día se sustituyera por un valor real, ESE valor sí sería un hallazgo.
 dc66a44481ebf473e118ad94d81b3462f5d1edbc:src/OfiFlow.Api/OfiFlow.Api.http:generic-api-key:96
+
+# Contraseña-MARCADOR de un test (spec 021, bloque 3, commit cf4b235): una cadena escrita a mano que el test envía al completar el registro y luego busca en todos los registros para
+# comprobar que la contraseña no aparece en ninguno. No protege nada (existe solo en el SQL Server desechable del test). Gitleaks la confunde con una clave por su forma (regla generic-api-key).
+# Ya no está en el código (ahora se genera aleatoria en cada ejecución: NeverInTheLog), pero el commit queda en el historial; se registra aquí en vez de reescribir commits ya hechos.
+cf4b2357e3af10aa0c76ff094c7b9c2471b53149:tests/OfiFlow.Api.Tests/Security/RegistrationCompleteEndToEndTests.cs:generic-api-key:232

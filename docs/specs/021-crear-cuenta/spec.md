@@ -1,6 +1,6 @@
 # Spec — 021-crear-cuenta
 
-**Estado:** Aprobada (2026-11-06). Decisiones D1–D15 aprobadas tal como estaban escritas
+**Estado:** Implementada (2026-11-06; API y frontend). Decisiones D1–D15 aprobadas tal como estaban escritas; lo que cambió al implementar está en la [ADR-023](../../adr/ADR-023-crear-una-cuenta.md) y en [`tasks.md`](./tasks.md)
 **Fecha:** 2026-11-06
 **Bounded Context:** Identity (alta de una empresa y de su primer usuario) y Tenancy
 **Depende de:** spec 002 (el registro actual y el `Owner`), spec 017 y ADR-020 (el puerto de correo y los enlaces), spec 018 y ADR-021 (el patrón de «respuesta idéntica + suelo de tiempo + cola de correo en memoria + token de un solo uso»), spec 009 y ADR-013 (la invitación: el otro camino para tener cuenta), ADR-019 (la purga en segundo plano), ADR-009 (límites, eventos y datos personales)
