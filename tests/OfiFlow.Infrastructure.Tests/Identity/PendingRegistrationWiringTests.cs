@@ -61,6 +61,23 @@ public class PendingRegistrationWiringTests
     }
 
     [Fact]
+    public void TheNoticeThrottle_IsASingleton_SoTheLimitSurvivesBetweenRequests()
+    {
+        // En memoria: si fuera scoped, cada petición tendría un limitador nuevo y el límite no limitaría nada.
+        Assert.Contains(ApiServices(), d => d.ServiceType == typeof(IRegistrationNoticeThrottle) && d.Lifetime == ServiceLifetime.Singleton);
+    }
+
+    [Fact]
+    public void TwoRequests_ShareTheSameNoticeThrottle()
+    {
+        using var provider = ApiServices().BuildServiceProvider();
+        using var first = provider.CreateScope();
+        using var second = provider.CreateScope();
+
+        Assert.Same(first.ServiceProvider.GetRequiredService<IRegistrationNoticeThrottle>(), second.ServiceProvider.GetRequiredService<IRegistrationNoticeThrottle>());
+    }
+
+    [Fact]
     public void TheLegalTerms_AreRegistered_AsASingleton()
     {
         Assert.Contains(ApiServices(), d => d.ServiceType == typeof(ILegalTerms) && d.Lifetime == ServiceLifetime.Singleton);
@@ -129,6 +146,7 @@ public class PendingRegistrationWiringTests
 
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IPendingRegistrationService));
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IPendingRegistrationPurger));
+        Assert.DoesNotContain(services, d => d.ServiceType == typeof(IRegistrationNoticeThrottle));
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(ILegalTerms));
     }
 }

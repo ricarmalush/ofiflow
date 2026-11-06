@@ -48,6 +48,9 @@ public static class DependencyInjection
         services.AddScoped<IPendingRegistrationService>(provider => provider.GetRequiredService<PendingRegistrationService>());
         services.AddScoped<IPendingRegistrationPurger>(provider => provider.GetRequiredService<PendingRegistrationService>());
 
+        // El límite de avisos «ya tienes una cuenta» por email (R7): en memoria, así que UNA instancia para toda la aplicación (si fuera scoped, cada petición empezaría de cero).
+        services.AddSingleton<IRegistrationNoticeThrottle, RegistrationNoticeThrottle>();
+
         // La versión vigente de las condiciones de uso (spec 021 R8, D7): validada al arrancar. Vacía, el registro está cerrado.
         services.AddOptions<LegalOptions>()
             .Bind(configuration.GetSection(LegalOptions.SectionName))

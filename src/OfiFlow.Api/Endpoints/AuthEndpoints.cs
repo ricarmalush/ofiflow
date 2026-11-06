@@ -9,6 +9,7 @@ using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Commands.Register;
+using OfiFlow.Application.Identity.Commands.RequestRegistration;
 using OfiFlow.Application.Identity.Commands.ResetPassword;
 using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
 
@@ -30,6 +31,26 @@ public static class AuthEndpoints
             .WithName("Register")
             .WithSummary("Registra una nueva empresa (Tenant) y su primer usuario (Owner).")
             .RequireRateLimiting(RateLimiting.Register);
+
+        // Spec 021: pedir crear una cuenta. Anónima, y la respuesta es SIEMPRE la misma (202 sin cuerpo): el email es nuevo, ya tiene cuenta (de una empresa o de un operador), se pasó el límite del
+        // email, el correo está apagado o las condiciones no están configuradas. No crea ninguna cuenta: deja un pendiente y un correo con un enlace; la cuenta nace al abrirlo (bloque 3).
+        // Solo un dato mal formado o la versión de las condiciones equivocada dan 400, y eso se decide sin consultar nada.
+        group.MapPost("/registration", async (RequestRegistrationCommand command, ISender sender, IOptions<RegistrationTimingOptions> timing, HttpContext httpContext, CancellationToken cancellationToken) =>
+            {
+                var started = Stopwatch.GetTimestamp();
+                await sender.Send(command, cancellationToken);
+
+                // El suelo de tiempo (R2, D2): con un email nuevo la petición hace más trabajo (buscar, contar, anular, insertar, confirmar) que con uno que ya tiene cuenta (solo buscar), y esa diferencia
+                // delataría al email aunque la respuesta sea idéntica. Se aplica DESPUÉS del trabajo. Un dato mal formado no llega aquí (la validación lanza antes) y no hace falta: se decide sin consultar nada.
+                await ResponseTimeFloor.HoldAsync(started, timing.Value.ResponseFloor, cancellationToken);
+
+                httpContext.Response.Headers.CacheControl = "no-store";
+
+                return Results.Accepted();
+            })
+            .WithName("RequestRegistration")
+            .WithSummary("Pide crear una cuenta (empresa y primer usuario). Responde 202 sin cuerpo siempre (sea el email nuevo o ya tenga cuenta); no crea ninguna cuenta: envía por correo un enlace de un solo uso que caduca a las 24 horas, y la cuenta nace al abrirlo. 400 si falta algún dato o la versión de las condiciones no es la vigente.")
+            .RequireRateLimiting(RateLimiting.Registration);
 
         group.MapPost("/login", async (LoginCommand command, ISender sender, HttpContext httpContext, CancellationToken cancellationToken) =>
             {

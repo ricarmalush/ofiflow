@@ -95,6 +95,43 @@ public class EmailWiringTests(OfiFlowApiFactory factory) : IClassFixture<OfiFlow
     }
 
     [Fact]
+    public void RequestRegistration_NeverSendsTheEmailInsideTheRequest_ItOnlyQueuesIt()
+    {
+        // Spec 021 D2: enviar dentro de la petición tardaría segundos solo cuando hay algo que enviar (un email nuevo o con cuenta), y ese tiempo lo delataría. El caso de uso solo ENCOLA y
+        // pregunta si hay correo (IsEnabled); nunca llama al transporte.
+        var sendsInline = SourceCode.Files("OfiFlow.Application/Identity/Commands/RequestRegistration")
+            .Where(file => file.Content.Split('\n').Select(line => line.TrimStart()).Any(line => !line.StartsWith("//", StringComparison.Ordinal) && line.Contains(".SendAsync(", StringComparison.Ordinal)))
+            .Select(file => file.Path)
+            .ToList();
+        Assert.Empty(sendsInline);
+
+        var handler = SourceCode.ReadText("src/OfiFlow.Application/Identity/Commands/RequestRegistration/RequestRegistrationCommandHandler.cs");
+        Assert.Equal(2, handler.Split("emailQueue.TryEnqueue(").Length - 1);   // el correo con el enlace y el aviso: los dos por la cola
+        Assert.Contains("emailSender.IsEnabled", handler);
+    }
+
+    [Fact]
+    public void TheRegistrationEndpoint_AppliesTheTimeFloor_AfterTheWork()
+    {
+        // Spec 021 R2: sin el suelo, un email nuevo (buscar, contar, anular, insertar, confirmar) tardaría más que uno con cuenta (solo buscar) y el tiempo lo delataría aunque la respuesta
+        // sea idéntica. Se acota el trozo del endpoint hasta el siguiente: si no, el HoldAsync de otro endpoint (el de recuperar la contraseña va detrás) haría pasar este test aunque
+        // alguien quitara el suelo de aquí.
+        var endpoints = SourceCode.ReadText("src/OfiFlow.Api/Endpoints/AuthEndpoints.cs");
+        var start = endpoints.IndexOf("\"/registration\"", StringComparison.Ordinal);
+        Assert.True(start >= 0, "No se encuentra el endpoint de pedir el registro.");
+        var next = endpoints.IndexOf("group.MapPost(", start + 1, StringComparison.Ordinal);
+        var registration = endpoints[start..next];
+
+        Assert.Contains("ResponseTimeFloor.HoldAsync(", registration);
+        Assert.Contains("IOptions<RegistrationTimingOptions>", registration);   // su propia opción, no la de la recuperación
+        Assert.DoesNotContain("ForgotPasswordTimingOptions", registration);
+        Assert.True(registration.IndexOf("sender.Send(", StringComparison.Ordinal) < registration.IndexOf("ResponseTimeFloor.HoldAsync(", StringComparison.Ordinal),
+            "El suelo debe aplicarse DESPUÉS del trabajo: si fuera antes, solo retrasaría las dos respuestas por igual y no ocultaría nada.");
+        Assert.Contains("CacheControl = \"no-store\"", registration);
+        Assert.Contains("RateLimiting.Registration", registration);
+    }
+
+    [Fact]
     public void ProgramCs_RunsTheProductionStartupCheck()
     {
         // D5: si alguien borrara la llamada, el aviso desaparecería sin que fallara nada.
@@ -113,8 +150,8 @@ public class EmailWiringTests(OfiFlowApiFactory factory) : IClassFixture<OfiFlow
             .ToList();
         Assert.Equal([MailFolder + "EmailLinks.cs"], builders);
 
-        // Y las dos rutas de los enlaces solo las nombra ese fichero (en código: los comentarios y las rutas de los endpoints, que son relativas, no cuentan).
-        foreach (var path in new[] { "\"/auth/accept-invitation\"", "\"/auth/reset-password\"" })
+        // Y las tres rutas de los enlaces con token solo las nombra ese fichero (en código: los comentarios y las rutas de los endpoints, que son relativas, no cuentan).
+        foreach (var path in new[] { "\"/auth/accept-invitation\"", "\"/auth/reset-password\"", "\"/auth/complete-registration\"" })
         {
             var namers = SourceCode.Files()
                 .Where(file => file.Content.Split('\n').Select(line => line.TrimStart()).Any(line => !line.StartsWith("//", StringComparison.Ordinal) && line.Contains(path, StringComparison.Ordinal)))

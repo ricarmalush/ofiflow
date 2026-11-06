@@ -84,6 +84,21 @@ Content-Type: application/json
   "email": "ana@example.com"
 }
 
+### Pedir crear una cuenta (spec 021): anónimo. Responde SIEMPRE 202 sin cuerpo y con las mismas cabeceras, sea el email nuevo o ya tenga cuenta (de una empresa o de un
+### operador de la plataforma), se pase el límite del email, el correo esté apagado o las condiciones no estén configuradas. NO crea ninguna cuenta: si el email es nuevo le llega un
+### correo con un enlace de un solo uso que caduca a las 24 horas (pedir otro anula el anterior y hace de «reenviar»); si ya tiene cuenta, un aviso sin token. La cuenta nace al abrir el enlace.
+### 400 si falta algún dato, el email está mal formado o «acceptedTermsVersion» no es la versión vigente (Legal:TermsVersion). Con Legal:TermsVersion vacía el registro está CERRADO: 202 y no pasa nada.
+### Tarda al menos ~250 ms a propósito (Registration:ResponseFloor). Máximo 3 por hora y por IP (429 al cuarto) y 3 por email y hora, en silencio.
+POST {{host}}/api/v1/auth/registration
+Content-Type: application/json
+
+{
+  "companyName": "Fontanería Demo SL",
+  "userName": "Ana Pérez",
+  "email": "ana@example.com",
+  "acceptedTermsVersion": "2026-11"
+}
+
 ### Restablecer la contraseña (spec 018): anónimo; la credencial es el token del enlace del correo (el valor que va tras «#token=»).
 ### 204 si sirvió: cambia la contraseña, cierra TODAS las sesiones de la cuenta (también sus access tokens), quita el bloqueo y envía un aviso por correo, todo o nada.
 ### 400 password_reset.invalid, siempre el MISMO, si el token no sirve (desconocido, caducado, ya usado o anulado por otro pedido); el motivo real solo queda en el registro.

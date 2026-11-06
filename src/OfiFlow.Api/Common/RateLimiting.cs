@@ -19,6 +19,13 @@ public static partial class RateLimiting
     public const string Refresh = "auth-refresh";
     public const string Register = "auth-register";
 
+    /// <summary>
+    /// Pedir crear una cuenta (anónimo y con envío de correo): <b>3 por hora y por IP</b> (spec 021 R7, D9), el mismo número que tenía el registro inmediato. Frena a quien prueba muchos emails desde una
+    /// IP; el límite por email (3 por hora, en silencio) protege al destinatario de un buzón inundado desde muchas IP. Cubo propio: no gasta el de otras rutas. Hasta que se retire
+    /// <c>POST /auth/register</c> (bloque 4) conviven los dos, con cubos distintos.
+    /// </summary>
+    public const string Registration = "auth-registration";
+
     /// <summary>Cerrar sesión (anónimo; una consulta por índice y a lo sumo una escritura): 20 por minuto y por IP, con cubo propio para no gastar el de renovar (spec 013).</summary>
     public const string Logout = "auth-logout";
 
@@ -63,6 +70,8 @@ public static partial class RateLimiting
             options.AddPolicy(Login, context => PerIp(context, permitLimit: 5, TimeSpan.FromMinutes(1)));
             options.AddPolicy(Refresh, context => PerIp(context, permitLimit: 20, TimeSpan.FromMinutes(1)));
             options.AddPolicy(Register, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
+            // Anónima y con envío de correo: sin límite sería una vía de abuso (llenar de correo a un tercero) y de enumeración (spec 021 R7).
+            options.AddPolicy(Registration, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
             // Mismo número que renovar pero otro cubo: el frontend cierra sesión siempre (aunque ya no haya sesión) y eso no debe gastar el presupuesto de renovar (spec 013 R8).
             options.AddPolicy(Logout, context => PerIp(context, permitLimit: 20, TimeSpan.FromMinutes(1)));
             // Acción rara y explícita de una persona identificada: pocas por hora basta y frena una sesión robada usada para molestar (spec 014 R7).
