@@ -4,7 +4,9 @@ using OfiFlow.Application.Jobs.Commands.AssignJob;
 using OfiFlow.Application.Jobs.Commands.CancelJob;
 using OfiFlow.Application.Jobs.Commands.CompleteJob;
 using OfiFlow.Application.Jobs.Commands.CreateJob;
+using OfiFlow.Application.Jobs.Commands.ScheduleJob;
 using OfiFlow.Application.Jobs.Commands.StartJob;
+using OfiFlow.Application.Jobs.Commands.UnscheduleJob;
 using OfiFlow.Application.Jobs.Commands.UpdateJob;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
@@ -85,9 +87,28 @@ public static class JobEndpoints
             })
             .WithName("AssignJob")
             .WithSummary("Asigna un trabajo a un TenantUser del tenant activo.");
+
+        group.MapPut("/{id:guid}/schedule", async (Guid id, ScheduleJobRequest request, ISender sender, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(new ScheduleJobCommand(id, request.ScheduledDate, request.EstimatedDurationMinutes), cancellationToken);
+                return Results.NoContent();
+            })
+            .WithName("ScheduleJob")
+            .WithSummary("Programa o reprograma un trabajo (New o Scheduled → Scheduled). La fecha lleva su desfase horario.");
+
+        group.MapDelete("/{id:guid}/schedule", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(new UnscheduleJobCommand(id), cancellationToken);
+                return Results.NoContent();
+            })
+            .WithName("UnscheduleJob")
+            .WithSummary("Quita un trabajo de la agenda (Scheduled → New, sin fecha ni duración).");
     }
 
     internal sealed record UpdateJobRequest(string Title, string? Description, JobPriority Priority);
 
     internal sealed record AssignJobRequest(Guid TenantUserId);
+
+    // La fecha va como TEXTO: una hora sin desfase se rechaza con un 400 de campo en vez de leerse con el huso del servidor (spec 020 R4).
+    internal sealed record ScheduleJobRequest(string ScheduledDate, int? EstimatedDurationMinutes);
 }

@@ -19,6 +19,7 @@ public partial class PermissionNamesTests
         [Permission.JobsRead] = "Jobs.Read",
         [Permission.JobsWrite] = "Jobs.Write",
         [Permission.JobsAssign] = "Jobs.Assign",
+        [Permission.JobsSchedule] = "Jobs.Schedule",
         [Permission.JobsCancel] = "Jobs.Cancel",
         [Permission.JobsExecute] = "Jobs.Execute",
         [Permission.UsersRead] = "Users.Read",

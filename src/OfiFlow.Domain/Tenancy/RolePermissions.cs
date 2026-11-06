@@ -15,21 +15,21 @@ public static class RolePermissions
         // Se listan uno a uno a propósito: un permiso nuevo no se concede a nadie, ni al Owner, hasta que se decide.
         [TenantRole.Owner] = Set(
             Permission.CustomersRead, Permission.CustomersWrite, Permission.CustomersDelete,
-            Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsCancel, Permission.JobsExecute,
+            Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsSchedule, Permission.JobsCancel, Permission.JobsExecute,
             Permission.UsersRead, Permission.UsersManage, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions),
 
         // Mismos permisos que Owner. Se diferencian en a quién pueden gestionar (ManageableRoles, spec 009):
         // el Admin no gestiona a otros Admin.
         [TenantRole.Admin] = Set(
             Permission.CustomersRead, Permission.CustomersWrite, Permission.CustomersDelete,
-            Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsCancel, Permission.JobsExecute,
+            Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsSchedule, Permission.JobsCancel, Permission.JobsExecute,
             Permission.UsersRead, Permission.UsersManage, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions),
 
         // Gestiona el trabajo diario, pero no borra clientes (borrado físico e irreversible). Ve quién hay en
         // la empresa (para asignar trabajos), pero no gestiona usuarios.
         [TenantRole.Manager] = Set(
             Permission.CustomersRead, Permission.CustomersWrite,
-            Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsCancel, Permission.JobsExecute,
+            Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsSchedule, Permission.JobsCancel, Permission.JobsExecute,
             Permission.UsersRead, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions),
 
         // Personal de oficina: da de alta y modifica clientes y trabajos, pero no asigna, cancela ni ejecuta.

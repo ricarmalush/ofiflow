@@ -187,6 +187,8 @@ namespace OfiFlow.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CustomerId");
 
+                    b.HasIndex("TenantId", "ScheduledDate");
+
                     b.ToTable("Jobs");
                 });
 

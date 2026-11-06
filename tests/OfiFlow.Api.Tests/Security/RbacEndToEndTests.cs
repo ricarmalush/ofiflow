@@ -32,6 +32,8 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         "job_create           X     X     X       X        -",
         "job_update           X     X     X       X        -",
         "job_assign           X     X     X       -        -",
+        "job_schedule         X     X     X       -        -",
+        "job_unschedule       X     X     X       -        -",
         "job_cancel           X     X     X       -        -",
         "job_start            X     X     X       -        X",
         "job_complete         X     X     X       -        X"
@@ -54,7 +56,7 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         return data;
     }
 
-    // --- La matriz completa: 13 operaciones × 5 roles ---
+    // --- La matriz completa: 15 operaciones × 5 roles ---
 
     [Theory]
     [MemberData(nameof(Cells))]
@@ -100,6 +102,23 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         // Control: Employee sí tiene Jobs.Write, así que con los mismos datos llega a la validación.
         var validated = await fixture.ClientOf(TenantRole.Employee)
             .PostAsJsonAsync("/api/v1/jobs", new { customerId = Guid.NewGuid(), title = "", priority = 1 });
+
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, validated.StatusCode);
+        Assert.Equal("validation.failed", (await ReadProblemAsync(validated)).Code);
+    }
+
+    [Fact]
+    public async Task WithoutSchedulePermission_InvalidSchedulingData_Gets403_NotA400()
+    {
+        // Employee: sin Jobs.Schedule. Una fecha sin desfase la rechazaría el validador, pero la autorización responde primero (spec 020).
+        var jobId = await CreateJobAsync();
+        var body = new { scheduledDate = "2026-11-10T09:00:00", estimatedDurationMinutes = 0 };
+
+        var forbidden = await fixture.ClientOf(TenantRole.Employee).PutAsJsonAsync($"/api/v1/jobs/{jobId}/schedule", body);
+
+        // Control: Manager sí tiene Jobs.Schedule, así que con los mismos datos llega a la validación.
+        var validated = await fixture.ClientOf(TenantRole.Manager).PutAsJsonAsync($"/api/v1/jobs/{jobId}/schedule", body);
 
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, validated.StatusCode);
@@ -375,6 +394,19 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
             async (f, c, allowed) =>
                 Assert.Equal(allowed ? f.UserOf(TenantRole.Technician).TenantUserId : (Guid?)null, (await GetJobAsync(f, c.JobId)).AssignedTenantUserId)),
 
+        ["job_schedule"] = new(
+            (_, c) => WithJson(HttpMethod.Put, $"/api/v1/jobs/{c.JobId}/schedule", new { scheduledDate = "2026-11-10T09:00:00+01:00", estimatedDurationMinutes = 60 }),
+            HttpStatusCode.NoContent,
+            async (f, c, allowed) =>
+                Assert.Equal(allowed ? "Scheduled" : "New", (await GetJobAsync(f, c.JobId)).Status)),
+
+        // El trabajo se prepara ya programado (lo programa el Owner): si se pudiera quitar de la agenda sin permiso, cambiaría.
+        ["job_unschedule"] = new(
+            (_, c) => new(HttpMethod.Delete, $"/api/v1/jobs/{c.JobId}/schedule"),
+            HttpStatusCode.NoContent,
+            async (f, c, allowed) =>
+                Assert.Equal(allowed ? "New" : "Scheduled", (await GetJobAsync(f, c.JobId)).Status)),
+
         ["job_cancel"] = new(
             (_, c) => new(HttpMethod.Post, $"/api/v1/jobs/{c.JobId}/cancel"),
             HttpStatusCode.NoContent,
@@ -404,6 +436,12 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         var customerId = await CreateAsync(owner, "/api/v1/customers", new { type = 0, name = $"Cliente base {unique}" });
         var freeCustomerId = await CreateAsync(owner, "/api/v1/customers", new { type = 0, name = $"Cliente sin trabajos {unique}" });
         var jobId = await CreateAsync(owner, "/api/v1/jobs", new { customerId, title = $"Trabajo base {unique}", priority = 1 });
+
+        if (operation == "job_unschedule")
+        {
+            var schedule = WithJson(HttpMethod.Put, $"/api/v1/jobs/{jobId}/schedule", new { scheduledDate = "2026-11-10T09:00:00+01:00", estimatedDurationMinutes = 60 });
+            Assert.Equal(HttpStatusCode.NoContent, (await owner.SendAsync(schedule)).StatusCode);
+        }
 
         if (operation == "job_complete")
         {

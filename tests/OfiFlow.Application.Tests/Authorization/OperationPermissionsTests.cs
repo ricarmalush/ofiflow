@@ -26,7 +26,9 @@ using OfiFlow.Application.Jobs.Commands.AssignJob;
 using OfiFlow.Application.Jobs.Commands.CancelJob;
 using OfiFlow.Application.Jobs.Commands.CompleteJob;
 using OfiFlow.Application.Jobs.Commands.CreateJob;
+using OfiFlow.Application.Jobs.Commands.ScheduleJob;
 using OfiFlow.Application.Jobs.Commands.StartJob;
+using OfiFlow.Application.Jobs.Commands.UnscheduleJob;
 using OfiFlow.Application.Jobs.Commands.UpdateJob;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
@@ -48,7 +50,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 42 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta y, de la spec 018, las de «he olvidado mi contraseña» y restablecerla) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 44 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta y, de la spec 018, las de «he olvidado mi contraseña» y restablecerla y, de la spec 020, las de programar un trabajo y quitarlo de la agenda) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -64,6 +66,8 @@ public class OperationPermissionsTests
         (typeof(CreateJobCommand), Permission.JobsWrite),
         (typeof(UpdateJobCommand), Permission.JobsWrite),
         (typeof(AssignJobCommand), Permission.JobsAssign),
+        (typeof(ScheduleJobCommand), Permission.JobsSchedule),
+        (typeof(UnscheduleJobCommand), Permission.JobsSchedule),
         (typeof(CancelJobCommand), Permission.JobsCancel),
         (typeof(StartJobCommand), Permission.JobsExecute),
         (typeof(CompleteJobCommand), Permission.JobsExecute),
@@ -197,7 +201,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(42, inTheTable.Count);
+        Assert.Equal(44, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>
