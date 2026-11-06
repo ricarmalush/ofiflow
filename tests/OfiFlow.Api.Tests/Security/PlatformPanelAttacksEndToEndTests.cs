@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using OfiFlow.Api.Tests.Common;
 using OfiFlow.Application.Common.Logging;
 using OfiFlow.Application.Platform;
 using OfiFlow.Domain.Tenancy;
@@ -222,12 +223,23 @@ public sealed class PlatformPanelAttacksEndToEndTests(PlatformFlowFixture fixtur
     {
         var platformOperator = await _fixture.CreateOperatorAsync();
         var owner = await _fixture.RegisterOwnerAsync();
+        var company = $"Empresa del operador {Guid.NewGuid():N}";
 
-        var register = await _fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/register",
-            new { companyName = "Empresa del operador", userName = "Operador", email = platformOperator.Email, password = MembersFixture.NewPassword() });
+        // Pedir el registro con el email de un operador responde igual que con cualquier otro (202, no revela nada), pero no crea ningún pendiente: lo único que sale es el aviso fijo
+        // de «ya tienes una cuenta», sin ningún enlace para completar.
+        var registrar = _fixture.Database.Registrar;
+        var register = await registrar.RequestAsync(company, "Operador", platformOperator.Email);
         var invite = await _fixture.SendAsync(HttpMethod.Post, "/api/v1/invitations", new { email = platformOperator.Email, role = (int)TenantRole.Technician }, owner.AccessToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, register.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, register.StatusCode);
+        var notice = await registrar.FirstMailToAsync(platformOperator.Email);
+        Assert.NotNull(notice);
+        Assert.Equal(OfiFlow.Application.Identity.AccountExistsEmail.Subject, notice.Subject);
+        Assert.DoesNotContain("#token=", notice.TextBody);
+
+        using var scope = _fixture.Database.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.False(await db.Tenants.AnyAsync(t => t.Name == company));
         Assert.Equal(HttpStatusCode.BadRequest, invite.StatusCode);
     }
 
@@ -248,7 +260,7 @@ public sealed class PlatformPanelAttacksEndToEndTests(PlatformFlowFixture fixtur
         Assert.Equal(HttpStatusCode.NoContent, (await Suspend(token, a.TenantId)).StatusCode);
 
         // A: nadie acepta su invitación, y su miembro no renueva la sesión.
-        var accept = await _fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/accept-invitation", new { token = pendingToken, name = "Persona", password = MembersFixture.NewPassword() });
+        var accept = await _fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/accept-invitation", new { token = pendingToken, name = "Persona", password = MembersFixture.NewPassword(), acceptedTermsVersion = SqlServerApiFactory.TermsVersion });
         Assert.Equal(HttpStatusCode.BadRequest, accept.StatusCode);
         Assert.Equal("invitation.invalid", await CodeOfAsync(accept));
         Assert.Equal(HttpStatusCode.Unauthorized, (await _fixture.SendAsync(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = a.Owner.RefreshToken })).StatusCode);

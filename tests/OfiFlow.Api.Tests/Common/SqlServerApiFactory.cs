@@ -34,6 +34,24 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
 
     public string JwtIssuer => "OfiFlow.Api.Tests";
 
+    /// <summary>
+    /// La versión vigente de las condiciones de uso (`Legal:TermsVersion`, spec 021). Aceptar una invitación y pedir un registro exigen enviarla (D8, R3): con ella configurada de serie, los
+    /// tests que crean cuentas por invitación solo tienen que mandarla, y el caso «condiciones sin configurar» se prueba vaciándola a propósito.
+    /// </summary>
+    public const string TermsVersion = "2026-11";
+
+    private AccountRegistrar? _registrar;
+
+    /// <summary>
+    /// Cómo se crea una empresa en los tests (spec 021, D11): pidiendo el registro, leyendo el enlace del correo y completándolo, como una persona. El registro inmediato ya no existe. Se crea
+    /// la primera vez que se usa, porque levanta una segunda API sobre la misma base de datos.
+    /// </summary>
+    public AccountRegistrar Registrar => _registrar ??= new AccountRegistrar(this);
+
+    /// <summary>Crea una empresa con su Owner por el flujo real y devuelve el Id de la empresa.</summary>
+    public Task<Guid> RegisterCompanyAsync(string companyName, string userName, string email, string password) =>
+        Registrar.RegisterAsync(companyName, userName, email, password);
+
     public string JwtAudience => "OfiFlow.Api.Tests.Client";
 
     /// <summary>Todo lo que la API ha registrado en el log, para comprobar eventos de seguridad (ADR-009 R5).</summary>
@@ -80,6 +98,7 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
         // Se prueba aparte, contra SQL Server real, llamando al ciclo directamente.
         builder.UseSetting("RefreshTokenPurge:Enabled", "false");
         builder.UseSetting("Jwt:Audience", JwtAudience);
+        builder.UseSetting("Legal:TermsVersion", TermsVersion);
 
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
 
@@ -89,6 +108,7 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
 
     public override async ValueTask DisposeAsync()
     {
+        _registrar?.Dispose();
         await base.DisposeAsync();
         await _container.DisposeAsync();
         GC.SuppressFinalize(this);

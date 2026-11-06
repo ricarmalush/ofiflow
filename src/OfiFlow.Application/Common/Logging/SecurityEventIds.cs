@@ -86,6 +86,35 @@ public static class SecurityEventIds
     public const int PasswordResetRejected = 1017;
 
     /// <summary>
+    /// Alguien pidió crear una cuenta (spec 021 R20). Lleva si el email <b>ya tenía cuenta</b>, <b>solo en el registro</b> (un analista lo necesita; la respuesta HTTP es la misma, R1). <b>Nunca</b> el
+    /// email, el nombre, el nombre de la empresa, el token ni el enlace. Una ráfaga con «ya tenía cuenta: True» desde una IP es alguien probando emails.
+    /// </summary>
+    public const int RegistrationRequested = 1018;
+
+    /// <summary>
+    /// Se pidió un registro para un email que ya había llegado al límite de la hora (spec 021 R7). No se creó pendiente ni se envió correo, y a quien lo pidió no se le dijo (si no, el límite sería
+    /// un oráculo). <b>Nunca</b> el email. Una ráfaga de estos es alguien intentando inundar el buzón de una víctima desde muchas IPs.
+    /// </summary>
+    public const int RegistrationThrottled = 1019;
+
+    /// <summary>
+    /// Una cuenta nueva nació al abrir el enlace del correo (spec 021 R10). Lleva el TenantId y el UserId. <b>Nunca</b> la contraseña, el token, el email ni los nombres.
+    /// </summary>
+    public const int RegistrationCompleted = 1020;
+
+    /// <summary>
+    /// Se intentó completar un registro con un token que no sirvió (spec 021 R11). Lleva el <b>motivo real</b> (<c>Unknown</c>, <c>UsedOrReplaced</c>, <c>Expired</c>, <c>EmailTaken</c> o
+    /// <c>Concurrent</c>): la respuesta HTTP es el mismo error para todos. <b>Nunca</b> el token. Una ráfaga de <c>Unknown</c> desde una IP es alguien probando tokens.
+    /// </summary>
+    public const int RegistrationRejected = 1021;
+
+    /// <summary>
+    /// La purga en segundo plano borró registros pendientes caducados (spec 021 R18). Lleva cuántos y el corte, <b>nunca</b> emails ni nombres: son datos personales de gente que no llegó a tener
+    /// cuenta. Un ciclo que no borró nada no deja ninguno.
+    /// </summary>
+    public const int PendingRegistrationsPurged = 1022;
+
+    /// <summary>
     /// Una persona cerró <b>una sesión concreta</b> suya (spec 016 R17), distinta de «cerrar todas» (<see cref="AllSessionsClosed"/>) y de salir de la
     /// propia (<see cref="SessionClosed"/>). Solo se registra cuando de verdad cerró algo. Lleva el UserId y si era la sesión actual; <b>nunca</b> el Id de la
     /// sesión cerrada, ni tokens ni hashes (una ráfaga de estos del mismo UserId seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño).

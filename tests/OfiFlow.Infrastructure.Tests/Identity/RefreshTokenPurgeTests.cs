@@ -221,6 +221,9 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<PasswordResetService>();
         services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
+        // Y los registros pendientes caducados (spec 021 R18).
+        services.AddScoped<PendingRegistrationService>();
+        services.AddScoped<IPendingRegistrationPurger>(provider => provider.GetRequiredService<PendingRegistrationService>());
 
         return services.BuildServiceProvider();
     }
@@ -354,8 +357,8 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
         }
     }
 
-    // El ciclo también purga los tokens de restablecimiento (spec 018 R18): aquí no hay nada que borrar y no es lo que se prueba.
-    private sealed class NothingToPurge : IPasswordResetTokenPurger
+    // El ciclo también purga los tokens de restablecimiento (spec 018 R18) y los registros pendientes (spec 021 R18): aquí no hay nada que borrar y no es lo que se prueba.
+    private sealed class NothingToPurge : IPasswordResetTokenPurger, IPendingRegistrationPurger
     {
         public Task<int> PurgeBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken) => Task.FromResult(0);
     }
@@ -373,7 +376,7 @@ public class RefreshTokenPurgeTests(SqlServerContainerFixture fixture) : IClassF
     public async Task Service_ACycleThatFails_DoesNotKillIt_AndTheNextCycleRetries()
     {
         var purger = new FlakyPurger();
-        var services = new ServiceCollection().AddSingleton<IRefreshTokenPurger>(purger).AddSingleton<IPasswordResetTokenPurger>(new NothingToPurge()).BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton<IRefreshTokenPurger>(purger).AddSingleton<IPasswordResetTokenPurger>(new NothingToPurge()).AddSingleton<IPendingRegistrationPurger>(new NothingToPurge()).BuildServiceProvider();
         var logger = new ListLogger<RefreshTokenPurgeService>();
         var service = NewService(services, new RefreshTokenPurgeOptions { StartupDelay = TimeSpan.Zero, Interval = TimeSpan.FromMilliseconds(30), BatchSize = 10 }, logger, TimeProvider.System);
 

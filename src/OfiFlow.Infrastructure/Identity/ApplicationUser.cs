@@ -6,7 +6,7 @@ namespace OfiFlow.Infrastructure.Identity;
 /// Credentials only (ADR-007) — Domain.User holds the business data, sharing this same Id.
 /// Deliberately treated as a plain EF entity, NOT registered through UserManager/
 /// IdentityDbContext: IIdentityService.CreateUserAsync only Add()s it, so
-/// RegisterCommandHandler can commit it in the same SaveChangesAsync as
+/// CompleteRegistrationCommandHandler (and AcceptInvitationCommandHandler) can commit it in the same SaveChangesAsync as
 /// Tenant/User/TenantUser (single-transaction requirement, spec 002).
 /// </summary>
 public sealed class ApplicationUser : IdentityUser<Guid>

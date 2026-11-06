@@ -68,9 +68,7 @@ public sealed class TwoTenantsFixture : IAsyncLifetime
         var email = $"tenant-{Guid.NewGuid():N}@example.com";
         var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
 
-        var register = await Anonymous.PostAsJsonAsync("/api/v1/auth/register",
-            new { companyName, userName = "Usuario de pruebas", email, password });
-        var tenantId = (await ReadAsync<RegisterResponse>(register)).TenantId;
+        var tenantId = await Factory.RegisterCompanyAsync(companyName, "Usuario de pruebas", email, password);
 
         var login = await Anonymous.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
         var tokens = await ReadAsync<AuthResultDto>(login);

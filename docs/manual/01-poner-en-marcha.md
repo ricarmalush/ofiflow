@@ -19,6 +19,7 @@
 | **SQL Server** | La base de datos. En Windows basta **LocalDB**, que se instala con Visual Studio | Sí, para arrancar la API |
 | **`dotnet-ef`** | La herramienta que crea y actualiza las tablas a partir de las migraciones | Sí, para el paso 2 |
 | **Docker** | Los tests de integración levantan un SQL Server real en un contenedor | Solo para los tests |
+| **Mailpit** (en Docker) | Recibe los correos de pruebas: el del enlace para crear una cuenta, el de recuperar la contraseña y el de las invitaciones | Para crear una cuenta (spec 021); ver ["Crear tu primera cuenta en local"](#crear-tu-primera-cuenta-en-local-spec-021) |
 | **Visual Studio** | Abrir la solución y ejecutar el fichero `.http` de pruebas manuales | No: sirve cualquier editor y `curl` |
 
 Para instalar `dotnet-ef` (una vez por máquina; el repositorio no lo trae en un manifiesto):
@@ -122,9 +123,9 @@ Por defecto usa el perfil `http` de [`launchSettings.json`](../../src/OfiFlow.Ap
 
 Verás en la consola `Now listening on: ...` y `Application started`. Ya está en marcha.
 
-## Probar el correo en local (opcional, spec 017)
+## Probar el correo en local (spec 017; obligatorio para crear cuentas desde la spec 021)
 
-Por defecto el correo está **apagado** (`Email:Provider = None`): al invitar a alguien, la API te devuelve el token y tú se lo das a la persona, como antes. Para ver cómo sería con correo de verdad **sin enviar nada a internet**, levanta un servidor SMTP de pruebas, [Mailpit](https://mailpit.axllent.org/), que recibe los correos y te los enseña en una página:
+Por defecto el correo está **apagado** (`Email:Provider = None`): al invitar a alguien, la API te devuelve el token y tú se lo das a la persona, como antes. **Pero desde la spec 021 crear una cuenta necesita correo** (ver la sección siguiente), así que para crear tu primera cuenta de pruebas tienes que configurarlo. Para ver cómo sería con correo de verdad **sin enviar nada a internet**, levanta un servidor SMTP de pruebas, [Mailpit](https://mailpit.axllent.org/), que recibe los correos y te los enseña en una página:
 
 ```bash
 docker run -d --name mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 -e MP_SMTP_DISABLE_RDNS=true axllent/mailpit:v1.33.0
@@ -151,9 +152,48 @@ Tres cosas que conviene saber:
 
 Para apagarlo otra vez: `dotnet user-secrets remove "Email:Provider" --project src/OfiFlow.Api`. En producción el correo se configura por variables de entorno (`Email__Provider`, `Email__Smtp__Host`…) y los pasos para que llegue de verdad (proveedor, dominio, SPF, DKIM, DMARC) están en la [Parte 6 del capítulo 6](06-identidad-y-autenticacion.md) y en la [ADR-020](../adr/ADR-020-correo-saliente.md).
 
+## Crear tu primera cuenta en local (spec 021)
+
+**Ya no existe `POST /auth/register`.** Una cuenta nace en dos pasos, como la verá una persona de verdad: *pedir* el registro y *completarlo* con el enlace que llega por correo. Hasta que se abre el enlace **no existe ninguna cuenta** (ni empresa, ni usuario): es lo que impide que alguien registre el email de otra persona y se quede con su cuenta (capítulo 6 y ADR-023).
+
+Hacen falta **dos ajustes**, además de los secretos del paso 1:
+
+- **El correo**, con Mailpit como en la sección anterior. Sin él, el registro está **cerrado**.
+- **`Legal:TermsVersion`**, la etiqueta de la versión vigente de las condiciones de uso (por ejemplo `2026-11`; solo letras, números, punto, guion y guion bajo, hasta 20 caracteres). Qué dicen las condiciones lo redacta el dueño del proyecto: el código solo compara la etiqueta. Sin ella el registro también está **cerrado**, y **aceptar una invitación también falla** (pide la versión de las condiciones).
+
+```bash
+dotnet user-secrets set "Legal:TermsVersion" "2026-11" --project src/OfiFlow.Api
+```
+
+Con la API en marcha, la primera cuenta de pruebas, sin pantalla:
+
+```bash
+# 1. Pedir el registro. SIEMPRE devuelve 202 sin cuerpo (tengas cuenta o no); NO crea ninguna cuenta.
+curl -i -X POST http://localhost:5279/api/v1/auth/registration \
+  -H "Content-Type: application/json" \
+  -d '{"companyName":"Fontanería Demo SL","userName":"Ana Pérez","email":"ana@example.com","acceptedTermsVersion":"2026-11"}'
+```
+
+Tarda **un cuarto de segundo** a propósito (el suelo de tiempo, capítulo 6). Abre <http://localhost:8025>: el correo «Crea tu cuenta de OfiFlow» tiene un enlace con el token después de `#token=`.
+
+```bash
+# 2. Completar el registro con ese token y elegir la contraseña (204 si sirvió). Aquí nacen la empresa, el usuario y su pertenencia como Owner.
+curl -i -X POST http://localhost:5279/api/v1/auth/registration/complete \
+  -H "Content-Type: application/json" -d '{"token":"PEGA-EL-TOKEN","newPassword":"Una-clave-de-8-a-128-2026!"}'
+```
+
+Después, entra con `POST /auth/login` y la contraseña que acabas de elegir (completar **no abre sesión**). Si repites el paso 2 con el mismo token, obtienes `400 registration.invalid`: el enlace es de un solo uso, caduca a las 24 horas y pedir otro registro con el mismo email anula el anterior. Para comprobar que **no hay cuenta antes de abrir el enlace**, intenta entrar entre el paso 1 y el 2: da `401`.
+
+Cosas que te pueden despistar:
+
+- **`202` y no llega ningún correo:** o el correo no está configurado, o falta `Legal:TermsVersion` (el registro está cerrado y la API solo deja un aviso en el registro), o el email ya tiene cuenta (entonces llega otro correo, el aviso «Ya tienes una cuenta de OfiFlow», sin token).
+- **`400` al pedir:** falta algún dato, el email está mal formado o `acceptedTermsVersion` no es la versión vigente.
+- **Los límites:** pedir el registro admite 3 por hora y por IP (el cuarto da `429`) y 3 correos por hora para el mismo email, **en silencio**; completarlo, 10 por hora y por IP.
+- **Los tests no necesitan nada de esto:** crean sus cuentas por este mismo flujo con un correo de mentira (`AccountRegistrar`).
+
 ## Probar la recuperación de contraseña en local (spec 018)
 
-Con Mailpit configurado como arriba, puedes recorrer el flujo entero sin enviar nada a internet. Necesitas una cuenta (la de tu registro de prueba sirve). Si usas el fichero `.http` de la API, las dos peticiones están en su sección de autenticación (`forgot-password` y `reset-password`); con `curl`:
+Con Mailpit configurado como arriba, puedes recorrer el flujo entero sin enviar nada a internet. Necesitas una cuenta (la que creaste en la sección anterior sirve). Si usas el fichero `.http` de la API, las dos peticiones están en su sección de autenticación (`forgot-password` y `reset-password`); con `curl`:
 
 ```bash
 # 1. Pedir el enlace. SIEMPRE devuelve 202 sin cuerpo, tengas cuenta o no.
@@ -182,8 +222,8 @@ La API no tiene frontend, pero en `Development` incluye **Swagger UI**: una pant
 
 Para probar una ruta protegida (las que tienen un candado):
 
-1. Despliega `POST /api/v1/auth/register`, pulsa **Try it out** y **Execute** para crear una empresa. (Rellena un email y una contraseña propios.)
-2. Haz lo mismo con `POST /api/v1/auth/login` y copia el `accessToken` de la respuesta.
+1. Crea una empresa como se explica en la sección anterior (pedir el registro con `POST /api/v1/auth/registration`, leer el correo en Mailpit y completar con `POST /api/v1/auth/registration/complete`). Swagger sirve para las dos peticiones: rellena tus datos y pega el token del correo.
+2. Despliega `POST /api/v1/auth/login`, pulsa **Try it out** y **Execute** con tu email y la contraseña que elegiste, y copia el `accessToken` de la respuesta.
 3. Pulsa **Authorize** (arriba a la derecha), pega el token **sin** la palabra `Bearer` y confirma.
 4. Prueba `GET /api/v1/customers`: devuelve **200** con una lista vacía. Sin autorizar, la misma petición da **401**.
 
@@ -197,7 +237,7 @@ Ni esa ruta ni `/swagger` **existen fuera de `Development`**: el código las reg
 
 Para probar de verdad, hay una colección ordenada de 51 peticiones en [`OfiFlow.Api.http`](../../src/OfiFlow.Api/OfiFlow.Api.http), que se ejecuta desde Visual Studio (cuenta, clientes, trabajos, errores a propósito, aislamiento entre dos empresas y el equipo: invitar, aceptar, cambiar roles y quitar miembros). Si prefieres la terminal, la secuencia mínima:
 
-1. **Registrar una empresa** (crea la empresa, su primer usuario y lo hace `Owner`). `POST /api/v1/auth/register` con `companyName`, `userName`, `email` y `password`.
+1. **Crear una empresa** (la empresa, su primer usuario como `Owner`): pedir el registro (`POST /api/v1/auth/registration` con `companyName`, `userName`, `email` y `acceptedTermsVersion`), leer el enlace del correo en Mailpit y completarlo (`POST /api/v1/auth/registration/complete` con `token` y `newPassword`). Necesita el correo y `Legal:TermsVersion`: ver la sección anterior.
 2. **Iniciar sesión.** `POST /api/v1/auth/login` con `email` y `password`: devuelve `accessToken` y `refreshToken`.
 3. **Usar el token.** `GET /api/v1/customers` con la cabecera `Authorization: Bearer <accessToken>`.
 
@@ -206,7 +246,7 @@ Comprobado: sin el token el paso 3 devuelve **401**, y con él **200**. Esa dife
 Dos cosas que te pueden despistar:
 
 - **Los enumerados entran como número** (por ejemplo el tipo de cliente: 0 = persona, 1 = empresa), aunque las respuestas los devuelven como texto. Es un límite conocido; la colección `.http` lo explica en su cabecera.
-- **El registro admite 3 por hora desde la misma IP**, aceptar una invitación 10 por hora, el login 5 por minuto y la renovación 20 por minuto (capítulo 8). Si pruebas mucho te llevarás un **429** con la cabecera `Retry-After`: no es un fallo, es el control funcionando.
+- **Pedir el registro admite 3 por hora desde la misma IP**, completarlo 10 por hora, aceptar una invitación 10 por hora, el login 5 por minuto y la renovación 20 por minuto (capítulo 8). Si pruebas mucho te llevarás un **429** con la cabecera `Retry-After`: no es un fallo, es el control funcionando.
 
 ## Dónde ver los logs
 

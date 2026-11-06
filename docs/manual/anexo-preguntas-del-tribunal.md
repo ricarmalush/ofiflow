@@ -67,10 +67,10 @@ Es un JWT firmado (HMAC-SHA256) con el usuario, la empresa, el rol y el **Id de 
 Depende de si su dueño ya cerró la sesión. **Si la cerró** (cerrar sesión, «cerrar todas mis sesiones», activar o desactivar el segundo factor, o quitar a esa persona de la empresa), el token **deja de valer en la petición siguiente**: lleva el Id de su sesión y la API comprueba en cada petición que esa sesión siga activa (`401`). Hasta la spec 015 no era así: un JWT no se puede anular y valía hasta 30 minutos. **Si no la cerró**, sigue valiendo hasta que caduque (esto no detecta que lo use otra persona), **pero** el rol y la pertenencia a la empresa se revalidan en la base de datos en cada petición, así que un token de alguien al que se quitó de la empresa no autoriza nada. El coste de poder anularlo es una consulta más por petición (medida: ~1,5 ms de mediana en local, por un índice que la cubre entera). *(Cap. 6 y 8, ADR-018)*
 
 **¿Cómo se frena la fuerza bruta?**
-Con un límite de peticiones por IP: 5 logins por minuto, 3 registros por hora, 10 aceptaciones de invitación por hora. Al pasarse, un 429 y un evento de seguridad. **Además, desde la spec 010, **cada cuenta se bloquea 15 minutos tras 5 fallos** aunque los intentos vengan de IP distintas, y el intento se reserva antes de comprobar la contraseña para que 50 peticiones simultáneas no den 50 intentos. **Límite honesto:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito. *(Cap. 6 y 8)*
+Con un límite de peticiones por IP: 5 logins por minuto, 3 pedidos de registro por hora, 10 registros completados por hora, 10 aceptaciones de invitación por hora. Al pasarse, un 429 y un evento de seguridad. **Además, desde la spec 010, **cada cuenta se bloquea 15 minutos tras 5 fallos** aunque los intentos vengan de IP distintas, y el intento se reserva antes de comprobar la contraseña para que 50 peticiones simultáneas no den 50 intentos. **Límite honesto:** quien conozca un email puede mantener esa cuenta bloqueada fallando a propósito. *(Cap. 6 y 8)*
 
 **¿Se puede saber si un email está registrado?**
-El login responde un único 401 para "email desconocido", "contraseña incorrecta" y "cuenta bloqueada", y tarda lo mismo en los tres (se hace siempre una verificación completa, contra un hash ficticio si no hay cuenta). **Pero** el registro sí dice "ya está registrado": un límite conocido y anotado. *(Cap. 6, 8)*
+El login responde un único 401 para "email desconocido", "contraseña incorrecta" y "cuenta bloqueada", y tarda lo mismo en los tres (se hace siempre una verificación completa, contra un hash ficticio si no hay cuenta). El registro, que antes sí decía «ya está registrado», se cerró con la spec 021: pedir crear una cuenta responde siempre lo mismo y tarda siempre lo mismo (ver «Crear una cuenta»). *(Cap. 6, 8)*
 
 **¿Por qué TOTP y no SMS?**
 El SMS es el factor más débil (se secuestra la línea con un duplicado de SIM) y exige un proveedor de pago con un dato personal más. El TOTP es gratis, no depende de nadie y lo entiende cualquier app. **Límite honesto:** no resiste al *phishing*; las *passkeys* sí, y son el siguiente paso. *(ADR-014; cap. 6)*
@@ -145,6 +145,32 @@ Que restablecer **cierra todas las sesiones** de la cuenta, en todas sus empresa
 **¿Y si dos personas usan el mismo enlace a la vez?**
 Gana una. El token lleva una columna de versión de fila; las dos preparan sus cambios, pero solo un `UPDATE` encuentra la fila como la leyó, y la perdedora falla al confirmar —sin cambiar la contraseña ni cerrar sesiones— y recibe el mismo `password_reset.invalid`. Se probó con una carrera de verdad contra SQL Server. *(Cap. 6)*
 
+### Crear una cuenta (spec 021)
+
+**¿Cuándo existe la cuenta de alguien que se registra?**
+**Solo cuando abre el enlace que le llega por correo.** Pedir el registro (`POST /auth/registration`) guarda lo escrito en una tabla de pendientes y envía un enlace, pero no crea ninguna cuenta; al abrirlo, la persona **elige su contraseña** y se crean de una vez la empresa, el usuario y su pertenencia de `Owner`, en una sola confirmación. *(Cap. 6, Parte 10; ADR-023)*
+
+**¿Qué ataque evita eso, y por qué no se crea la cuenta «sin confirmar»?**
+El *pre-hijacking*. Si la cuenta se creara al registrarse y se bloqueara hasta confirmar, quien registrara el email de **otra persona** dejaría una cuenta con **su** contraseña, y si la víctima pulsara el enlace de confirmación, el atacante ya la controlaría. Con «sin cuenta hasta abrir el enlace» no hay nada que secuestrar, y si la víctima abre un enlace que no pidió, **elige ella la contraseña**. De paso desaparecen el caso «login bloqueado hasta confirmar», la purga de empresas sin confirmar y la migración de `EmailConfirmed`. *(ADR-023)*
+
+**¿Se puede saber si un email ya tiene cuenta al registrarse?**
+No: responde **siempre `202` sin cuerpo y con las mismas cabeceras**, y **tarda siempre lo mismo**. Con un email que ya tiene cuenta no se crea nada y se envía un **aviso fijo** («Ya tienes una cuenta»), sin token, para que quien tecleó bien su email no se quede esperando. El tiempo **se midió** (200 + 200 peticiones alternadas): sin suelo la diferencia era de ≈ 3,4 ms y se distinguía sin dudar (t de Welch = −9,40; Mann-Whitney z = −10,62); con un suelo de 250 ms aplicado **después** del trabajo, no (t = 1,03; z = 0,75). **Límite honesto:** si el trabajo de un email nuevo pasara de 250 ms, esa cola volvería a delatarlo. *(Cap. 6, ADR-023)*
+
+**¿Cómo se evita que OfiFlow sirva para llenar de correo el buzón de otra persona?**
+Con tres límites: 3 pedidos por hora y por IP, **3 pendientes por hora y por email en silencio** y **3 avisos por hora y por email en silencio**. El tercero **no estaba en la spec**: el límite «por email» de los pendientes cuenta filas, y con un email que ya tiene cuenta no se crea ninguna, así que se podía llenar ese buzón de avisos desde muchas IP; lo encontró escribir el código y se cerró con un limitador propio, en memoria. **Límite honesto:** el del aviso se reinicia con la API y no se comparte entre instancias. *(ADR-023)*
+
+**¿Qué pasa si dos personas abren el mismo enlace a la vez?**
+Gana una. El pendiente lleva una columna de versión de fila; la perdedora falla al confirmar —con su empresa y su usuario— y recibe el mismo `registration.invalid`, **sin dejar nada**. Y el código captura **los dos** fallos posibles de la base de datos (la versión de fila y el índice único del email) juntos, porque capturar solo uno dejaría escapar el otro como un `500`. Se probó con una **barrera** que obliga a que las dos hayan leído el pendiente antes de que ninguna confirme. *(Cap. 6, ADR-023)*
+
+**¿Por qué se retiró `POST /auth/register`?**
+Porque dos formas de crear una cuenta serían dos formas de saltarse la confirmación del buzón. Era un cambio de contrato **sin clientes que lo sufrieran** (solo lo usaban los tests, la colección de peticiones y la documentación; el frontend nunca lo usó). Los tests crean ahora sus empresas por el flujo real, con un ayudante que lee el enlace del correo capturado, y un test de arquitectura fija que solo el caso de uso de completar crea una empresa. *(ADR-023)*
+
+**¿Qué se guarda de alguien que todavía no tiene cuenta, y durante cuánto tiempo?**
+Su nombre, el de la empresa y su email, **hasta 24 horas de vigencia más 7 días de margen de purga**; el token solo como hash y la contraseña, nunca. Son datos personales, y por eso caducan, se purgan por lotes con un evento y no aparecen en ningún registro (ni emails, ni nombres, ni tokens). *(Cap. 6, 8)*
+
+**¿Quién redacta las condiciones de uso, y qué guarda la API?**
+Las redacta el dueño del proyecto (hoy **aún no están escritas**, y hay que tenerlas antes de abrir el registro a clientes reales). La API **solo compara una etiqueta** de versión (por ejemplo `2026-11`) con la vigente y guarda en el `User` la versión y la fecha aceptadas; quien tenga abierta una pantalla antigua recibe un `400` en vez de aceptar sin saber qué. Se piden también al aceptar una invitación. *(ADR-023)*
+
 ### La agenda (spec 020)
 
 **¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
@@ -206,7 +232,7 @@ EF Core parametriza las consultas; los analizadores de seguridad del compilador 
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, una `Content-Security-Policy` muy restrictiva y `Cross-Origin-Resource-Policy`; y HSTS fuera de desarrollo. La única excepción es la pantalla de Swagger, solo en desarrollo y solo en su ruta, con tests que impiden que se extienda. *(Cap. 8)*
 
 **¿Qué se registra y qué no?**
-Hay 45 eventos de seguridad con identificador estable (`1001`...`1608`). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
+Hay 50 eventos de seguridad con identificador estable (`1001`...`1608`). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
 
 **¿Cómo se manejan los secretos?**
 Fuera del repositorio. gitleaks escanea **todo el historial** en cada PR, GitHub bloquea el `push` si detecta uno conocido, y la aplicación **no arranca** si falta el secreto del token. *(Cap. 6, 10)*
@@ -257,9 +283,10 @@ Porque obliga a pensar antes (las decisiones difíciles se descubren al escribir
 
 **¿Qué NO está hecho? (la pregunta más importante)**
 Con honestidad y de lo más a lo menos preocupante:
-- **El segundo factor es opcional y el TOTP no resiste al *phishing*:** obligarlo para `Owner` y `Admin` exige pantallas, y las *passkeys* son el siguiente paso. La contraseña se puede recuperar (spec 018) pero no cambiar estando dentro, y **sin segundo factor quien controla el buzón de una cuenta controla la cuenta**; y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma.
+- **El segundo factor es opcional y el TOTP no resiste al *phishing*:** obligarlo para `Owner` y `Admin` exige pantallas, y las *passkeys* son el siguiente paso. La contraseña se puede recuperar (spec 018) pero no cambiar estando dentro, y **sin segundo factor quien controla el buzón de una cuenta controla la cuenta** (y la cuenta que se crea desde la web **nace sin segundo factor**: con el registro abierto, obligarlo a `Owner` y `Admin` gana urgencia); y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma.
 - **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
+- **Crear una cuenta (spec 021) deja abiertos los textos legales** (los redacta el dueño del proyecto), que las cuentas anteriores **no han aceptado ninguna condición**, la comprobación **anti-robots**, que el límite de 3 pedidos por hora y por IP **puede frenar a una oficina entera**, y que el límite de avisos vive **en memoria**.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 - **No hay alertas ni un registro de auditoría persistente**: los eventos se escriben, pero nadie los vigila.
 - **ZAP escanea solo la superficie anónima** y solo en los PRs.
