@@ -482,6 +482,38 @@ public class RegistrationCompleteEndToEndTests : IClassFixture<MembersFixture>, 
         }
     }
 
+    // ===== El registro inmediato ya no existe (D11) =====
+
+    [Fact]
+    public async Task TheOldImmediateRegistration_NoLongerExists_SoThereIsNoWayAroundTheMailbox()
+    {
+        var email = NewEmail();
+        var company = $"Empresa {Guid.NewGuid():N}";
+
+        var response = await PostAsync("/api/v1/auth/register", new { companyName = company, userName = "Ana", email, password = Chosen });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Empty(await TenantsNamedAsync(company));
+        Assert.False(await HasAccountAsync(email));
+    }
+
+    [Fact]
+    public async Task TheTestHelper_CreatesAccountsThroughTheRealFlow_NeverBypassingTheEmail()
+    {
+        // Si el ayudante creara la cuenta por otro camino (sembrando filas, por ejemplo), todos los tests que dependen de él dejarían de ejercitar el flujo real sin que nadie lo notara.
+        var email = NewEmail("ayudante");
+        var company = $"Empresa {Guid.NewGuid():N}";
+
+        var tenantId = await _fixture.Factory.RegisterCompanyAsync(company, "Ana", email, Chosen);
+
+        var tenant = Assert.Single(await TenantsNamedAsync(company));
+        Assert.Equal(tenant.Id, tenantId);
+        Assert.Contains(_fixture.Factory.Registrar.SentTo(email), message => message.TextBody.Contains("#token=", StringComparison.Ordinal));   // llegó el correo con el enlace
+        var pending = await InDbAsync(db => db.Set<PendingRegistration>().AsNoTracking().SingleAsync(r => r.NormalizedEmail == email.ToUpperInvariant()));
+        Assert.NotNull(pending.UsedAt);                                                                                                         // y el enlace se canjeó
+        Assert.Equal(HttpStatusCode.OK, (await LoginAsync(email, Chosen)).StatusCode);
+    }
+
     // ===== Las invitaciones también aceptan las condiciones (D8) =====
 
     [Fact]

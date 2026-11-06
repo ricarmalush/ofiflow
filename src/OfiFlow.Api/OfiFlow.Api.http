@@ -3,41 +3,60 @@
 # Cómo usarla
 #   1. Arranca la API (perfil "http", puerto 5279). Hacen falta los secretos (Jwt:Secret, Mfa:EncryptionKey y, desde la spec 011, Jwt:PlatformSecret) en tus user-secrets
 #      y la base de datos migrada: ver "Arrancar en local" en el README.
+#      DESDE LA SPEC 021 TAMBIÉN HACEN FALTA EL CORREO Y LAS CONDICIONES: crear una cuenta es "pedir" y "completar con el enlace del correo", y sin correo
+#      configurado o sin Legal__TermsVersion el registro está CERRADO (202 y no pasa nada). En local: Mailpit (docker run -p 1025:1025 -p 8025:8025 axllent/mailpit),
+#      Email__Provider=Smtp, Email__From=no-reply@ofiflow.test, Email__LinkBaseUrl=http://localhost:4200, Email__Smtp__Host=localhost, Email__Smtp__Port=1025,
+#      Email__Smtp__Security=None y Legal__TermsVersion=2026-11. Los correos se leen en http://localhost:8025. Detalle en el capítulo 1 del manual.
 #   2. Ejecuta las peticiones EN ORDEN con el enlace "Enviar solicitud" de cada una. Las de abajo
 #      reutilizan lo que devuelven las de arriba (el token, el Id del cliente, el del trabajo).
 #   3. Si repites la colección, cambia @suffix: el email de una empresa solo puede registrarse una vez.
+#   4. Crear una cuenta lleva UN PASO MANUAL (no se puede automatizar desde aquí): pide el registro, abre el correo en Mailpit, copia el valor que va tras «#token=»
+#      del enlace y pégalo en la petición "Completar el registro" (en @registrationTokenA / @registrationTokenB).
 #
 # Cosas que conviene saber
 #   - Los enumerados entran como NÚMERO, no como texto. Cliente: tipo 0 = Person, 1 = Company.
 #     Trabajo: prioridad 0 = Low, 1 = Normal, 2 = High, 3 = Urgent.
 #     Rol de un miembro: 0 = Owner, 1 = Admin, 2 = Manager, 3 = Technician, 4 = Employee.
 #     Las respuestas los devuelven como texto.
-#   - Hay límites de peticiones por IP: el registro admite 3 por hora, aceptar una invitación 10 por hora,
+#   - Hay límites de peticiones por IP: pedir el registro admite 3 por hora, completarlo 10 por hora, aceptar una invitación 10 por hora,
 #     el segundo paso del login 10 por minuto, gestionar el segundo factor 10 por hora,
 #     el login 5 por minuto y la renovación 20 por minuto; la plataforma (sección 8) tiene los suyos. Si te pasas, la API responde 429 con la
 #     cabecera Retry-After.
 #   - El token de acceso dura 30 minutos. Pasado ese tiempo, usa la petición "Renovar sesión".
-#   - Quien se registra es Owner de su empresa. Para probar los demás roles (y los 403 por falta de
+#   - Quien crea la cuenta (pedir + completar) es Owner de su empresa. El registro inmediato (POST /auth/register) YA NO EXISTE (spec 021). Para probar los demás roles (y los 403 por falta de
 #     permisos) está la sección 6: el Owner invita a una persona, ella acepta y entra con su rol.
 
 @host = http://localhost:5279
 @suffix = 1
 @password = Demo-Password-123
 
+# El token del correo de cada empresa (el valor que va tras «#token=» del enlace). Lo pegas a mano tras pedir el registro.
+@registrationTokenA = PEGA-AQUI-EL-TOKEN-DEL-CORREO-DE-A
+@registrationTokenB = PEGA-AQUI-EL-TOKEN-DEL-CORREO-DE-B
+
 ###############################################################################
 # 1. CUENTA: registrarse, iniciar sesión y renovar la sesión
 ###############################################################################
 
-### Registrar la empresa A (crea la empresa, el usuario y lo hace Owner)
-# @name registerA
-POST {{host}}/api/v1/auth/register
+### Crear la empresa A, paso 1: pedir el registro. Responde 202 sin cuerpo; NO crea ninguna cuenta. Te llega un correo (Mailpit, http://localhost:8025) con un enlace.
+POST {{host}}/api/v1/auth/registration
 Content-Type: application/json
 
 {
   "companyName": "Fontanería A",
   "userName": "Dueña de A",
   "email": "demo-a-{{suffix}}@example.com",
-  "password": "{{password}}"
+  "acceptedTermsVersion": "2026-11"
+}
+
+### Crear la empresa A, paso 2: completar con el token del correo (pégalo arriba, en @registrationTokenA) y elegir la contraseña.
+### Aquí nacen la empresa, el usuario y su pertenencia como Owner. 204 sin cuerpo; no inicia sesión (la sesión es la petición siguiente).
+POST {{host}}/api/v1/auth/registration/complete
+Content-Type: application/json
+
+{
+  "token": "{{registrationTokenA}}",
+  "newPassword": "{{password}}"
 }
 
 ### Iniciar sesión como A (devuelve accessToken y refreshToken)
@@ -390,16 +409,24 @@ Content-Type: application/json
 # 5. AISLAMIENTO ENTRE EMPRESAS: la empresa B no ve nada de A
 ###############################################################################
 
-### Registrar la empresa B (es el segundo registro de la colección: el límite es 3 por hora)
-# @name registerB
-POST {{host}}/api/v1/auth/register
+### Crear la empresa B, paso 1: pedir el registro (es el segundo pedido de la colección: el límite es 3 por hora y por IP). Te llega un correo con un enlace.
+POST {{host}}/api/v1/auth/registration
 Content-Type: application/json
 
 {
   "companyName": "Electricidad B",
   "userName": "Dueño de B",
   "email": "demo-b-{{suffix}}@example.com",
-  "password": "{{password}}"
+  "acceptedTermsVersion": "2026-11"
+}
+
+### Crear la empresa B, paso 2: completar con el token del correo (pégalo arriba, en @registrationTokenB).
+POST {{host}}/api/v1/auth/registration/complete
+Content-Type: application/json
+
+{
+  "token": "{{registrationTokenB}}",
+  "newPassword": "{{password}}"
 }
 
 ### Iniciar sesión como B

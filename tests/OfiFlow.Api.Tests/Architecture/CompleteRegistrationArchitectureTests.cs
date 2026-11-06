@@ -94,10 +94,9 @@ public class CompleteRegistrationArchitectureTests
     }
 
     [Fact]
-    public void OnlyTheCompletionUseCase_AndTheLegacyRegistration_CreateATenant()
+    public void OnlyTheCompletionUseCase_CreatesATenant()
     {
-        // D1: la cuenta nace al abrir el enlace. Cualquier otro sitio que creara una empresa sería otra puerta para saltarse la confirmación del buzón.
-        // El registro inmediato viejo (RegisterCommandHandler) se retira en el bloque 4 y entonces este test debe quedarse solo con el caso de uso de completar.
+        // D1: la cuenta nace al abrir el enlace. Cualquier otro sitio que creara una empresa sería otra puerta para saltarse la confirmación del buzón (el registro inmediato se retiró en el bloque 4).
         var creators = SourceCode.FilesContaining("Tenant.Create(", "OfiFlow.Application")
             .Concat(SourceCode.FilesContaining("Tenant.Create(", "OfiFlow.Infrastructure"))
             .Concat(SourceCode.FilesContaining("Tenant.Create(", "OfiFlow.Api"))
@@ -105,12 +104,20 @@ public class CompleteRegistrationArchitectureTests
             .Order()
             .ToList();
 
-        Assert.Equal(
-            [
-                "src/OfiFlow.Application/Identity/Commands/CompleteRegistration/CompleteRegistrationCommandHandler.cs",
-                "src/OfiFlow.Application/Identity/Commands/Register/RegisterCommandHandler.cs"
-            ],
-            creators);
+        Assert.Equal(["src/OfiFlow.Application/Identity/Commands/CompleteRegistration/CompleteRegistrationCommandHandler.cs"], creators);
+    }
+
+    [Fact]
+    public void TheImmediateRegistration_IsGone_FromTheEndpointsTheLimitsAndTheApplication()
+    {
+        // D11: dos formas de crear una cuenta serían dos formas de saltarse la confirmación del buzón.
+        var endpoints = string.Join('\n', CodeLines(SourceCode.ReadText("src/OfiFlow.Api/Endpoints/AuthEndpoints.cs")));
+        var limits = string.Join('\n', CodeLines(SourceCode.ReadText("src/OfiFlow.Api/Common/RateLimiting.cs")));
+
+        Assert.DoesNotContain("MapPost(\"/register\"", endpoints);
+        Assert.DoesNotContain("RegisterCommand", endpoints);
+        Assert.DoesNotContain("\"auth-register\"", limits);
+        Assert.Empty(SourceCode.FilesContaining("RegisterCommand", "OfiFlow.Application"));
     }
 
     [Fact]

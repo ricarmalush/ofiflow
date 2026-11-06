@@ -37,7 +37,7 @@ public sealed partial class IdentityService(
         var user = new ApplicationUser(id, email);
         user.PasswordHash = PasswordHasher.HashPassword(user, password);
 
-        // Deliberadamente sin SaveChangesAsync: RegisterCommandHandler confirma esta fila
+        // Deliberadamente sin SaveChangesAsync: CompleteRegistrationCommandHandler (o AcceptInvitationCommandHandler) confirma esta fila
         // junto con Tenant/User/TenantUser en una única transacción (spec 002).
         dbContext.ApplicationUsers.Add(user);
 

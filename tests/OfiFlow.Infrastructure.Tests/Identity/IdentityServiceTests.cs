@@ -30,7 +30,7 @@ public class IdentityServiceTests
         Assert.True(result.Succeeded);
 
         // CreateUserAsync deliberadamente no hace SaveChanges (ver comentario en IdentityService) —
-        // aquí simulamos el SaveChanges único que en producción hace RegisterCommandHandler.
+        // aquí simulamos el SaveChanges único que en producción hace CompleteRegistrationCommandHandler.
         await db.SaveChangesAsync(CancellationToken.None);
 
         var validatedUserId = await service.ValidateCredentialsWithoutLockoutAsync("juan@example.com", "Password123!", CancellationToken.None);

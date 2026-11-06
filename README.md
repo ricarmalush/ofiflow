@@ -119,6 +119,21 @@ dotnet ef database update --project src/OfiFlow.Infrastructure
 dotnet run --project src/OfiFlow.Api
 ```
 
+**Para crear una cuenta hacen falta además el correo y las condiciones (spec 021).** Ya no existe el registro inmediato: una cuenta nace al abrir el enlace que llega por correo, y **sin correo configurado o sin `Legal:TermsVersion` el registro está cerrado** (responde `202` y no pasa nada). Lo mismo vale para aceptar una invitación (pide la versión de las condiciones). En local, con [Mailpit](https://mailpit.axllent.org/) (sin enviar nada a internet):
+
+```bash
+docker run -d --name mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 -e MP_SMTP_DISABLE_RDNS=true axllent/mailpit:v1.33.0
+dotnet user-secrets set "Email:Provider" "Smtp" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:From" "no-reply@ofiflow.example" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:LinkBaseUrl" "http://localhost:4200" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:Smtp:Host" "127.0.0.1" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:Smtp:Port" "1025" --project src/OfiFlow.Api
+dotnet user-secrets set "Email:Smtp:Security" "None" --project src/OfiFlow.Api
+dotnet user-secrets set "Legal:TermsVersion" "2026-11" --project src/OfiFlow.Api
+```
+
+Los correos se leen en <http://localhost:8025>. Cómo crear la primera cuenta sin pantalla: [capítulo 1 del manual](./docs/manual/01-poner-en-marcha.md#crear-tu-primera-cuenta-en-local-spec-021).
+
 Sin `openssl`, en PowerShell (funciona también en Windows PowerShell 5.1):
 
 ```powershell

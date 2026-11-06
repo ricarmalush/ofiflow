@@ -218,10 +218,11 @@ public sealed class TenantSuspensionEndToEndTests : IAsyncLifetime
         await SetSuspendedAsync(a.TenantId, true);
         try
         {
-            var registered = await PostAnonymousAsync("/api/v1/auth/register",
-                new { companyName = "Empresa Nueva", userName = "Ana", email = $"{Guid.NewGuid():N}@example.com", password = Password });
+            // Una empresa nueva nace por el flujo real mientras la otra está suspendida (RegisterCompanyAsync falla con el paso y la respuesta si algo no va).
+            var tenantId = await _factory.RegisterCompanyAsync("Empresa Nueva", "Ana", $"{Guid.NewGuid():N}@example.com", Password);
 
-            Assert.Equal(HttpStatusCode.OK, registered.StatusCode);
+            Assert.NotEqual(Guid.Empty, tenantId);
+            Assert.NotEqual(a.TenantId, tenantId);
         }
         finally
         {
@@ -235,9 +236,7 @@ public sealed class TenantSuspensionEndToEndTests : IAsyncLifetime
     {
         var email = $"suspension-{Guid.NewGuid():N}@example.com";
 
-        var register = await PostAnonymousAsync("/api/v1/auth/register", new { companyName, userName = "Dueña de pruebas", email, password = Password });
-        Assert.Equal(HttpStatusCode.OK, register.StatusCode);
-        var tenantId = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.TenantId;
+        var tenantId = await _factory.RegisterCompanyAsync(companyName, "Dueña de pruebas", email, Password);
 
         var login = await LoginAsync(email, Password);
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);

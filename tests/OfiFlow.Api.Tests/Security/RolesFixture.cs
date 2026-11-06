@@ -53,9 +53,7 @@ public sealed class RolesFixture : IAsyncLifetime
         // 1. El Owner se registra por la API, como lo haría un usuario real.
         var ownerEmail = NewEmail(TenantRole.Owner);
         var ownerPassword = NewPassword();
-        var register = await Anonymous.PostAsJsonAsync("/api/v1/auth/register",
-            new { companyName = "Empresa de roles", userName = "Dueño de pruebas", email = ownerEmail, password = ownerPassword });
-        TenantId = (await ReadAsync<RegisterResponse>(register)).TenantId;
+        TenantId = await Factory.RegisterCompanyAsync("Empresa de roles", "Dueño de pruebas", ownerEmail, ownerPassword);
 
         // 2. El Owner inicia sesión y, con su token, INVITA al resto de roles; cada persona acepta su invitación y
         //    elige su propia contraseña. Es el flujo real: los cinco roles nacen por la API (spec 009), ya no se siembran.

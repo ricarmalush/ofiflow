@@ -9,7 +9,6 @@ using OfiFlow.Application.Identity.Commands.ForgotPassword;
 using OfiFlow.Application.Identity.Commands.Login;
 using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
-using OfiFlow.Application.Identity.Commands.Register;
 using OfiFlow.Application.Identity.Commands.RequestRegistration;
 using OfiFlow.Application.Identity.Commands.ResetPassword;
 using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
@@ -23,15 +22,6 @@ public static class AuthEndpoints
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup(Route).WithTags("Auth").AllowAnonymous();
-
-        group.MapPost("/register", async (RegisterCommand command, ISender sender, CancellationToken cancellationToken) =>
-            {
-                var tenantId = await sender.Send(command, cancellationToken);
-                return Results.Ok(new { tenantId });
-            })
-            .WithName("Register")
-            .WithSummary("Registra una nueva empresa (Tenant) y su primer usuario (Owner).")
-            .RequireRateLimiting(RateLimiting.Register);
 
         // Spec 021: pedir crear una cuenta. Anónima, y la respuesta es SIEMPRE la misma (202 sin cuerpo): el email es nuevo, ya tiene cuenta (de una empresa o de un operador), se pasó el límite del
         // email, el correo está apagado o las condiciones no están configuradas. No crea ninguna cuenta: deja un pendiente y un correo con un enlace; la cuenta nace al abrirlo (bloque 3).

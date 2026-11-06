@@ -17,12 +17,10 @@ public static partial class RateLimiting
 {
     public const string Login = "auth-login";
     public const string Refresh = "auth-refresh";
-    public const string Register = "auth-register";
 
     /// <summary>
-    /// Pedir crear una cuenta (anónimo y con envío de correo): <b>3 por hora y por IP</b> (spec 021 R7, D9), el mismo número que tenía el registro inmediato. Frena a quien prueba muchos emails desde una
-    /// IP; el límite por email (3 por hora, en silencio) protege al destinatario de un buzón inundado desde muchas IP. Cubo propio: no gasta el de otras rutas. Hasta que se retire
-    /// <c>POST /auth/register</c> (bloque 4) conviven los dos, con cubos distintos.
+    /// Pedir crear una cuenta (anónimo y con envío de correo): <b>3 por hora y por IP</b> (spec 021 R7, D9), el mismo número que tenía el registro inmediato, que se retiró. Frena a quien prueba muchos emails desde una
+    /// IP; el límite por email (3 por hora, en silencio) protege al destinatario de un buzón inundado desde muchas IP. Cubo propio: no gasta el de otras rutas.
     /// </summary>
     public const string Registration = "auth-registration";
 
@@ -75,7 +73,6 @@ public static partial class RateLimiting
 
             options.AddPolicy(Login, context => PerIp(context, permitLimit: 5, TimeSpan.FromMinutes(1)));
             options.AddPolicy(Refresh, context => PerIp(context, permitLimit: 20, TimeSpan.FromMinutes(1)));
-            options.AddPolicy(Register, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
             // Anónima y con envío de correo: sin límite sería una vía de abuso (llenar de correo a un tercero) y de enumeración (spec 021 R7).
             options.AddPolicy(Registration, context => PerIp(context, permitLimit: 3, TimeSpan.FromHours(1)));
             // Anónima y cara (PBKDF2 sobre la contraseña elegida): sin límite sería una vía de agotamiento de CPU (spec 021 R15).

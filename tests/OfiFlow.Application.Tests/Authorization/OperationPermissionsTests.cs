@@ -16,7 +16,6 @@ using OfiFlow.Application.Identity.Commands.Logout;
 using OfiFlow.Application.Identity.Commands.RefreshToken;
 using OfiFlow.Application.Identity.Queries.GetCurrentAccount;
 using OfiFlow.Application.Identity.Queries.ListMySessions;
-using OfiFlow.Application.Identity.Commands.Register;
 using OfiFlow.Application.Identity.Commands.ResetPassword;
 using OfiFlow.Application.Identity.Commands.VerifyMfaChallenge;
 using OfiFlow.Application.Identity.Mfa.Commands.DisableMfa;
@@ -53,7 +52,7 @@ namespace OfiFlow.Application.Tests.Authorization;
 
 /// <summary>
 /// La tabla "operación → permiso" de la spec 008 como especificación ejecutable: cada una de las
-/// 47 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta y, de la spec 018, las de «he olvidado mi contraseña» y restablecerla y, de la spec 020, las de programar un trabajo y quitarlo de la agenda y la de leer la agenda y, de la spec 021, las de pedir crear una cuenta y completarla) declara exactamente el permiso aprobado, o la marca de anónima.
+/// 46 operaciones (las 16 de la spec 008, las de invitaciones y miembros de la spec 009, las del segundo factor de la spec 010 y, de la spec 011, las dos del inicio de sesión de plataforma y las tres del panel del operador y, de la spec 012, la de «quién soy», de la spec 013, la de cerrar sesión y, de la spec 014, la de cerrar todas las sesiones y, de la spec 016, las de listar mis sesiones y cerrar una concreta y, de la spec 018, las de «he olvidado mi contraseña» y restablecerla y, de la spec 020, las de programar un trabajo y quitarlo de la agenda y la de leer la agenda y, de la spec 021, las de pedir crear una cuenta y completarla) declara exactamente el permiso aprobado, o la marca de anónima.
 /// </summary>
 public class OperationPermissionsTests
 {
@@ -100,7 +99,6 @@ public class OperationPermissionsTests
 
     private static readonly Type[] AnonymousTable =
     [
-        typeof(RegisterCommand),
         typeof(LoginCommand),
         typeof(RefreshTokenCommand),
         typeof(LogoutCommand), // spec 013: anónima, el refresh token es la credencial (y tiene que poder cerrarse con el access token caducado)
@@ -207,7 +205,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(47, inTheTable.Count);
+        Assert.Equal(46, inTheTable.Count);
     }
 
     private static bool IsMediatRRequest(Type type) =>

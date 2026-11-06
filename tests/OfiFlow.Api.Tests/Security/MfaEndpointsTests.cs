@@ -40,8 +40,7 @@ public class MfaEndpointsTests(MembersFixture fixture) : IClassFixture<MembersFi
         var email = $"mfa-{Guid.NewGuid():N}@example.com";
         var password = MembersFixture.NewPassword();
 
-        var register = await fixture.Anonymous.SendAsync(Request(HttpMethod.Post, "/api/v1/auth/register", new { companyName = company, userName = "Ana", email, password }));
-        Assert.Equal(HttpStatusCode.OK, register.StatusCode);
+        await fixture.Factory.RegisterCompanyAsync(company, "Ana", email, password);
 
         var login = await fixture.Anonymous.SendAsync(Request(HttpMethod.Post, "/api/v1/auth/login", new { email, password }));
         var tokens = await login.Content.ReadFromJsonAsync<JsonElement>();

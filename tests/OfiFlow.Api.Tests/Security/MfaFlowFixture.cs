@@ -121,9 +121,7 @@ public class MfaFlowFixture : IAsyncLifetime
     {
         var account = new Account($"e2e-{Guid.NewGuid():N}@example.com", MembersFixture.NewPassword());
 
-        var register = await SendAsync(HttpMethod.Post, "/api/v1/auth/register",
-            new { companyName = company, userName = "Ana Pérez", email = account.Email, password = account.Password });
-        Assert.Equal(HttpStatusCode.OK, register.StatusCode);
+        await Database.RegisterCompanyAsync(company, "Ana Pérez", account.Email, account.Password);
 
         await LoginPlainAsync(account);
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using OfiFlow.Api.Tests.Common;
+using OfiFlow.Application.Common.Security;
 using OfiFlow.Application.Identity;
 
 namespace OfiFlow.Api.Tests.Security;
@@ -30,17 +31,15 @@ public class SecurityHeadersAndValidationTests : IClassFixture<OfiFlowApiFactory
     }
 
     [Fact]
-    public async Task Register_WithPasswordLongerThanMax_Returns400_Not500()
+    public async Task CompleteRegistration_WithPasswordLongerThanMax_Returns400_Not500()
     {
         var command = new
         {
-            companyName = "Fontanería Pérez",
-            userName = "Juan Pérez",
-            email = "juan@example.com",
-            password = new string('a', PasswordRules.MaxLength + 1)
+            token = OpaqueToken.Generate().Value,
+            newPassword = new string('a', PasswordRules.MaxLength + 1)
         };
 
-        var response = await _client.PostAsJsonAsync("/api/v1/auth/register", command);
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/registration/complete", command);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -51,7 +50,7 @@ public class SecurityHeadersAndValidationTests : IClassFixture<OfiFlowApiFactory
         // Encontrado en la verificación manual: antes acababa en 500 por el GlobalExceptionHandler.
         var content = new StringContent("{\"companyName\": 123", System.Text.Encoding.UTF8, "application/json");
 
-        var response = await _client.PostAsync("/api/v1/auth/register", content);
+        var response = await _client.PostAsync("/api/v1/auth/registration", content);
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
