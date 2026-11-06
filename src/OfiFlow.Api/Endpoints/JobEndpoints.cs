@@ -8,6 +8,7 @@ using OfiFlow.Application.Jobs.Commands.ScheduleJob;
 using OfiFlow.Application.Jobs.Commands.StartJob;
 using OfiFlow.Application.Jobs.Commands.UnscheduleJob;
 using OfiFlow.Application.Jobs.Commands.UpdateJob;
+using OfiFlow.Application.Jobs.Queries.GetAgenda;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
 using OfiFlow.Domain.Jobs;
@@ -46,6 +47,16 @@ public static class JobEndpoints
             })
             .WithName("GetJobs")
             .WithSummary("Lista los trabajos del tenant activo.");
+
+        // «agenda» no choca con «/{id:guid}»: la restricción :guid hace que esa ruta solo case con un Guid (un test lo fija).
+        group.MapGet("/agenda", async (string? from, string? to, ISender sender, CancellationToken cancellationToken) =>
+            {
+                // Un extremo ausente llega como null y lo rechaza el validador con un 400 de campo, no el enlazado de parámetros.
+                var jobs = await sender.Send(new GetAgendaQuery(from!, to!), cancellationToken);
+                return Results.Ok(jobs);
+            })
+            .WithName("GetAgenda")
+            .WithSummary("Lista los trabajos con fecha dentro de [from, to): Scheduled, InProgress y Completed, por fecha. Los extremos llevan su desfase horario; máximo 42 días.");
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateJobRequest request, ISender sender, CancellationToken cancellationToken) =>
             {

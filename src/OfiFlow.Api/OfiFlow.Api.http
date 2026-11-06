@@ -293,6 +293,17 @@ Content-Type: application/json
 DELETE {{host}}/api/v1/jobs/{{jobId2}}/schedule
 Authorization: Bearer {{tokenA}}
 
+### La agenda (spec 020): los trabajos con fecha dentro de [from, to), por fecha. Salen Scheduled, InProgress y Completed; no los cancelados ni los sin fecha.
+### Los dos extremos son obligatorios y llevan SU DESFASE (Z o +01:00). El rango es semiabierto (un trabajo a las 00:00 exactas de «to» no sale), el final
+### va después del principio y no puede pasar de 42 días. Mal rango -> 400 validation.failed (campo From o To, código job.agenda_range_invalid).
+### Cualquier rol con Jobs.Read la lee. Si usas un desfase con «+», CODIFÍCALO como %2B: un «+» sin codificar llega como un espacio y se rechaza.
+GET {{host}}/api/v1/jobs/agenda?from=2026-11-09T00:00:00Z&to=2026-11-16T00:00:00Z
+Authorization: Bearer {{tokenA}}
+
+### La misma semana pedida con el desfase de Madrid (el «+» va como %2B)
+GET {{host}}/api/v1/jobs/agenda?from=2026-11-09T00:00:00%2B01:00&to=2026-11-16T00:00:00%2B01:00
+Authorization: Bearer {{tokenA}}
+
 ### Cancelar el segundo trabajo (204)
 POST {{host}}/api/v1/jobs/{{jobId2}}/cancel
 Authorization: Bearer {{tokenA}}

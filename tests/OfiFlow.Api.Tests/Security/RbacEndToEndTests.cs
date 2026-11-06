@@ -29,6 +29,7 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         "customer_delete      X     X     -       -        -",
         "jobs_list            X     X     X       X        X",
         "job_get              X     X     X       X        X",
+        "agenda_get           X     X     X       X        X",
         "job_create           X     X     X       X        -",
         "job_update           X     X     X       X        -",
         "job_assign           X     X     X       -        -",
@@ -56,7 +57,7 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
         return data;
     }
 
-    // --- La matriz completa: 15 operaciones × 5 roles ---
+    // --- La matriz completa: 16 operaciones × 5 roles ---
 
     [Theory]
     [MemberData(nameof(Cells))]
@@ -375,6 +376,9 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
 
         ["job_get"] = new(
             (_, c) => new(HttpMethod.Get, $"/api/v1/jobs/{c.JobId}"), HttpStatusCode.OK, NothingToVerify),
+
+        ["agenda_get"] = new(
+            (_, _) => new(HttpMethod.Get, "/api/v1/jobs/agenda?from=2031-02-03T00:00:00Z&to=2031-02-10T00:00:00Z"), HttpStatusCode.OK, NothingToVerify),
 
         ["job_create"] = new(
             (_, c) => WithJson(HttpMethod.Post, "/api/v1/jobs", new { customerId = c.CustomerId, title = $"Alta {c.Unique}", priority = 1 }),

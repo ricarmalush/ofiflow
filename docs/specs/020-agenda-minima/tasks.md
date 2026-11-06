@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-002](../../adr/ADR-002-multi-tenancy.md), [ADR-006](../../adr/ADR-006-persistencia-domain-events.md) (se anota: las transiciones de `Job`), [ADR-012](../../adr/ADR-012-autorizacion-rbac.md) (se anota: el permiso nuevo) y la nueva **ADR-022** (agenda: fechas en UTC, huso del navegador y qué se difiere)
-**Estado general:** En curso (spec aprobada el 2026-11-03). Bloque 1 hecho y verificado; falta su commit.
+**Estado general:** En curso (spec aprobada el 2026-11-03). Bloques 1 (commiteado) y 2 hechos y verificados; falta el commit del 2.
 
 ---
 
@@ -35,13 +35,13 @@
 - [ ] [externo] Commit del bloque 1
 
 ### Bloque 2 — Leer la agenda (Application + Api)
-- [ ] `GetAgendaQuery(From, To)` con `[RequiresPermission(Permission.JobsRead)]` y su validador: ambos obligatorios con desfase, `To > From`, `To − From ≤ 42 días` (el tope, constante de Application que cita el test).
-- [ ] Handler: trabajos con `ScheduledDate` en **[from, to)**, estado `Scheduled`/`InProgress`/`Completed`, orden por fecha y `Id`; mismo `JobDto`; proyección directa (sin traer entidades).
-- [ ] `GET /jobs/agenda?from=&to=` con su documentación; test de que la ruta no choca con `/{id:guid}`.
-- [ ] **Tests.** *Application:* rango semiabierto (el instante exacto de `to` no entra, el de `from` sí), cancelados y `New` fuera, orden estable con fechas iguales, los cinco rechazos de la validación. *Infrastructure/Api (SQL Server real):* el índice se usa en el rango (plan o, al menos, resultados correctos con muchos trabajos), dos empresas no se ven, **todos los roles con `Jobs.Read` la leen**, `OperationPermissionsTests` (44 → 45).
-- [ ] **Mutaciones:** `<=` por `<` en los dos extremos, el tope de 42 días en 43 o 41, incluir `Cancelled` o `New`, perder el orden, quitar el filtro de tenant.
-- [ ] **[manual]** Capítulos de API y de tests al día.
-- [ ] **Comprobación en vivo:** una semana con trabajos de varios estados, el borde de las 00:00, el `400` por rango.
+- [x] **`GetAgendaQuery(string From, string To)`** con `[RequiresPermission(Permission.JobsRead)]` y su validador. Los extremos llegan como **texto con desfase explícito** (el mismo `IsoInstant` que al programar); el final debe ser posterior al principio y el rango no puede pasar de 42 días (`GetAgendaQuery.MaxRange`). Todo fallo del rango da el código nuevo **`job.agenda_range_invalid`**, en el campo `From` o `To`; la relación entre los dos solo se evalúa si cada uno es un instante válido.
+- [x] **Handler:** trabajos con `ScheduledDate` en **[from, to)**, estado `Scheduled`/`InProgress`/`Completed`, ordenados por fecha y por `Id` (desempate estable), mismo `JobDto`. Un `New` nunca tiene fecha, así que el filtro de rango ya lo excluye.
+- [x] **`GET /api/v1/jobs/agenda?from=&to=`** con su documentación y ejemplos en `OfiFlow.Api.http`. La ruta no choca con `/{id:guid}` (un test lo fija). **Un `+` sin codificar en la URL** llega como un espacio y se rechaza con `400`: el cliente debe escribir `%2B` (documentado en el `.http` y fijado por un test).
+- [x] **Tests (por proyecto): Domain 300, Application 861 (+33), Infrastructure 668 (+6), Api 688 (+23).** *Application:* validador (21 casos: extremos, tope exacto de 42 días y un segundo más, final igual o anterior, desfases distintos), handler (borde de entrada y de salida, estados, orden, doce trabajos en desorden, desempate, DTO, desfases); contador de `OperationPermissionsTests` 44 → 45. *Infrastructure (SQL Server real):* aislamiento entre empresas con los mismos instantes, bordes en la base de datos, estados, fechas en UTC, y el **plan de la consulta real** (ejecutada como EF la ejecuta, con la caché de planes vacía): `Index Seek` sobre `IX_Jobs_TenantId_ScheduledDate`. *Api:* 18 casos nuevos de extremo a extremo con dos empresas (la «Z», el orden, los bordes, los estados, un día de Madrid con su desfase, los 400 de campo, el `+` sin codificar, la ruta, el 401) y una fila nueva en la matriz RBAC (16 operaciones × 5 roles: los cinco roles leen la agenda).
+- [x] **Mutaciones (33): 32 detectadas y 1 equivalente.** Al rango (`>`/`>=`, `<`/`<=`, filtros quitados, extremos intercambiados), a los estados (cada uno quitado o añadido), al orden (por fecha, descendente, sin desempate), al filtro de tenant (`IgnoreQueryFilters`), al DTO, a la validación (cada extremo, final igual o anterior, sin tope, 41/43/exclusivo, relación no evaluada, código), a los permisos, al endpoint (parámetros ignorados, 204) y al índice. **El equivalente:** incluir `New` en los estados, porque un `New` nunca tiene fecha y el filtro de rango ya lo excluye. **Una lección:** «sin orden por fecha» sobrevivió la primera vez **por azar** (con tres trabajos, el orden por `Id` aleatorio coincide con el de fechas una de cada seis veces, en cada test de orden); se añadió un test con doce trabajos insertados en desorden (coincidir por azar: 1 entre 479 millones) y la mutación pasó a detectarse siempre.
+- [x] **Comprobación en vivo** (API real, base desechable, SQL Server real): **25 comprobaciones correctas**. Una semana con trabajos programados, en curso, completado, cancelado, sin fecha y en los dos bordes; sale lo que toca y en orden, con la «Z»; el rango de Madrid (`%2B01:00`) incluye el trabajo de las 23:00Z del domingo (las 00:00 del lunes en Madrid); seis rangos inválidos dan `400` con `job.agenda_range_invalid`; 42 días justos dan `200`; la otra empresa ve su agenda vacía; sin token `401`; el trabajo por Id sigue funcionando; el registro no lleva títulos, clientes ni emails. *Mi guion se equivocó dos veces en sus expectativas (el borde de las 00:00 de Madrid); la API acertó.*
+- [ ] **[manual]** Se hace en el bloque 4.
 - [ ] [externo] Commit del bloque 2
 
 ### Bloque 3 — Frontend (`ofiflow-frontend`)

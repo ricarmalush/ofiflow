@@ -28,5 +28,8 @@ public static class JobErrors
     /// <summary>La duración estimada no es un número entero de minutos entre 1 y 1440 (spec 020 R6).</summary>
     public const string EstimatedDurationInvalid = "job.estimated_duration_invalid";
 
+    /// <summary>El rango de la agenda no vale: falta un extremo, no lleva desfase, el final no es posterior al principio o pasa de 42 días (spec 020 R11).</summary>
+    public const string AgendaRangeInvalid = "job.agenda_range_invalid";
+
     public const string NotFound = "job.not_found";
 }

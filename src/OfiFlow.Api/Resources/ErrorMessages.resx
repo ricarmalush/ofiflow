@@ -116,6 +116,9 @@
   <data name="job.estimated_duration_invalid" xml:space="preserve">
     <value>La duración debe ser un número entero de minutos entre 1 y 1440.</value>
   </data>
+  <data name="job.agenda_range_invalid" xml:space="preserve">
+    <value>El rango de la agenda debe indicar "from" y "to" con su desfase horario (por ejemplo 2026-11-09T00:00:00Z), terminar después de empezar y no pasar de 42 días.</value>
+  </data>
   <data name="job.not_found" xml:space="preserve">
     <value>No se ha encontrado el trabajo.</value>
   </data>
