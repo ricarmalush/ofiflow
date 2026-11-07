@@ -63,7 +63,7 @@ public class CurrentUserMembershipTests(SqlServerContainerFixture fixture) : ICl
             HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")) }
         };
 
-        return (new CurrentUser(accessor, db), queries, db);
+        return (new CurrentUser(accessor, db, new SecondFactorRequirement()), queries, db);
     }
 
     private async Task<(Guid TenantId, Guid UserId, Guid MembershipId)> SeedMemberAsync(TenantRole role)

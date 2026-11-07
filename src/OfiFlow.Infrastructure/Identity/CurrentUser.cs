@@ -16,13 +16,14 @@ namespace OfiFlow.Infrastructure.Identity;
 /// nunca una excepción: decidir qué hacer ante un dato ausente es cosa de quien lo usa (el AuthorizationBehavior lo
 /// trata como "denegar"). Es un servicio por petición: lo que verifica solo vale para esa petición.
 /// </summary>
-public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, ApplicationDbContext dbContext) : ICurrentUser
+public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, ApplicationDbContext dbContext, ISecondFactorRequirement secondFactorRequirement) : ICurrentUser
 {
     private readonly PlatformOperators _platformOperators = new(dbContext);
 
     private bool _verified;
     private TenantRole? _effectiveRole;
     private bool _tenantSuspended;
+    private bool _secondFactorEnrollmentRequired;
     private bool _platformVerified;
     private bool _platformOperatorActive;
 
@@ -64,6 +65,9 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
     /// <summary>Solo vale después de verificar la pertenencia (antes es falso).</summary>
     public bool TenantSuspended => _verified && _tenantSuspended;
 
+    /// <summary>Solo vale después de verificar la pertenencia (antes es falso): el rol efectivo lo exige y la cuenta no tiene el factor activo (spec 022).</summary>
+    public bool SecondFactorEnrollmentRequired => _verified && _secondFactorEnrollmentRequired;
+
     public TenantRole? TokenRole
     {
         get
@@ -101,11 +105,18 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
         // (TenantId, UserId). Se indica la empresa explícitamente además del filtro global, para que no dependa de él.
         // El estado de la empresa viaja en la MISMA consulta (una subconsulta sobre la clave de la empresa): comprobar la
         // suspensión no añade una ida a la base de datos por petición (spec 011 R15d).
+        // El estado del segundo factor viaja también en ESTA consulta (spec 022 R5): una subconsulta por la clave de MfaCredentials (la clave es la propia cuenta). Solo cuenta un
+        // factor CONFIRMADO: uno pedido y sin confirmar no protege nada, así que no libra de la obligación. Es del propio usuario del token, nunca de otro.
         var suspendedTenants = dbContext.SuspendedTenantIds();
         var membership = await dbContext.TenantUsers
             .AsNoTracking()
             .Where(tu => tu.TenantId == tenantId.Value && tu.UserId == userId.Value)
-            .Select(tu => new { tu.Role, Suspended = suspendedTenants.Contains(tu.TenantId) })
+            .Select(tu => new
+            {
+                tu.Role,
+                Suspended = suspendedTenants.Contains(tu.TenantId),
+                HasSecondFactor = dbContext.MfaCredentials.Any(credential => credential.UserId == tu.UserId && credential.ConfirmedAt != null)
+            })
             .FirstOrDefaultAsync(cancellationToken);
 
         _tenantSuspended = membership?.Suspended ?? false;
@@ -113,6 +124,11 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
         // Fail-closed: una empresa suspendida no da ningún rol, aunque la persona siga siendo miembro. Reactivarla devuelve
         // el rol que tenía, porque la pertenencia no se toca.
         _effectiveRole = membership is { Suspended: false } ? membership.Role : null;
+
+        // La obligación se decide con el rol EFECTIVO (el de la base de datos), nunca con el del token. Sin rol efectivo no hay nada que exigir: la petición ya se deniega por otra razón.
+        _secondFactorEnrollmentRequired = _effectiveRole is { } effective
+            && secondFactorRequirement.IsRequiredFor(effective)
+            && membership is { HasSecondFactor: false };
 
         _verified = true;
         return _effectiveRole is not null;

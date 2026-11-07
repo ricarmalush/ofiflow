@@ -16,6 +16,8 @@ public sealed class TestCurrentUser(TenantRole? role, Guid? userId, Guid? tenant
 
     public bool TenantSuspended => false;
 
+    public bool SecondFactorEnrollmentRequired => false;
+
     public bool IsPlatformSession => false;
 
     public Task<bool> VerifyPlatformOperatorAsync(CancellationToken cancellationToken) => Task.FromResult(false);

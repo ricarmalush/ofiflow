@@ -143,6 +143,13 @@ public static class SecurityEventIds
     /// </summary>
     public const int TenantSuspendedAccessDenied = 1303;
 
+    /// <summary>
+    /// Alguien con un rol que <b>exige el segundo factor</b> (<c>Owner</c> o <c>Admin</c>) que todavía no lo tiene activo intentó algo distinto de activarlo (spec 022 R12, ADR-024).
+    /// Lleva la operación, el <c>UserId</c>, el <c>TenantId</c> y el rol; nunca un secreto, un código ni un email. Una repetición es normal (cada petición de una sesión restringida
+    /// la genera, hasta que la pantalla la lleva a activarlo); lo que merece mirarse es una <b>ráfaga desde una IP</b> o una cuenta que lleva días sin activarlo.
+    /// </summary>
+    public const int MfaEnrollmentRequiredDenied = 1304;
+
     // 1400-1499: usuarios e invitaciones (spec 009). Ninguno registra emails ni tokens: solo Ids, rol y motivo.
 
     /// <summary>Alguien de la empresa creó una invitación.</summary>

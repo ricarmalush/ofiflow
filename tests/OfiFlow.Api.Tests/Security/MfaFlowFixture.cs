@@ -47,8 +47,12 @@ public class MfaFlowFixture : IAsyncLifetime
 
     public IServiceProvider Services => Factory.Services;
 
+    /// <summary>¿Rige de verdad la obligación del segundo factor para Owner y Admin (spec 022)? Por defecto no: la activan solo los fixtures de las clases que prueban la puerta.</summary>
+    protected virtual bool EnforceSecondFactor => false;
+
     public async Task InitializeAsync()
     {
+        _database.EnforceSecondFactor = EnforceSecondFactor;
         await _database.StartAsync();
 
         Factory = _database.WithWebHostBuilder(builder =>

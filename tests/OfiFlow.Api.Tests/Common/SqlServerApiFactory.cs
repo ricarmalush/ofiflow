@@ -1,10 +1,13 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Infrastructure.Persistence;
 using Testcontainers.MsSql;
 
@@ -41,6 +44,12 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
     public const string TermsVersion = "2026-11";
 
     private AccountRegistrar? _registrar;
+
+    /// <summary>
+    /// ¿Se exige de verdad el segundo factor a Owner y Admin (spec 022)? Por defecto **no**: así los cientos de tests que usan un Owner o un Admin sin tratar de esto siguen funcionando sin activar el factor
+    /// en cada fixture. Las clases que prueban la puerta lo ponen a verdadero **antes de arrancar**; entonces rige la regla real de producción.
+    /// </summary>
+    public bool EnforceSecondFactor { get; set; }
 
     /// <summary>
     /// Cómo se crea una empresa en los tests (spec 021, D11): pidiendo el registro, leyendo el enlace del correo y completándolo, como una persona. El registro inmediato ya no existe. Se crea
@@ -101,6 +110,16 @@ public sealed class SqlServerApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Legal:TermsVersion", TermsVersion);
 
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
+
+        // La regla de a quién se obliga el segundo factor: la real solo cuando el test la pide (ver EnforceSecondFactor).
+        if (!EnforceSecondFactor)
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISecondFactorRequirement>();
+                services.AddSingleton<ISecondFactorRequirement>(NoSecondFactorRequirement.Instance);
+            });
+        }
 
         // Solo en tests: cada petición puede declarar su IP (ver TestClientIpStartupFilter).
         builder.ConfigureServices(services => services.AddTransient<IStartupFilter, TestClientIpStartupFilter>());

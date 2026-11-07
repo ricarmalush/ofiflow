@@ -36,6 +36,14 @@ public interface ICurrentUser
     /// </summary>
     bool TenantSuspended { get; }
 
+    /// <summary>
+    /// Verdadero si el rol <b>efectivo</b> exige el segundo factor y la cuenta <b>no lo tiene activo</b> (sin secreto, o con uno solo pendiente de confirmar): solo puede
+    /// activarlo (spec 022 R2). Se decide en la <b>misma consulta</b> que la pertenencia y el rol (una subconsulta, como la suspensión: ni una ida más a la base de datos,
+    /// R5) y solo vale después de <see cref="VerifyMembershipAsync"/>; antes es falso. Es falso también si no hay rol efectivo (no pertenece, o la empresa está suspendida):
+    /// en esos casos la petición ya se deniega por otra razón.
+    /// </summary>
+    bool SecondFactorEnrollmentRequired { get; }
+
     /// <summary>El rol que dice el token. Es solo informativo: <b>no autoriza nada</b> y puede estar desfasado.</summary>
     TenantRole? TokenRole { get; }
 

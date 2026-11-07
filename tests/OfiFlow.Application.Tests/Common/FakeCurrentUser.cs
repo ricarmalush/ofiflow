@@ -16,7 +16,8 @@ public sealed class FakeCurrentUser(
     bool tenantSuspended = false,
     bool platformSession = false,
     bool platformOperatorActive = false,
-    Guid? sessionId = null) : ICurrentUser
+    Guid? sessionId = null,
+    bool secondFactorEnrollmentRequired = false) : ICurrentUser
 {
     /// <summary>El token es una sesión de plataforma (spec 011 R7).</summary>
     public bool IsPlatformSession { get; } = platformSession;
@@ -41,6 +42,9 @@ public sealed class FakeCurrentUser(
 
     /// <summary>La empresa está suspendida: la persona sigue siendo miembro, pero no hay rol efectivo (spec 011 R15d).</summary>
     public bool TenantSuspended { get; } = tenantSuspended;
+
+    /// <summary>El rol efectivo exige el segundo factor y la cuenta no lo tiene activo (spec 022). Solo vale tras verificar la pertenencia, como en producción.</summary>
+    public bool SecondFactorEnrollmentRequired => VerifyCalls > 0 && Role is not null && secondFactorEnrollmentRequired;
 
     public TenantRole? TokenRole { get; } = tokenRole ?? role;
 

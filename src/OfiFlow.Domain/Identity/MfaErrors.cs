@@ -22,4 +22,10 @@ public static class MfaErrors
 
     /// <summary>La contraseña que se pide para confirmar una operación sensible no es correcta.</summary>
     public const string InvalidPassword = "mfa.invalid_password";
+
+    /// <summary>
+    /// El rol de la persona exige el segundo factor y todavía no lo tiene activo: solo puede activarlo (spec 022 R2, R10). <b>No es <c>auth.forbidden</c></b> a propósito:
+    /// la persona está autenticada, puede saber por qué se le deniega y el frontend decide por este código (nunca por el texto) qué hacer.
+    /// </summary>
+    public const string EnrollmentRequired = "mfa.enrollment_required";
 }

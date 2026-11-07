@@ -55,7 +55,7 @@ public class CurrentUserPlatformTests(SqlServerContainerFixture fixture) : IClas
             HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")) }
         };
 
-        return (new CurrentUser(accessor, db), queries);
+        return (new CurrentUser(accessor, db, new SecondFactorRequirement()), queries);
     }
 
     private async Task<Guid> SeedOperatorAsync(bool disabled = false)

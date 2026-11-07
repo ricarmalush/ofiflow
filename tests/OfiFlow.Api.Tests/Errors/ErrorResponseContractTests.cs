@@ -110,7 +110,9 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new BusinessRuleException(MfaErrors.NotEnabled), HttpStatusCode.BadRequest, "mfa.not_enabled" },
         { new BusinessRuleException(MfaErrors.SetupRequired), HttpStatusCode.BadRequest, "mfa.setup_required" },
         { new BusinessRuleException(MfaErrors.InvalidCode), HttpStatusCode.BadRequest, "mfa.invalid_code" },
-        { new BusinessRuleException(MfaErrors.InvalidPassword), HttpStatusCode.BadRequest, "mfa.invalid_password" }
+        { new BusinessRuleException(MfaErrors.InvalidPassword), HttpStatusCode.BadRequest, "mfa.invalid_password" },
+        // Spec 022: el rol exige el segundo factor y la cuenta no lo tiene activo. 403, con su propio código y su mensaje del diccionario.
+        { new ForbiddenException(MfaErrors.EnrollmentRequired), HttpStatusCode.Forbidden, "mfa.enrollment_required" }
     };
 
     [Theory]
