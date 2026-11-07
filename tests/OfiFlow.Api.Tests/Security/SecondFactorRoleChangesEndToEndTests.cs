@@ -28,6 +28,14 @@ public class SecondFactorRoleChangesEndToEndTests(SecondFactorGateFixture fixtur
         return (response.StatusCode, System.Text.Json.JsonDocument.Parse(body).RootElement.GetProperty("code").GetString());
     }
 
+    private async Task<bool> RequiredAsync(MfaFlowFixture.Account who)
+    {
+        var response = await fixture.SendAsync(HttpMethod.Get, "/api/v1/account/me", bearer: who.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        return (await MfaFlowFixture.JsonOf(response)).GetProperty("secondFactorRequired").GetBoolean();
+    }
+
     private async Task<bool> MustEnrollAsync(MfaFlowFixture.Account who)
     {
         var response = await fixture.SendAsync(HttpMethod.Get, "/api/v1/account/me", bearer: who.AccessToken);
@@ -175,6 +183,32 @@ public class SecondFactorRoleChangesEndToEndTests(SecondFactorGateFixture fixtur
         Assert.False(await MustEnrollAsync(owner));
     }
 
+    [Fact]
+    public async Task Me_SaysTheRoleRequiresTheFactor_EvenAfterEnrolling_SoTheScreenKnowsToHideDisable()
+    {
+        // «Debe activarlo» deja de ser verdad al activarlo; «el rol lo exige» NO: es lo que permite a la pantalla esconder «Desactivar» sin copiar la regla por rol.
+        var owner = await fixture.RegisterOwnerAsync();
+        Assert.True(await RequiredAsync(owner));
+
+        await EnrollAsync(owner);
+
+        Assert.False(await MustEnrollAsync(owner));
+        Assert.True(await RequiredAsync(owner));
+    }
+
+    [Fact]
+    public async Task Me_SaysTheRoleDoesNotRequireIt_OnceDemoted_WithTheSameToken()
+    {
+        var owner = await fixture.NewMfaAccountAsync();
+        var admin = await fixture.InviteAndJoinAsync(owner, TenantRole.Admin);
+        await EnrollAsync(admin);
+        Assert.True(await RequiredAsync(admin));
+
+        await ChangeRoleAsync(owner, admin, TenantRole.Manager);
+
+        Assert.False(await RequiredAsync(admin));
+    }
+
     [Theory]
     [InlineData(TenantRole.Manager)]
     [InlineData(TenantRole.Technician)]
@@ -185,6 +219,7 @@ public class SecondFactorRoleChangesEndToEndTests(SecondFactorGateFixture fixtur
         var member = await fixture.InviteAndJoinAsync(owner, role);
 
         Assert.False(await MustEnrollAsync(member));
+        Assert.False(await RequiredAsync(member));
     }
 
     [Fact]

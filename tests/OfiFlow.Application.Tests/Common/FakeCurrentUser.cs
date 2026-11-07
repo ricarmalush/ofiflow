@@ -17,7 +17,8 @@ public sealed class FakeCurrentUser(
     bool platformSession = false,
     bool platformOperatorActive = false,
     Guid? sessionId = null,
-    bool secondFactorEnrollmentRequired = false) : ICurrentUser
+    bool secondFactorEnrollmentRequired = false,
+    bool? secondFactorRequired = null) : ICurrentUser
 {
     /// <summary>El token es una sesión de plataforma (spec 011 R7).</summary>
     public bool IsPlatformSession { get; } = platformSession;
@@ -45,6 +46,9 @@ public sealed class FakeCurrentUser(
 
     /// <summary>El rol efectivo exige el segundo factor y la cuenta no lo tiene activo (spec 022). Solo vale tras verificar la pertenencia, como en producción.</summary>
     public bool SecondFactorEnrollmentRequired => VerifyCalls > 0 && Role is not null && secondFactorEnrollmentRequired;
+
+    /// <summary>El rol exige el factor, lo tenga o no la cuenta. Si el test no lo dice, vale lo mismo que «debe activarlo» (quien debe activarlo es, por fuerza, de un rol que lo exige).</summary>
+    public bool SecondFactorRequired => VerifyCalls > 0 && Role is not null && (secondFactorRequired ?? secondFactorEnrollmentRequired);
 
     public TenantRole? TokenRole { get; } = tokenRole ?? role;
 

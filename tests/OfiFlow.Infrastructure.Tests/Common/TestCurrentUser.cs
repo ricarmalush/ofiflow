@@ -18,6 +18,8 @@ public sealed class TestCurrentUser(TenantRole? role, Guid? userId, Guid? tenant
 
     public bool SecondFactorEnrollmentRequired => false;
 
+    public bool SecondFactorRequired => false;
+
     public bool IsPlatformSession => false;
 
     public Task<bool> VerifyPlatformOperatorAsync(CancellationToken cancellationToken) => Task.FromResult(false);

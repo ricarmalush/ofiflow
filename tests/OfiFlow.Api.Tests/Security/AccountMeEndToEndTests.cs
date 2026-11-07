@@ -207,7 +207,7 @@ public sealed class AccountMeEndToEndTests(PlatformFlowFixture fixture) : IClass
     // ===== Qué lleva la respuesta =====
 
     [Fact]
-    public async Task TheAnswer_IsNeverCached_AndHasExactlyTheNineFields_WithNothingSensitive()
+    public async Task TheAnswer_IsNeverCached_AndHasExactlyTheTenFields_WithNothingSensitive()
     {
         // Con el segundo factor activo hay secretos en la base de datos: ninguno debe salir. Activarlo cierra las sesiones (también la de
         // este token, spec 015), así que se entra de nuevo con el segundo paso para tener un token válido.
@@ -217,9 +217,9 @@ public sealed class AccountMeEndToEndTests(PlatformFlowFixture fixture) : IClass
 
         Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
         var body = await response.Content.ReadAsStringAsync();
-        // Spec 022: se añade, a propósito, «secondFactorEnrollmentRequired» (un booleano sobre quien pregunta; no es un secreto).
+        // Spec 022: se añaden, a propósito, «secondFactorEnrollmentRequired» y «secondFactorRequired» (dos booleanos sobre quien pregunta; no son secretos).
         Assert.Equal(
-            ["email", "membershipId", "name", "permissions", "role", "secondFactorEnrollmentRequired", "tenantId", "tenantName", "userId"],
+            ["email", "membershipId", "name", "permissions", "role", "secondFactorEnrollmentRequired", "secondFactorRequired", "tenantId", "tenantName", "userId"],
             JsonDocument.Parse(body).RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         foreach (var forbidden in new[] { "password", "hash", "secret", "recovery", "token", "cipher" })
         {

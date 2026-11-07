@@ -46,6 +46,7 @@ public sealed class GetCurrentAccountQueryHandler(IApplicationDbContext dbContex
             role.ToString(),
             PermissionNames.For(role),
             // El mismo dato que usa la puerta (spec 022), ya calculado en la consulta de la pertenencia: ninguna consulta más.
-            currentUser.SecondFactorEnrollmentRequired);
+            currentUser.SecondFactorEnrollmentRequired,
+            currentUser.SecondFactorRequired);
     }
 }

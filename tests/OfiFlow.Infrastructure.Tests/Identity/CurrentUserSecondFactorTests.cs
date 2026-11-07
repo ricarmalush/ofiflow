@@ -122,6 +122,46 @@ public class CurrentUserSecondFactorTests(SqlServerContainerFixture fixture) : I
         }
     }
 
+    [Theory]
+    [InlineData(TenantRole.Owner, Factor.None, true)]
+    [InlineData(TenantRole.Owner, Factor.Pending, true)]
+    [InlineData(TenantRole.Owner, Factor.Confirmed, true)]   // el rol lo exige TENGA o no el factor: ahí está la diferencia con «debe activarlo»
+    [InlineData(TenantRole.Admin, Factor.Confirmed, true)]
+    [InlineData(TenantRole.Manager, Factor.Confirmed, false)]
+    [InlineData(TenantRole.Technician, Factor.None, false)]
+    [InlineData(TenantRole.Employee, Factor.Confirmed, false)]
+    public async Task TheRequiredFlag_DependsOnlyOnTheRole_NotOnWhetherTheFactorIsEnrolled(TenantRole role, Factor factor, bool required)
+    {
+        var member = await SeedAsync(role, factor);
+        var (user, queries, db) = Request(member.UserId, member.TenantId);
+        await using (db)
+        {
+            Assert.False(user.SecondFactorRequired); // antes de verificar, falso
+            await user.VerifyMembershipAsync(CancellationToken.None);
+
+            Assert.Equal(required, user.SecondFactorRequired);
+            Assert.Equal(1, queries.Count); // sin una consulta más
+        }
+    }
+
+    [Fact]
+    public async Task TheRequiredFlag_FollowsTheEffectiveRole_AndIsFalseWithoutOne()
+    {
+        var technician = await SeedAsync(TenantRole.Technician, Factor.None);
+        var (viaToken, _, dbToken) = Request(technician.UserId, technician.TenantId, tokenRole: "Owner"); // el token dice Owner, la base de datos Technician
+        var suspended = await SeedAsync(TenantRole.Owner, Factor.Confirmed, suspended: true);
+        var (suspendedUser, _, dbSuspended) = Request(suspended.UserId, suspended.TenantId);
+        await using (dbToken)
+        await using (dbSuspended)
+        {
+            await viaToken.VerifyMembershipAsync(CancellationToken.None);
+            await suspendedUser.VerifyMembershipAsync(CancellationToken.None);
+
+            Assert.False(viaToken.SecondFactorRequired);
+            Assert.False(suspendedUser.SecondFactorRequired); // sin rol efectivo no hay nada que exigir
+        }
+    }
+
     [Fact]
     public async Task TheFlagCountsOnlyTheFactorOfThisAccount_NotAnotherOnes()
     {

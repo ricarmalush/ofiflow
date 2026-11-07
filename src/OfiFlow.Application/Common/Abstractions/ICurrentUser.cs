@@ -44,6 +44,13 @@ public interface ICurrentUser
     /// </summary>
     bool SecondFactorEnrollmentRequired { get; }
 
+    /// <summary>
+    /// Verdadero si el rol <b>efectivo</b> exige el segundo factor, <b>tenga o no la cuenta el factor activo</b> (spec 022). Es lo que dice a la interfaz que un rol no puede desactivarlo, sin que
+    /// el cliente copie la regla por rol. Sale de la misma regla que la puerta (<see cref="ISecondFactorRequirement"/>) y del rol que ya trae la consulta de la pertenencia: ninguna ida más.
+    /// Solo vale después de <see cref="VerifyMembershipAsync"/> (antes es falso) y es falso sin rol efectivo.
+    /// </summary>
+    bool SecondFactorRequired { get; }
+
     /// <summary>El rol que dice el token. Es solo informativo: <b>no autoriza nada</b> y puede estar desfasado.</summary>
     TenantRole? TokenRole { get; }
 

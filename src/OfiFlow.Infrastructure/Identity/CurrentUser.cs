@@ -24,6 +24,7 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
     private TenantRole? _effectiveRole;
     private bool _tenantSuspended;
     private bool _secondFactorEnrollmentRequired;
+    private bool _secondFactorRequired;
     private bool _platformVerified;
     private bool _platformOperatorActive;
 
@@ -67,6 +68,9 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
 
     /// <summary>Solo vale después de verificar la pertenencia (antes es falso): el rol efectivo lo exige y la cuenta no tiene el factor activo (spec 022).</summary>
     public bool SecondFactorEnrollmentRequired => _verified && _secondFactorEnrollmentRequired;
+
+    /// <summary>Solo vale después de verificar la pertenencia (antes es falso): el rol efectivo exige el factor, lo tenga la cuenta o no (spec 022).</summary>
+    public bool SecondFactorRequired => _verified && _secondFactorRequired;
 
     public TenantRole? TokenRole
     {
@@ -126,9 +130,8 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor, Applic
         _effectiveRole = membership is { Suspended: false } ? membership.Role : null;
 
         // La obligación se decide con el rol EFECTIVO (el de la base de datos), nunca con el del token. Sin rol efectivo no hay nada que exigir: la petición ya se deniega por otra razón.
-        _secondFactorEnrollmentRequired = _effectiveRole is { } effective
-            && secondFactorRequirement.IsRequiredFor(effective)
-            && membership is { HasSecondFactor: false };
+        _secondFactorRequired = _effectiveRole is { } effective && secondFactorRequirement.IsRequiredFor(effective);
+        _secondFactorEnrollmentRequired = _secondFactorRequired && membership is { HasSecondFactor: false };
 
         _verified = true;
         return _effectiveRole is not null;
