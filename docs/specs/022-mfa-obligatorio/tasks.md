@@ -2,7 +2,7 @@
 
 **Spec relacionada:** [./spec.md](./spec.md)
 **ADR relacionadas:** [ADR-014](../../adr/ADR-014-mfa-y-bloqueo-de-cuenta.md) (cierra su límite 3b), [ADR-012](../../adr/ADR-012-autorizacion-rbac.md) y [ADR-023](../../adr/ADR-023-crear-una-cuenta.md) (se anotan «Ampliada por ADR-024»), [ADR-013](../../adr/ADR-013-gestion-de-usuarios.md) (el patrón de revalidar el rol en cada petición) y la nueva **ADR-024** («Segundo factor obligatorio para `Owner` y `Admin`»)
-**Estado general:** En curso (spec aprobada el 2026-11-07; bloques 1, 2 y 3 hechos y verificados — backend: Domain 346, Application 1013, Infrastructure 823, Api 819; frontend: 532)
+**Estado general:** Completa (2026-11-07). Los cuatro bloques hechos y verificados — backend: Domain 346, Application 1013, Infrastructure 823, Api 819 (3001 casos); frontend: 532 specs; 55 mutaciones del backend y 33 del frontend detectadas; comprobado en vivo y en el navegador. **Pendiente solo el push de las dos ramas y los PR, con orden expresa** (backend y frontend juntos).
 
 ---
 
@@ -52,11 +52,11 @@
 - [x] [externo] Commit del frontend (en `ofiflow-frontend`)
 
 ### Bloque 4 — Documentación
-- [ ] **ADR-024** (`docs/adr/ADR-024-segundo-factor-obligatorio.md`): el modelo de amenazas, **la comparación de D1** (por petición frente a sesión limitada), la ventana de enrolamiento como riesgo aceptado, lo que cambió al implementar, la recomendación de despliegue y lo que queda abierto.
-- [ ] Anotaciones «Ampliada por ADR-024» en **ADR-014** (cierra el límite 3b), **ADR-012** (una segunda condición sobre el permiso) y **ADR-023** (la cuenta que nace de la web); `docs/README.md`, el roadmap del `README.md` si procede y `docs/ideas.md` si alguna entrada cambia.
-- [ ] Manual: capítulo 0 (qué se puede hacer hoy y qué no), 6 (la parte del segundo factor: ya no es opcional para `Owner` y `Admin`; el login y la sesión restringida), 7 (los códigos nuevos y el recuento real), 8 (el mapa de amenazas, los eventos y los límites: el 3b cerrado), 9 (cifras, la sección de la spec 022, mutaciones, lecciones y errores reales), 12 (glosario e índices) y el anexo del tribunal.
-- [ ] `spec.md` pasa a «Implementada» y este `tasks.md` queda completo, con la Definición de Done al día.
-- [ ] [externo] Commit del bloque 4 y de `tasks.md`
+- [x] **ADR-024** (`docs/adr/ADR-024-segundo-factor-obligatorio.md`): el modelo de amenazas, **la comparación de D1** (por petición frente a sesión limitada), la ventana de enrolamiento como riesgo aceptado, lo que cambió al implementar, la recomendación de despliegue y lo que queda abierto. *Hecho:* con la comparación A1/A2 (por petición frente a sesión limitada), las opciones B a F, la costura de pruebas, la ventana de enrolamiento como riesgo aceptado, los eventos `1304` y `1508`, lo que cambió al implementar (la costura, el segundo campo de `me`, el `1508` en la familia `15xx`, la regla de las entidades globales y los tests de campos exactos que fallaron a propósito), los hallazgos, la recomendación de despliegue y lo que queda cerrado y abierto.
+- [x] Anotaciones «Ampliada por ADR-024» en **ADR-014** (cierra el límite 3b), **ADR-012** (una segunda condición sobre el permiso) y **ADR-023** (la cuenta que nace de la web); `docs/README.md`, el roadmap del `README.md` si procede y `docs/ideas.md` si alguna entrada cambia. *Hecho:* ADR-014 (cierra el límite 3b y tacha el NEXT), ADR-012 (la segunda condición, después del permiso) y ADR-023 (el remedio abierto, hecho); `docs/README.md` (la ADR-024 y la spec 022) y el `README.md` (roadmap y estado, que además seguía diciendo que crear una cuenta era «lo siguiente»). `docs/ideas.md` no cambia: no había ninguna entrada sobre esto.
+- [x] Manual: capítulo 0 (qué se puede hacer hoy y qué no), 6 (la parte del segundo factor: ya no es opcional para `Owner` y `Admin`; el login y la sesión restringida), 7 (los códigos nuevos y el recuento real), 8 (el mapa de amenazas, los eventos y los límites: el 3b cerrado), 9 (cifras, la sección de la spec 022, mutaciones, lecciones y errores reales), 12 (glosario e índices) y el anexo del tribunal. *Hecho, comprobado contra el código:* capítulo **0** (tabla de operaciones, límites), **1** (un `Owner` recién creado queda restringido: cómo activar el factor a mano), **3** (los cuatro ficheros nuevos), **6** (la Parte 11 entera, la tabla de amenazas, el límite 12 y tres preguntas nuevas), **7** (48 códigos y el mapeo del `403`), **8** (el apartado de la puerta, el cuarto paso de la autorización, los eventos `1304` y `1508` —52 en total—, el escaneo de arquitectura, el mapa de amenazas y los límites 3b cerrado y 3l, 3m y 3n nuevos), **9** (3001 casos y 532 specs, la sección de la spec 022 con sus lecciones, y los «ocho campos» corregidos a diez), **12** (glosario, ADR y spec) y el **anexo del tribunal** (una sección nueva y las respuestas desfasadas). El `.http` de la API avisa de que el Owner de la empresa A está restringido hasta activar el factor.
+- [x] `spec.md` pasa a «Implementada» y este `tasks.md` queda completo, con la Definición de Done al día. *Hecho:* con las notas de R11 (el segundo campo) y D10 (los números de los eventos).
+- [x] [externo] Commit del bloque 4 y de `tasks.md`
 - [ ] [externo] Push de las dos ramas y PR (backend y frontend), con tu orden
 
 ---
@@ -73,7 +73,7 @@
 ## Notas / bloqueos
 
 - **Desviación de la spec en el bloque 3:** R11 solo nombraba el campo `secondFactorEnrollmentRequired`. Se añadió `secondFactorRequired` (ver el bloque 3) porque la pantalla necesita saber si el rol exige el factor **aunque ya lo tenga**; la alternativa (copiar «Owner y Admin» en el cliente) se descartó para que el frontend no se desfase de la política. El manual y la ADR-024 lo cuentan (bloque 4).
-- **Para el bloque 4:** el manual (caps. 8 y 9) dice que `me` tiene «ocho campos»; ahora son **diez**.
+- **«Ocho campos» del manual:** corregido a **diez** en los capítulos 8 y 9 (bloque 4).
 - **Efecto al desplegar:** desde el primer segundo, todo `Owner` y `Admin` **sin segundo factor** queda restringido a activarlo (D4, sin periodo de gracia). Hoy solo hay cuentas de prueba; **antes de que haya clientes reales conviene tener claro el aviso que se les da**.
 - **Un `Owner` que ya tiene el factor activo y lo pierde todo** sigue sin recuperación autoservicio (límite 3d de ADR-014): esta spec no lo cambia.
 - **Sin migración nueva** (el estado del factor ya está en la base de datos).

@@ -73,10 +73,10 @@ Cada contexto tiene una clase de constantes con sus códigos:
 | [`TenancyErrors`](../../src/OfiFlow.Domain/Tenancy/TenancyErrors.cs) | 9 | `tenant_user.not_found`, `tenant_user.role_not_manageable`, `auth.forbidden`, `tenant.not_found` (spec 011: la empresa que un operador quiere suspender o reactivar no existe; 404), `tenant.suspended`, `tenant.already_suspended`, `tenant.not_suspended` (spec 011: los dos últimos los lanza el propio `Tenant` al suspender o reactivar; el primero es el 403 que reciben los miembros de una empresa suspendida) |
 | [`InvitationErrors`](../../src/OfiFlow.Domain/Tenancy/InvitationErrors.cs) | 5 | `invitation.invalid`, `invitation.already_pending`, `invitation.email_not_sent` |
 | [`IdentityErrors`](../../src/OfiFlow.Domain/Identity/IdentityErrors.cs) | 6 | `user.email_already_registered`, `session.not_found`, `password_reset.invalid`; de crear una cuenta (spec 021): `registration.invalid` (el enlace del correo no sirve: desconocido, caducado, usado, sustituido o con el email ya registrado; **el mismo código para los cinco**) y `registration.terms_not_accepted` (un error de **campo**: falta la versión de las condiciones o no es la vigente) |
-| [`MfaErrors`](../../src/OfiFlow.Domain/Identity/MfaErrors.cs) | 5 | `mfa.already_enabled`, `mfa.invalid_code` (spec 010: los lanzan las operaciones de activar, desactivar y regenerar el segundo factor) |
+| [`MfaErrors`](../../src/OfiFlow.Domain/Identity/MfaErrors.cs) | 7 | `mfa.already_enabled`, `mfa.invalid_code` (spec 010: los lanzan las operaciones de activar, desactivar y regenerar el segundo factor); y del segundo factor obligatorio (spec 022): **`mfa.enrollment_required`** (`403`: tu rol exige el segundo factor y todavía no lo tienes activo; **no es `auth.forbidden`**, porque quien lo recibe puede hacer algo —activarlo—, y el frontend decide por este código, nunca por el texto) y **`mfa.required_for_role`** (`400`: tu rol exige el segundo factor, así que no se puede desactivar; una regla de negocio, no una falta de permiso) |
 | [`ApiErrors`](../../src/OfiFlow.Api/Common/ApiErrors.cs) (en la API) | 4 | `validation.failed`, `request.invalid_body`, `rate_limit.exceeded`, `server.unexpected` |
 
-En total **46 códigos** (44 tras la agenda, spec 020, más los dos de crear una cuenta, spec 021; la cifra anterior, 36, se había quedado atrás con las specs 015 a 018 y se recontó contra el código). Los de la API están aparte porque no pertenecen a ningún contexto de negocio: son de la propia petición HTTP.
+En total **48 códigos** (46 tras crear una cuenta, spec 021, más los dos del segundo factor obligatorio, spec 022; 44 tras la agenda, spec 020; la cifra anterior, 36, se había quedado atrás con las specs 015 a 018 y se recontó contra el código). Los de la API están aparte porque no pertenecen a ningún contexto de negocio: son de la propia petición HTTP.
 
 ```csharp
 // Domain/Jobs/JobErrors.cs
@@ -97,7 +97,7 @@ Un error se *lanza* como una excepción y se *traduce* en un único sitio (parte
 | [`DomainException`](../../src/OfiFlow.Domain/Common/DomainException.cs) | Las entidades de Domain | Una regla **de una entidad** lo impide | 400 |
 | `BusinessRuleException` | Los handlers | Una regla **entre varias entidades** lo impide | 400 |
 | `NotFoundException` | Los handlers | El recurso no existe (o es de otra empresa) | 404 |
-| `ForbiddenException` | El `AuthorizationBehavior` | Tu rol no puede | 403 |
+| `ForbiddenException` | El `AuthorizationBehavior` | Tu rol no puede (o, desde la spec 022, «tu rol puede, pero antes tienes que activar el segundo factor») | 403 |
 | `IdentityOperationException` | El registro | Fallo al crear las credenciales | 400 |
 
 Las cinco últimas llevan un **código**, no un texto: `new NotFoundException(CustomerErrors.NotFound, id)`.
@@ -162,7 +162,7 @@ Todo error acaba en un único sitio, el [`GlobalExceptionHandler`](../../src/Ofi
 | `ValidationException` | 400 | `problem.title.validation` | `validation.failed` |
 | `DomainException`, `BusinessRuleException` | 400 | `problem.title.business_rule` | el de la excepción |
 | `IdentityOperationException` | 400 | `problem.title.registration` | el primero de sus códigos |
-| `ForbiddenException` | 403 | `problem.title.forbidden` | `auth.forbidden` |
+| `ForbiddenException` | 403 | `problem.title.forbidden` | el de la excepción: casi siempre `auth.forbidden`, y también `tenant.suspended` (spec 011) y `mfa.enrollment_required` (spec 022) |
 | `NotFoundException` | 404 | `problem.title.not_found` | el de la excepción |
 | `BadHttpRequestException` (JSON roto) | 400 | `problem.title.bad_request` | `request.invalid_body` |
 | **Cualquier otra** | **500** | `problem.title.server_error` | `server.unexpected` |

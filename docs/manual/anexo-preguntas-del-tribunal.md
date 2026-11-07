@@ -171,6 +171,29 @@ Su nombre, el de la empresa y su email, **hasta 24 horas de vigencia más 7 día
 **¿Quién redacta las condiciones de uso, y qué guarda la API?**
 Las redacta el dueño del proyecto (hoy **aún no están escritas**, y hay que tenerlas antes de abrir el registro a clientes reales). La API **solo compara una etiqueta** de versión (por ejemplo `2026-11`) con la vigente y guarda en el `User` la versión y la fecha aceptadas; quien tenga abierta una pantalla antigua recibe un `400` en vez de aceptar sin saber qué. Se piden también al aceptar una invitación. *(ADR-023)*
 
+### El segundo factor obligatorio (spec 022)
+
+**¿Cómo se impone el segundo factor a `Owner` y `Admin`, y por qué en cada petición y no con un token «limitado»?**
+Con una comprobación en el `AuthorizationBehavior`, **después** del permiso, con el rol **efectivo** de la base de datos: si el rol lo exige y la cuenta no tiene el factor activo, solo pasan las operaciones marcadas `[AllowedWithoutSecondFactor]`; el resto da `403 mfa.enrollment_required`. La alternativa —emitir al iniciar sesión un token que solo sirva para activarlo— añade un tipo de token y un estado que viaja con él, y **no cubre la promoción**: quien pasa a `Admin` con la sesión abierta conservaría acceso completo hasta renovarla. Por petición, promover o reiniciar surte efecto en la siguiente, con el mismo token, por el mismo mecanismo que ya revalida el rol. *(Cap. 6, Parte 11; ADR-024)*
+
+**¿Qué puede hacer alguien que debe activar el factor y todavía no lo ha hecho, y por qué es una lista cerrada?**
+Exactamente cuatro cosas: ver quién es, ver el estado del factor, pedir el secreto y confirmarlo. Nada más (ni las sesiones). Cada una lleva un atributo explícito, y **lo que no lo lleva se deniega**: una operación nueva queda cerrada hasta que alguien decida lo contrario, y un test de arquitectura fija la lista exacta. Una lista de operaciones *denegadas* olvidaría la próxima que se añada. *(Cap. 8)*
+
+**¿Se puede desactivar una vez activado?**
+No con un rol que lo exige: `400 mfa.required_for_role`, y se decide **antes** de pedir la contraseña o el código, así que un intento no gasta intentos del bloqueo de cuenta ni da pistas (un test repite ocho intentos erróneos y la cuenta no se bloquea). Sin esto, activarlo y desactivarlo en el acto anularía toda la obligación. Quien baja de rol sí puede quitarlo. *(Cap. 6, Parte 11)*
+
+**¿Cuánto cuesta comprobarlo en cada petición?**
+**Ninguna consulta más.** El estado del factor viaja en la misma consulta que la pertenencia y el rol (una subconsulta `EXISTS` sobre la clave de la propia cuenta). Un test contra SQL Server real cuenta las consultas y exige una, y la comprobación en vivo leyó el SQL que ejecuta la API. *(Cap. 6, Parte 11)*
+
+**¿Qué riesgo NO cierra?**
+**La ventana de enrolamiento:** una cuenta que todavía no ha activado el factor puede ser tomada por quien conozca su contraseña, entrando con la sesión restringida y activándolo él. Es la confianza en el primer uso de cualquier enrolamiento. Se mitiga (activarlo pide la contraseña y cierra todas las sesiones; en la cuenta que nace de la web la ventana es mínima: la primera pantalla que ve es la de activarlo), pero no se cierra sin un canal aparte. Tampoco el *phishing* (el TOTP no lo resiste; las *passkeys* sí) ni la pérdida del móvil y los códigos de un `Owner`. *(Cap. 8, límite 3l)*
+
+**¿Cómo se prueba una regla que los cientos de tests existentes tienen que poder ignorar?**
+La regla pasa por una interfaz con **una sola implementación registrada en `src`** (la real); los tests de la API la sustituyen por una que no exige a nadie, y solo las clases que prueban la puerta usan la real. Lo que impide que eso la debilite son escaneos de arquitectura: un solo fichero la registra, ninguno lee una configuración para apagarla (no existe un interruptor), y un test arranca la API real y comprueba que resuelve la regla real y que exige a `Owner` y `Admin` y a nadie más. *(Cap. 8 y 9)*
+
+**¿Qué error real encontrasteis?**
+No un fallo del código sino **huecos de los tests**, destapados por las mutaciones: dos eventos con el mismo número no rompían nada porque ningún test fijaba que fueran únicos, y un caso del interceptor del frontend («navegar aunque la cuenta no se haya podido cargar») sobrevivía porque el test no distinguía el caso. Ambos se cerraron con un test nuevo. *(Cap. 9)*
+
 ### La agenda (spec 020)
 
 **¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
@@ -232,7 +255,7 @@ EF Core parametriza las consultas; los analizadores de seguridad del compilador 
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, una `Content-Security-Policy` muy restrictiva y `Cross-Origin-Resource-Policy`; y HSTS fuera de desarrollo. La única excepción es la pantalla de Swagger, solo en desarrollo y solo en su ruta, con tests que impiden que se extienda. *(Cap. 8)*
 
 **¿Qué se registra y qué no?**
-Hay 50 eventos de seguridad con identificador estable (`1001`...`1608`). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
+Hay 52 eventos de seguridad con identificador estable (`1001`...`1608`; los dos últimos, `1304` y `1508`, son del segundo factor obligatorio). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
 
 **¿Cómo se manejan los secretos?**
 Fuera del repositorio. gitleaks escanea **todo el historial** en cada PR, GitHub bloquea el `push` si detecta uno conocido, y la aplicación **no arranca** si falta el secreto del token. *(Cap. 6, 10)*
@@ -283,7 +306,7 @@ Porque obliga a pensar antes (las decisiones difíciles se descubren al escribir
 
 **¿Qué NO está hecho? (la pregunta más importante)**
 Con honestidad y de lo más a lo menos preocupante:
-- **El segundo factor es opcional y el TOTP no resiste al *phishing*:** obligarlo para `Owner` y `Admin` exige pantallas, y las *passkeys* son el siguiente paso. La contraseña se puede recuperar (spec 018) pero no cambiar estando dentro, y **sin segundo factor quien controla el buzón de una cuenta controla la cuenta** (y la cuenta que se crea desde la web **nace sin segundo factor**: con el registro abierto, obligarlo a `Owner` y `Admin` gana urgencia); y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma.
+- **El TOTP no resiste al *phishing*, queda la ventana de enrolamiento y un `Owner` que lo pierde todo no se recupera solo:** el segundo factor es **obligatorio para `Owner` y `Admin`** (spec 022), pero una cuenta que aún no lo ha activado puede ser tomada por quien conozca su contraseña activándolo él, las *passkeys* son el siguiente paso, y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma. La contraseña se puede recuperar (spec 018) pero no cambiar estando dentro.
 - **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Crear una cuenta (spec 021) deja abiertos los textos legales** (los redacta el dueño del proyecto), que las cuentas anteriores **no han aceptado ninguna condición**, la comprobación **anti-robots**, que el límite de 3 pedidos por hora y por IP **puede frenar a una oficina entera**, y que el límite de avisos vive **en memoria**.
@@ -297,7 +320,7 @@ Con honestidad y de lo más a lo menos preocupante:
 *(Secciones "Dónde están hoy los límites" de los capítulos 6, 8, 9 y 10)*
 
 **¿Qué cerrarías primero?**
-Una respuesta defendible: **recuperar y cambiar la contraseña, y hacer obligatorio el segundo factor para `Owner` y `Admin`** en cuanto haya pantallas que lo guíen, porque el segundo factor ya existe (spec 010) pero es opcional, y es lo único que separa una contraseña robada de una cuenta tomada. Lo siguiente, el panel de operador de la plataforma (que usará este mismo segundo factor) y que el técnico solo vea sus trabajos. **Lo importante es poder explicar por qué eliges ese**, no cuál eliges.
+Una respuesta defendible: **la recuperación de un `Owner` que lo pierde todo (la herramienta de plataforma) y cambiar la contraseña estando dentro**, porque el segundo factor ya es obligatorio para `Owner` y `Admin` (spec 022) y, justo por eso, quien lo pierde todo ya no puede «quitarlo y entrar solo con la contraseña». Lo siguiente, cerrar la ventana de enrolamiento con un canal aparte y que el técnico solo vea sus trabajos. **Lo importante es poder explicar por qué eliges ese**, no cuál eliges.
 
 **¿Qué no harías igual hoy?**
 Hay decisiones que se tomaron y conviene reconocer: no existe todavía una ADR que explique por qué se usa EF Core y no SQL a mano; la imagen de SQL Server de los tests está escrita en dos ficheros; y algunas listas blancas se mantienen a mano. Reconocerlo, con su plan, suma.

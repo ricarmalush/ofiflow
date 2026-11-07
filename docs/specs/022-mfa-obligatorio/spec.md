@@ -1,6 +1,6 @@
 # Spec — 022-mfa-obligatorio
 
-**Estado:** Aprobada (2026-11-07). Decisiones D1–D11 aprobadas tal como estaban escritas (D1, D3 y D4 confirmadas expresamente: la restricción es por petición en la API, Owner y Admin, efecto inmediato sin periodo de gracia)
+**Estado:** Implementada (2026-11-07). Decisiones D1–D11 aprobadas tal como estaban escritas (D1, D3 y D4 confirmadas expresamente: la restricción es por petición en la API, Owner y Admin, efecto inmediato sin periodo de gracia)
 **Fecha:** 2026-11-07
 **Bounded Context:** Identity (el segundo factor) y Tenancy (los roles)
 **Depende de:** spec 010 y ADR-014 (el segundo factor TOTP, que hoy es opcional; el límite 3b es esta spec), spec 009 y ADR-013 (el rol efectivo se revalida en cada petición: el mismo patrón), ADR-012 (la autorización por permisos y su `AuthorizationBehavior`), spec 011 y ADR-016 (el operador de la plataforma ya tiene el segundo factor obligatorio: esto lo extiende a las empresas), spec 021 y ADR-023 (crear una cuenta: la cuenta que nace de la web **nace sin segundo factor**)
@@ -54,6 +54,7 @@ Cuatro bloques:
 
 - **R10. Un código nuevo y estable: `mfa.enrollment_required`** (`403`, formato de error de siempre). **No** es `auth.forbidden`: la persona **está autenticada**, sabe quién es y puede saber por qué se le deniega, y el frontend decide por el código (nunca por el texto) qué hacer. El texto dice qué hacer («Tu rol exige el segundo factor. Actívalo para continuar»). No distingue nada que un tercero no conozca ya (es la propia sesión de la persona).
 - **R11. `GET /account/me` lo dice:** un campo `secondFactorEnrollmentRequired` (`true` si el rol lo exige y el factor no está activo). Los permisos que devuelve siguen siendo los del rol (informativos, como siempre); la interfaz se guía por este campo.
+  - *Al implementar (bloque 3):* se añadió un **segundo campo, `secondFactorRequired`** (el rol lo exige, **lo tenga activo o no**). Sin él, la pantalla no puede saber que un `Owner` con el factor ya activo no debe ver «Desactivar» sin copiar al cliente qué roles lo exigen. Decidido con la persona dueña del proyecto; ver la ADR-024. `me` pasa a tener **diez** campos.
 
 **Los eventos de seguridad** (familia `13xx`, el número se fija al implementar)
 
@@ -116,7 +117,7 @@ Caso multi-tenant obligatorio: la comprobación solo mira **la cuenta de quien p
 - **D7. `me` lleva el campo `secondFactorEnrollmentRequired`.** *Recomendado.* Evita provocar un `403` para enterarse y permite pintar la interfaz bien desde el primer momento.
 - **D8. El estado del factor viaja en la consulta de la pertenencia** (subconsulta), sin una ida más a la base de datos. *Recomendado.* Se mide con un test que cuenta las consultas, como en la spec 015.
 - **D9. Frontend: un guardián lleva a la pantalla de seguridad que ya existe**, no se escribe un asistente nuevo. *Recomendado.* La pantalla ya sabe pedir el secreto, enseñar el código QR, confirmar y entregar los códigos de recuperación; solo hay que llevar allí a quien debe y esconder «Desactivar» a quien no puede.
-- **D10. Eventos nuevos en la familia `13xx`**, uno por denegación y otro por desactivación denegada; los números se fijan al implementar. *Recomendado.*
+- **D10. Eventos nuevos en la familia `13xx`**, uno por denegación y otro por desactivación denegada; los números se fijan al implementar. *Recomendado.* *(Al implementar: `1304` para la denegación y `1508` para la desactivación denegada, que por hablar del segundo factor va en la familia `15xx`.)*
 - **D11. Orden de trabajo:** la puerta (**bloque 1**), que no se pueda deshacer y `me` (**2**), frontend (**3**) y documentación (**4**). Los bloques 1 y 2 se entregan juntos al backend; **entre el 1 y el 3 la API ya deniega y el frontend actual no sabe qué hacer** (un `Owner` sin factor vería errores `403` en todas las pantallas): por eso el frontend va **en el mismo PR-par** y no se fusiona el backend solo.
 - **¿Requiere ADR nueva? Sí: ADR-024**, «Segundo factor obligatorio para `Owner` y `Admin`», con la comparación D1 (por petición frente a sesión limitada), la ventana de enrolamiento como riesgo aceptado y qué queda abierto. Con anotaciones «Ampliada por» en ADR-014 (cierra el límite 3b), ADR-012 y ADR-023.
 

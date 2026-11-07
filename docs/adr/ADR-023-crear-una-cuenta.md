@@ -191,7 +191,7 @@ La diferencia (≈ 3,4 ms) es **menor que la de la recuperación de contraseña*
 
 ### Qué queda abierto para revisar más adelante
 
-- **Obligar el segundo factor a `Owner` y `Admin`** (límite 3b de ADR-014): es el remedio de fondo para la cuenta que nace sin él.
+- ~~**Obligar el segundo factor a `Owner` y `Admin`** (límite 3b de ADR-014): es el remedio de fondo para la cuenta que nace sin él.~~ **Hecho en la spec 022 ([ADR-024](ADR-024-segundo-factor-obligatorio.md)):** la cuenta que nace de la web ya no puede hacer nada salvo activar el factor, y su ventana de riesgo es mínima porque la primera pantalla que ve es la de activarlo.
 - **Que las cuentas ya existentes acepten las condiciones**, y una pantalla de «hemos actualizado las condiciones».
 - **Una cuenta en varias empresas.**
 - **Una comprobación anti-robots** y **registrarse con Google o Microsoft.**
@@ -207,4 +207,5 @@ La diferencia (≈ 3,4 ms) es **menor que la de la recuperación de contraseña*
 
 - Amplía: **ADR-021** (el patrón completo —respuesta uniforme, suelo de tiempo medido, cola en memoria, token de un solo uso con versión de fila—, aplicado por tercera vez), **ADR-020** (tercer uso del puerto de correo), **ADR-013** (el token con solo su hash, ahora para una cuenta que aún no existe), **ADR-009** (eventos `1018`–`1022`; datos personales de los pendientes y su purga; los tres límites; el límite 3 del manual, cerrado), **ADR-007** (el modelo `ApplicationUser` + `User` con el mismo Id se sigue creando en una sola confirmación, ahora desde `CompleteRegistrationCommandHandler`).
 - Relacionada con: ADR-019 (la purga: los pendientes caducados), ADR-014 (el segundo factor obligatorio para `Owner` y `Admin`, el remedio abierto), ADR-016 (un operador de la plataforma cuenta como «ya tiene cuenta»), ADR-011 (códigos de error nuevos `registration.invalid` y `registration.terms_not_accepted`), ADR-008 (Mailpit y el servidor SMTP de pruebas), ADR-010 (versiones fijadas).
-- Prepara: la spec 019 (cambiar la contraseña estando dentro) y el segundo factor obligatorio.
+- Ampliada por: la [ADR-024](ADR-024-segundo-factor-obligatorio.md) (spec 022): el riesgo aceptado «el primer usuario de cada empresa nace sin segundo factor» se resuelve obligando el factor a `Owner` y `Admin`; la cuenta que nace de aquí queda **restringida a activarlo** desde su primera sesión.
+- Prepara: la spec 019 (cambiar la contraseña estando dentro).
