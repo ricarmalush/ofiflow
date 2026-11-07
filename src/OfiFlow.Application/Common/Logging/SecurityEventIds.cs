@@ -206,6 +206,12 @@ public static class SecurityEventIds
     /// <summary>Un gestor reinició el segundo factor de otro miembro (con quién lo hizo y a quién).</summary>
     public const int MfaResetByManager = 1507;
 
+    /// <summary>
+    /// Alguien con un rol que exige el segundo factor intentó desactivarlo y se le denegó (spec 022 R7): UserId, TenantId y rol, nunca la contraseña ni el código (ni se llegan a pedir).
+    /// Una persona legítima no lo intenta por la API (la pantalla esconde el botón): suele ser un cliente a mano, o alguien con un token robado probando qué puede hacer.
+    /// </summary>
+    public const int MfaDisableDeniedForRole = 1508;
+
     // 1600-1699: panel de la plataforma (spec 011). Solo Ids y el motivo: ni emails, ni contraseñas, ni códigos.
 
     /// <summary>Un operador superó la contraseña y el segundo factor y recibió una sesión de plataforma (15 minutos, sin refresh token).</summary>
