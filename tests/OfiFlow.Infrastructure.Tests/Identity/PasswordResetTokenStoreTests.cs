@@ -290,6 +290,9 @@ public class PasswordResetTokenStoreTests(SqlServerContainerFixture fixture) : I
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<PasswordResetService>();
         services.AddScoped<IPasswordResetTokenPurger>(provider => provider.GetRequiredService<PasswordResetService>());
+        // El ciclo purga también los registros pendientes (spec 021 R18).
+        services.AddScoped<PendingRegistrationService>();
+        services.AddScoped<IPendingRegistrationPurger>(provider => provider.GetRequiredService<PendingRegistrationService>());
 
         return services.BuildServiceProvider();
     }

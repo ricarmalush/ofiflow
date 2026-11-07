@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using OfiFlow.Api.Tests.Common;
 using OfiFlow.Application.Customers;
 using OfiFlow.Application.Jobs;
 using OfiFlow.Domain.Tenancy;
@@ -290,15 +291,14 @@ public class RbacEndToEndTests(RolesFixture fixture) : IClassFixture<RolesFixtur
     public async Task TheAnonymousOperations_StillWorkWithoutAToken()
     {
         var email = $"rbac-nueva-{Guid.NewGuid():N}@example.com";
-        // Generada en cada ejecución, como en el resto de tests: ninguna contraseña escrita en el código.
-        var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
-        var register = await fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/register",
-            new { companyName = "Otra empresa", userName = "Otra persona", email, password });
+        // Pedir un registro es anónimo: no necesita token. (Con el correo apagado de esta fábrica el registro está cerrado, pero la respuesta es la misma 202.)
+        var register = await fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/registration",
+            new { companyName = "Otra empresa", userName = "Otra persona", email, acceptedTermsVersion = SqlServerApiFactory.TermsVersion });
 
         var refresh = await fixture.Anonymous.PostAsJsonAsync("/api/v1/auth/refresh",
             new { refreshToken = fixture.UserOf(TenantRole.Owner).RefreshToken });
 
-        Assert.Equal(HttpStatusCode.OK, register.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, register.StatusCode);
         Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
     }
 

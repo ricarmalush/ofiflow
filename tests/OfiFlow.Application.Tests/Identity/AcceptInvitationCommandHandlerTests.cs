@@ -14,6 +14,7 @@ namespace OfiFlow.Application.Tests.Identity;
 public class AcceptInvitationCommandHandlerTests
 {
     private const string Password = "Password123!";
+    private const string TermsVersion = "2026-11";
     private static readonly DateTime Now = new(2026, 10, 15, 10, 0, 0, DateTimeKind.Utc);
 
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -36,7 +37,7 @@ public class AcceptInvitationCommandHandlerTests
     }
 
     private Task AcceptAsync(string token, string name = "Ana Pérez", string password = Password) =>
-        Handler().Handle(new AcceptInvitationCommand(token, name, password), CancellationToken.None);
+        Handler().Handle(new AcceptInvitationCommand(token, name, password, TermsVersion), CancellationToken.None);
 
     // ===== Camino feliz =====
 
@@ -56,6 +57,19 @@ public class AcceptInvitationCommandHandlerTests
         Assert.Equal("Ana Pérez", user.Name);
         Assert.Equal("Ana@Example.com", user.ContactEmail.Value); // el email lo fijó quien invitó
         Assert.Equal(Now, (await _db.Invitations.SingleAsync(i => i.Id == invitation.Id)).AcceptedAt);
+    }
+
+    [Fact]
+    public async Task TheAcceptedTermsVersion_AndTheMoment_AreStoredInTheUser()
+    {
+        // Spec 021 D8, R16: toda persona que crea una cuenta acepta las condiciones, no solo quien registra la empresa. Se guarda la etiqueta y la hora del servidor.
+        var (_, token) = await SeedAsync();
+
+        await Handler().Handle(new AcceptInvitationCommand(token, "Ana Pérez", Password, "2026-11"), CancellationToken.None);
+
+        var user = await _db.Users.SingleAsync();
+        Assert.Equal("2026-11", user.TermsVersion);
+        Assert.Equal(Now, user.TermsAcceptedAt);
     }
 
     [Fact]

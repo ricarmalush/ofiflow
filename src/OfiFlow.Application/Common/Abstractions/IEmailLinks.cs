@@ -17,4 +17,16 @@ public interface IEmailLinks
     /// configuración del despliegue, nunca la petición, y el token en el <b>fragmento</b>, que el navegador no envía al servidor ni al <c>Referer</c>.
     /// </summary>
     string ResetPassword(string token);
+
+    /// <summary>
+    /// El enlace para completar el registro (spec 021 R4): <c>{LinkBaseUrl}/auth/complete-registration#token=…</c>. Misma regla que los otros: solo la configuración del despliegue y el token en
+    /// el <b>fragmento</b>.
+    /// </summary>
+    string CompleteRegistration(string token);
+
+    /// <summary>
+    /// El enlace a la pantalla de recuperar la contraseña, <b>sin token</b> (spec 021 R6): <c>{LinkBaseUrl}/auth/forgot-password</c>. Lo lleva el aviso «ya tienes una cuenta»; una pantalla que
+    /// pide el email no concede nada por sí sola, así que no hace falta ningún secreto.
+    /// </summary>
+    string ForgotPassword();
 }

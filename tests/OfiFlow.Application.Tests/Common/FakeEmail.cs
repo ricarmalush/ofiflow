@@ -48,4 +48,8 @@ public sealed class FakeEmailLinks : IEmailLinks
     public string AcceptInvitation(string token) => $"{BaseUrl}/auth/accept-invitation#token={token}";
 
     public string ResetPassword(string token) => $"{BaseUrl}/auth/reset-password#token={token}";
+
+    public string CompleteRegistration(string token) => $"{BaseUrl}/auth/complete-registration#token={token}";
+
+    public string ForgotPassword() => $"{BaseUrl}/auth/forgot-password";
 }

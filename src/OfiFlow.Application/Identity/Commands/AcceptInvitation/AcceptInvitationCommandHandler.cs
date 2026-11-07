@@ -83,6 +83,7 @@ public sealed partial class AcceptInvitationCommandHandler(
         }
 
         var user = User.Create(userId, request.Name, invitation.Email);
+        user.AcceptTerms(request.AcceptedTermsVersion, now);
         var tenantUser = TenantUser.Create(invitation.TenantId, userId, invitation.Role);
         invitation.Accept(now);
 

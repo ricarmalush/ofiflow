@@ -47,8 +47,7 @@ public sealed class AccountLockoutEndToEndTests : IAsyncLifetime
     private async Task<string> RegisterAsync(string company)
     {
         var email = $"{Guid.NewGuid():N}@example.com";
-        var response = await Post("/api/v1/auth/register", new { companyName = company, userName = "Ana", email, password = Password });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await _factory.RegisterCompanyAsync(company, "Ana", email, Password);
 
         return email;
     }

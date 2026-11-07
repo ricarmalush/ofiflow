@@ -49,9 +49,7 @@ public sealed class MembersFixture : IAsyncLifetime
         OwnerEmail = email;
         OwnerPassword = password;
 
-        var register = await Anonymous.PostAsJsonAsync("/api/v1/auth/register",
-            new { companyName = "Empresa de miembros", userName = "Dueña de pruebas", email, password });
-        TenantId = (await ReadAsync<RegisterResponse>(register)).TenantId;
+        TenantId = await Factory.RegisterCompanyAsync("Empresa de miembros", "Dueña de pruebas", email, password);
 
         var login = await Anonymous.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
         var tokens = await ReadAsync<AuthResultDto>(login);
@@ -116,7 +114,7 @@ public sealed class MembersFixture : IAsyncLifetime
     /// </summary>
     public Task<HttpResponseMessage> AcceptInvitationAsync(string token, string name, string password)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/accept-invitation") { Content = JsonContent.Create(new { token, name, password }) };
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/accept-invitation") { Content = JsonContent.Create(new { token, name, password, acceptedTermsVersion = SqlServerApiFactory.TermsVersion }) };
         request.Headers.Add(TestClientIpStartupFilter.HeaderName, TestClientIpStartupFilter.NewIp());
 
         return Anonymous.SendAsync(request);
@@ -128,8 +126,7 @@ public sealed class MembersFixture : IAsyncLifetime
         var email = $"otra-{Guid.NewGuid():N}@example.com";
         var password = NewPassword();
 
-        var register = await Anonymous.PostAsJsonAsync("/api/v1/auth/register", new { companyName, userName = $"Dueña de {companyName}", email, password });
-        var tenantId = (await ReadAsync<RegisterResponse>(register)).TenantId;
+        var tenantId = await Factory.RegisterCompanyAsync(companyName, $"Dueña de {companyName}", email, password);
 
         var login = await Anonymous.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
         var tokens = await ReadAsync<AuthResultDto>(login);

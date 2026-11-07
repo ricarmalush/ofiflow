@@ -87,16 +87,20 @@ Los términos en inglés van entre paréntesis porque son los que verás en el c
 | **SAST** | Analizar el **código** sin ejecutarlo para buscar vulnerabilidades | 10 |
 | **SMTP / STARTTLS** | SMTP es el protocolo con el que se envía el correo y lo hablan todos los proveedores. STARTTLS empieza la conexión en claro y la cifra a continuación; en OfiFlow es obligatorio (si el servidor no lo ofrece, no se envía en claro) | 6 |
 | **SPF / DKIM / DMARC** | Tres registros del DNS de un dominio que hacen que su correo llegue a la bandeja y no a spam. SPF: qué servidores pueden enviar en su nombre. DKIM: la firma de cada mensaje. DMARC: qué hacer con lo que falle y a dónde mandar los informes | 6 |
+| **Pendiente de registro** (*pending registration*) | Lo que escribió alguien que quiere crear una cuenta (empresa, nombre y email), guardado **hasta que abre el enlace de su correo**. No es una cuenta: no hay empresa, ni usuario, ni contraseña. Caduca a las 24 horas y se purga a los 7 días | 6 |
+| **Pre-hijacking** | Un ataque contra el registro: el atacante crea una cuenta con el email de **otra persona** y **su** contraseña; si la víctima confirma el correo, el atacante ya controla la cuenta. OfiFlow lo evita porque **no existe ninguna cuenta hasta que se abre el enlace** y la contraseña la elige quien lo abre | 6 |
 | **SCA** | Vigilar las **dependencias** por vulnerabilidades conocidas (NuGetAudit, Dependabot) | 10 |
 | **Spec-Driven Development** | Escribir la especificación antes que el código | 11 |
 | **STRIDE** | Seis tipos de amenaza (suplantación, manipulación, repudio, revelación, denegación de servicio, elevación de privilegios) | 8 |
-| **Suelo de tiempo** (*time floor*) | Una espera mínima que se aplica a una petición **después** de hacer su trabajo, para que no tarde menos de cierto tiempo pase lo que pase. En `forgot-password` oculta que crear un token cuesta ≈ 12 ms más que no crearlo | 6, 8 |
+| **Suelo de tiempo** (*time floor*) | Una espera mínima que se aplica a una petición **después** de hacer su trabajo, para que no tarde menos de cierto tiempo pase lo que pase. En `forgot-password` oculta que crear un token cuesta ≈ 12 ms más que no crearlo Se usa por segunda vez al pedir crear una cuenta (`registration`, diferencia medida de ≈ 3,4 ms: menor, pero igualmente distinguible) | 6, 8 |
 | **Tenant** | Una empresa cliente de OfiFlow | 5 |
 | **Testcontainers** | Librería que arranca un SQL Server real en Docker desde el propio test | 9 |
 | **TimeProvider** | La forma de pedir la hora en .NET, sustituible en los tests para no esperar | 11 |
 | **TOTP** (*Time-based One-Time Password*, RFC 6238) | El código de 6 dígitos que cambia cada 30 segundos y sale de un secreto compartido y de la hora. Cada paso solo se acepta una vez | 6 |
 | **Token** | Una credencial de un solo valor secreto (de acceso, de renovación o de invitación) | 6 |
+| **Token de registro** | El secreto del enlace del correo de «crear una cuenta»: 256 bits aleatorios, **solo se guarda su hash**, caduca a las 24 horas, vale una sola vez y hay uno vigente por email (un índice único filtrado lo garantiza). Con él se **completa** el registro y se elige la contraseña | 6 |
 | **Token de restablecimiento** (*password reset token*) | El secreto del enlace del correo de «he olvidado mi contraseña»: 256 bits aleatorios, **solo se guarda su hash**, caduca a la hora, vale una sola vez y una cuenta tiene uno vigente | 6 |
+| **Versión de las condiciones** (*terms version*) | Una etiqueta corta como `2026-11` (`Legal:TermsVersion`). La API **no guarda los textos ni decide qué dicen**: compara la etiqueta que envía quien se registra con la vigente y guarda en el `User` la versión y la fecha aceptadas | 6 |
 | **Value object** | Un objeto sin identidad propia, definido por su valor (`Email`) | 3 |
 | **ZAP** | Herramienta de OWASP que ataca automáticamente una API en ejecución | 10 |
 
@@ -140,6 +144,7 @@ Cada ADR está en [`docs/adr/`](../adr/). El manual **explica cómo funciona**; 
 | [020](../adr/ADR-020-correo-saliente.md) Correo saliente | Un puerto `IEmailSender` y un transporte SMTP (MailKit); la invitación se envía por correo y el token deja de devolverse; sin cola de momento porque el correo lleva un secreto; el enlace sale solo de la configuración | 6, 8 |
 | [021](../adr/ADR-021-recuperacion-de-contrasena.md) Recuperar la contraseña | Respuesta idéntica y **tiempo medido** (un suelo de 250 ms), correo por una **cola en memoria** (el token no se guarda en claro), token de una hora y un solo uso, y restablecer **cierra todas las sesiones** en una sola confirmación sin tocar el segundo factor | 1, 6, 8 |
 | [022](../adr/ADR-022-agenda.md) La agenda | Las fechas son **instantes UTC con desfase obligatorio** (una hora sin desfase se rechaza), el día lo decide el navegador con la medianoche local (no con 168 horas), `Jobs.Schedule` es un permiso aparte, la agenda es un rango obligatorio de hasta 42 días sobre un índice que empieza por la empresa, y se difieren los conflictos de horario, el huso por empresa y la concurrencia |
+| [023](../adr/ADR-023-crear-una-cuenta.md) Crear una cuenta | **No existe ninguna cuenta hasta abrir el enlace del correo** (contra el *pre-hijacking*), la contraseña se elige al completar, la respuesta y el tiempo son uniformes (suelo de 250 ms medido), el aviso de «ya tienes cuenta» tiene su propio límite, las condiciones de uso se guardan con versión y fecha, y el registro inmediato se retira | 1, 6, 8 |
 
 ## Las especificaciones
 
@@ -166,10 +171,11 @@ Cada spec está en [`docs/specs/`](../specs/) con su `spec.md` y su `tasks.md`.
 | **017** Correo e invitaciones | Un puerto de correo con transporte SMTP; la invitación se envía por correo (sin token para quien invita), con límite de 20 por hora y por persona y eventos `1407`/`1408` |
 | **018** Recuperar la contraseña | `POST /auth/forgot-password` (siempre `202`, con un suelo de tiempo medido) y `POST /auth/reset-password` (cierra todas las sesiones, reinicia el bloqueo y avisa por correo), con una cola de correo en memoria; los eventos `1012`–`1017`; y las dos pantallas del frontend |
 | **020** La agenda mínima | Programar, reprogramar y quitar de la agenda un trabajo (`PUT` y `DELETE /jobs/{id}/schedule`, permiso `Jobs.Schedule`), `Start` también desde `Scheduled`, y `GET /jobs/agenda` (un rango semiabierto de hasta 42 días); en el frontend, la pantalla de la agenda y la sección «Programación» del trabajo |
+| **021** Crear una cuenta | `POST /auth/registration` (siempre `202`, no crea nada) y `POST /auth/registration/complete` (la cuenta nace al abrir el enlace, con la contraseña elegida entonces; no abre sesión), condiciones de uso aceptadas con versión y fecha (también al aceptar una invitación), `POST /auth/register` **retirado**, los eventos `1018`–`1022` y las pantallas de registro y de completar del frontend |
 
 ## Lo que viene
 
-Lo que **aún no existe** está explicado con honestidad en cada capítulo (sección "Dónde están hoy los límites") y resumido en el [capítulo 0](./00-que-es-ofiflow.md). Lo más relevante: **crear una cuenta desde la web y confirmar el email** (la siguiente spec: la API tiene el registro, pero el frontend no tiene pantalla), el segundo factor obligatorio (para `Owner` y `Admin`, con pantallas) y las *passkeys*, cambiar la contraseña estando dentro, de la agenda los conflictos de horario y el huso por empresa, que un técnico solo vea sus trabajos, y los presupuestos y las facturas (fases 3 y 4).
+Lo que **aún no existe** está explicado con honestidad en cada capítulo (sección "Dónde están hoy los límites") y resumido en el [capítulo 0](./00-que-es-ofiflow.md). Lo más relevante: **los textos legales** que se aceptan al crear una cuenta (los redacta el dueño del proyecto), el segundo factor obligatorio (para `Owner` y `Admin`, con pantallas) y las *passkeys*, cambiar la contraseña estando dentro, de la agenda los conflictos de horario y el huso por empresa, que un técnico solo vea sus trabajos, y los presupuestos y las facturas (fases 3 y 4).
 
 ## Siguiente capítulo
 

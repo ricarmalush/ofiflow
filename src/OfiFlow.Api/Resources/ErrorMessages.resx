@@ -169,6 +169,12 @@
   <data name="invitation.email_not_sent" xml:space="preserve">
     <value>No se ha podido enviar el correo de la invitación, así que no se ha creado. Inténtalo de nuevo en unos minutos; si sigue fallando, avisa a quien administre OfiFlow.</value>
   </data>
+  <data name="registration.invalid" xml:space="preserve">
+    <value>El enlace para crear la cuenta no es válido, ha caducado o ya se ha usado. Vuelve a pedir el registro.</value>
+  </data>
+  <data name="registration.terms_not_accepted" xml:space="preserve">
+    <value>Para crear una cuenta hay que aceptar las condiciones de uso vigentes. Recarga la página y vuelve a intentarlo.</value>
+  </data>
   <data name="password_reset.invalid" xml:space="preserve">
     <value>El enlace para restablecer la contraseña no es válido, ha caducado o ya se ha usado. Pide uno nuevo.</value>
   </data>
