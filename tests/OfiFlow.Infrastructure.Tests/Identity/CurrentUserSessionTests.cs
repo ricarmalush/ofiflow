@@ -19,7 +19,7 @@ public class CurrentUserSessionTests
             new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, new FixedTenantContext(Guid.NewGuid()));
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")) } };
 
-        return new CurrentUser(accessor, db);
+        return new CurrentUser(accessor, db, new SecondFactorRequirement());
     }
 
     [Fact]

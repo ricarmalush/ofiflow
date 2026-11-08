@@ -14,6 +14,15 @@ namespace OfiFlow.Application.Identity;
 /// Los permisos de ese rol, con su nombre estable (<c>Customers.Read</c>), ordenados. <b>Informativos</b>: sirven para pintar la
 /// interfaz; quien decide qué se permite es siempre la API en cada operación.
 /// </param>
+/// <param name="SecondFactorEnrollmentRequired">
+/// Spec 022: su rol efectivo exige el segundo factor y la cuenta todavía no lo tiene activo (uno pedido y sin confirmar no cuenta). Es <b>el mismo dato que usa la puerta de la API</b>,
+/// leído de <c>ICurrentUser</c> (sin una consulta más): con él la interfaz lleva a la pantalla de activarlo en vez de dejar que cada pantalla choque con un 403. <b>Informativo</b>:
+/// quien lo impone es siempre la API, en cada petición.
+/// </param>
+/// <param name="SecondFactorRequired">
+/// Spec 022: su rol efectivo exige el segundo factor, <b>lo tenga activo la cuenta o no</b>. Con él la interfaz sabe que ese rol no puede desactivarlo (y esconde el botón) sin copiar la regla
+/// por rol. Es la misma regla que impone la API (<c>mfa.required_for_role</c>); aquí es <b>informativo</b>.
+/// </param>
 public sealed record CurrentAccountDto(
     Guid UserId,
     Guid MembershipId,
@@ -22,4 +31,6 @@ public sealed record CurrentAccountDto(
     Guid TenantId,
     string TenantName,
     string Role,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions,
+    bool SecondFactorEnrollmentRequired,
+    bool SecondFactorRequired);

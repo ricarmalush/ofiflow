@@ -32,7 +32,7 @@ public class CurrentUserTests
             HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")) }
         };
 
-        return new CurrentUser(accessor, db);
+        return new CurrentUser(accessor, db, new SecondFactorRequirement());
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class CurrentUserTests
     [Fact]
     public void WithoutAnHttpContext_EverythingIsNull()
     {
-        var user = new CurrentUser(new HttpContextAccessor(), NewDb());
+        var user = new CurrentUser(new HttpContextAccessor(), NewDb(), new SecondFactorRequirement());
 
         Assert.Null(user.UserId);
         Assert.Null(user.TenantId);

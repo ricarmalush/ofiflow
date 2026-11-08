@@ -54,6 +54,69 @@ public class GetCurrentAccountQueryHandlerTests
         Assert.Equal(["Account.CloseSessions", "Account.Read", "Customers.Read", "Jobs.Execute", "Jobs.Read", "Mfa.Manage"], account.Permissions);
     }
 
+    // ===== El segundo factor obligatorio (spec 022) =====
+
+    /// <summary>Como lo haría el AuthorizationBehavior: verifica la pertenencia (de ahí sale el dato) y luego llama al handler.</summary>
+    private async Task<CurrentAccountDto> AskAfterVerifyingAsync(Seeded who, TenantRole role, bool enrollmentRequired)
+    {
+        var user = new FakeCurrentUser(role, who.UserId, who.TenantId, secondFactorEnrollmentRequired: enrollmentRequired);
+        await user.VerifyMembershipAsync(CancellationToken.None);
+
+        return await new GetCurrentAccountQueryHandler(_db, user).Handle(new GetCurrentAccountQuery(), CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData(TenantRole.Owner, true)]
+    [InlineData(TenantRole.Admin, true)]
+    [InlineData(TenantRole.Owner, false)]
+    [InlineData(TenantRole.Technician, false)]
+    public async Task TheAccountSaysWhetherItMustEnrollTheFactor_WithTheSameDataTheGateUses(TenantRole role, bool enrollmentRequired)
+    {
+        var who = await SeedAsync("Empresa", "Persona", "persona@a.com", role);
+
+        var account = await AskAfterVerifyingAsync(who, role, enrollmentRequired);
+
+        Assert.Equal(enrollmentRequired, account.SecondFactorEnrollmentRequired);
+    }
+
+    [Fact]
+    public async Task TheFieldIsTakenFromTheCurrentUser_NotComputedFromTheRoleWithACopyOfTheRule()
+    {
+        // Un Owner al que el dato dice «no tiene que activarlo» (ya lo tiene): el campo es falso aunque su rol sea de los que lo exigen. Si el handler lo calculara por el rol, diría true.
+        var owner = await SeedAsync("Empresa", "Ana", "ana@a.com", TenantRole.Owner);
+
+        var account = await AskAfterVerifyingAsync(owner, TenantRole.Owner, enrollmentRequired: false);
+
+        Assert.False(account.SecondFactorEnrollmentRequired);
+    }
+
+    [Theory]
+    [InlineData(true, false, true)]    // su rol lo exige y todavía no lo tiene: debe activarlo (y, por fuerza, su rol lo exige)
+    [InlineData(false, true, true)]    // su rol lo exige y YA lo tiene: ya no tiene que activarlo, pero sigue sin poder desactivarlo
+    [InlineData(false, false, false)]  // su rol no lo exige
+    public async Task TheRequiredFieldIsIndependentOfWhetherTheFactorIsAlreadyEnrolled(bool mustEnroll, bool required, bool expectedRequired)
+    {
+        var who = await SeedAsync("Empresa", "Persona", "persona@a.com", TenantRole.Admin);
+        var user = new FakeCurrentUser(TenantRole.Admin, who.UserId, who.TenantId, secondFactorEnrollmentRequired: mustEnroll, secondFactorRequired: required || mustEnroll);
+        await user.VerifyMembershipAsync(CancellationToken.None);
+
+        var account = await new GetCurrentAccountQueryHandler(_db, user).Handle(new GetCurrentAccountQuery(), CancellationToken.None);
+
+        Assert.Equal(mustEnroll, account.SecondFactorEnrollmentRequired);
+        Assert.Equal(expectedRequired, account.SecondFactorRequired);
+    }
+
+    [Fact]
+    public async Task TheFieldIsSerializedWithItsStableName()
+    {
+        var who = await SeedAsync("Empresa", "Persona", "persona@a.com", TenantRole.Admin);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(await AskAfterVerifyingAsync(who, TenantRole.Admin, enrollmentRequired: true), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        Assert.Contains("\"secondFactorEnrollmentRequired\":true", json);
+        Assert.Contains("\"secondFactorRequired\":true", json);
+    }
+
     [Fact]
     public async Task TheRoleAndThePermissions_AreTheEffectiveOnes_NotTheOnesTheTokenSaid()
     {
@@ -142,7 +205,8 @@ public class GetCurrentAccountQueryHandlerTests
         // propiedad, este test falla y obliga a decidir, a propósito, si es algo que la persona debe recibir.
         var properties = typeof(CurrentAccountDto).GetProperties().Select(p => p.Name).Order().ToList();
 
-        Assert.Equal(["Email", "MembershipId", "Name", "Permissions", "Role", "TenantId", "TenantName", "UserId"], properties);
+        // Spec 022: se añaden, a propósito, SecondFactorEnrollmentRequired y SecondFactorRequired (dos booleanos sobre quien pregunta; no son secretos).
+        Assert.Equal(["Email", "MembershipId", "Name", "Permissions", "Role", "SecondFactorEnrollmentRequired", "SecondFactorRequired", "TenantId", "TenantName", "UserId"], properties);
     }
 
     [Fact]

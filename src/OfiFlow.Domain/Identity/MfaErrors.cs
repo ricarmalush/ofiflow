@@ -22,4 +22,16 @@ public static class MfaErrors
 
     /// <summary>La contraseña que se pide para confirmar una operación sensible no es correcta.</summary>
     public const string InvalidPassword = "mfa.invalid_password";
+
+    /// <summary>
+    /// El rol de la persona exige el segundo factor y todavía no lo tiene activo: solo puede activarlo (spec 022 R2, R10). <b>No es <c>auth.forbidden</c></b> a propósito:
+    /// la persona está autenticada, puede saber por qué se le deniega y el frontend decide por este código (nunca por el texto) qué hacer.
+    /// </summary>
+    public const string EnrollmentRequired = "mfa.enrollment_required";
+
+    /// <summary>
+    /// El rol de la persona exige el segundo factor, así que <b>no se puede desactivar</b> (spec 022 R7): sin esto, activarlo y desactivarlo en el acto anularía la obligación. Es un
+    /// <c>400</c> (una regla de negocio, no una falta de permiso: tiene <c>Mfa.Manage</c>). Quien deja de tener un rol que lo exige (la degradan) puede desactivarlo como cualquiera.
+    /// </summary>
+    public const string RequiredForRole = "mfa.required_for_role";
 }

@@ -184,6 +184,8 @@ curl -i -X POST http://localhost:5279/api/v1/auth/registration/complete \
 
 Después, entra con `POST /auth/login` y la contraseña que acabas de elegir (completar **no abre sesión**). Si repites el paso 2 con el mismo token, obtienes `400 registration.invalid`: el enlace es de un solo uso, caduca a las 24 horas y pedir otro registro con el mismo email anula el anterior. Para comprobar que **no hay cuenta antes de abrir el enlace**, intenta entrar entre el paso 1 y el 2: da `401`.
 
+**Y ojo con lo que viene después (spec 022): un `Owner` recién creado está restringido.** Mientras no active el segundo factor, su sesión solo sirve para ver quién es (`GET /account/me`) y para activarlo; si pide clientes, trabajos o el equipo recibe `403 mfa.enrollment_required`. Para seguir con las pruebas a mano, actívalo: `POST /account/mfa/setup` (con la contraseña; devuelve el secreto), añade ese secreto a una app de autenticación (o calcula el código con cualquier herramienta TOTP) y confírmalo con `POST /account/mfa/enable`; activarlo **cierra las sesiones**, así que vuelves a entrar con `POST /auth/login` y el segundo paso, `POST /auth/mfa/verify`. El fichero `.http` de la API tiene esas peticiones (sección del segundo factor). Con el frontend es más simple: al entrar, la pantalla de seguridad ya te lleva al asistente.
+
 Cosas que te pueden despistar:
 
 - **`202` y no llega ningún correo:** o el correo no está configurado, o falta `Legal:TermsVersion` (el registro está cerrado y la API solo deja un aviso en el registro), o el email ya tiene cuenta (entonces llega otro correo, el aviso «Ya tienes una cuenta de OfiFlow», sin token).

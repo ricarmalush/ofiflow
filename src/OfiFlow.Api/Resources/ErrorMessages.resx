@@ -193,6 +193,12 @@
   <data name="mfa.invalid_password" xml:space="preserve">
     <value>La contraseña no es correcta.</value>
   </data>
+  <data name="mfa.enrollment_required" xml:space="preserve">
+    <value>Tu rol exige el segundo factor. Actívalo para continuar.</value>
+  </data>
+  <data name="mfa.required_for_role" xml:space="preserve">
+    <value>Tu rol exige el segundo factor, así que no se puede desactivar.</value>
+  </data>
 
   <!-- ===== Identity ===== -->
   <data name="user.name_required" xml:space="preserve">

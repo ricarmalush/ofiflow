@@ -4,6 +4,7 @@ using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Authorization;
 using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Logging;
+using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Common.Behaviors;
@@ -91,6 +92,16 @@ public sealed class AuthorizationBehavior<TRequest, TResponse>(ICurrentUser curr
             Deny(AuthorizationLog.Reasons.MissingPermission);
         }
 
+        // El segundo factor obligatorio (spec 022, ADR-024). VA DESPUÉS del permiso a propósito (R2): quien no tiene el permiso recibe «auth.forbidden» como siempre, tenga o no
+        // el factor (ADR-012 R3: no se informa sobre lo que no se puede hacer), y «mfa.enrollment_required» solo lo recibe quien SÍ podría hacer esto si tuviera el factor.
+        // Es por petición y con el rol efectivo, igual que la revalidación de arriba: promover a alguien a Admin, o reiniciarle el factor, surte efecto en su siguiente petición.
+        // Es una lista cerrada de excepciones (AllowedWithoutSecondFactor): lo que no está marcado se deniega.
+        if (currentUser.SecondFactorEnrollmentRequired && !Declared.AllowedWithoutSecondFactor)
+        {
+            AuthorizationLog.MfaEnrollmentRequired(logger, Declared.Operation, currentUser.UserId, currentUser.TenantId, role.ToString());
+            throw new ForbiddenException(MfaErrors.EnrollmentRequired);
+        }
+
         return await next();
     }
 
@@ -116,14 +127,15 @@ public sealed class AuthorizationBehavior<TRequest, TResponse>(ICurrentUser curr
         throw new ForbiddenException(TenancyErrors.Forbidden);
     }
 
-    private sealed record Declaration(string Operation, bool Anonymous, Permission[] Permissions, bool PlatformOperator)
+    private sealed record Declaration(string Operation, bool Anonymous, Permission[] Permissions, bool PlatformOperator, bool AllowedWithoutSecondFactor)
     {
         public static Declaration Of(Type request) => new(
             request.Name,
             request.IsDefined(typeof(AllowAnonymousRequestAttribute), inherit: true),
             [.. ((RequiresPermissionAttribute[])request.GetCustomAttributes(typeof(RequiresPermissionAttribute), inherit: true))
                 .Select(attribute => attribute.Permission)],
-            request.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true));
+            request.IsDefined(typeof(RequiresPlatformOperatorAttribute), inherit: true),
+            request.IsDefined(typeof(AllowedWithoutSecondFactorAttribute), inherit: true));
     }
 }
 
@@ -152,6 +164,10 @@ internal static partial class AuthorizationLog
     [LoggerMessage(EventId = SecurityEventIds.TenantSuspendedAccessDenied, Level = LogLevel.Warning,
         Message = "Acceso denegado a {Operation}: la empresa está suspendida. UserId {UserId}, TenantId {TenantId}")]
     public static partial void TenantSuspended(ILogger logger, string operation, Guid? userId, Guid? tenantId);
+
+    [LoggerMessage(EventId = SecurityEventIds.MfaEnrollmentRequiredDenied, Level = LogLevel.Warning,
+        Message = "Acceso denegado a {Operation}: el rol exige el segundo factor y la cuenta no lo tiene activo. UserId {UserId}, TenantId {TenantId}, rol {Role}")]
+    public static partial void MfaEnrollmentRequired(ILogger logger, string operation, Guid? userId, Guid? tenantId, string role);
 
     [LoggerMessage(EventId = SecurityEventIds.PlatformSessionRevoked, Level = LogLevel.Warning,
         Message = "Token de plataforma válido de una cuenta que ya no es un operador activo, en {Operation}. UserId {UserId}")]

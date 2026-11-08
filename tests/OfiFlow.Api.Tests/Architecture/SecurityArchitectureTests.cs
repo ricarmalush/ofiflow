@@ -85,7 +85,10 @@ public class SecurityArchitectureTests
             MfaServiceFile,
             MfaStoreFile,
             // el login consulta si la cuenta que se autentica tiene el segundo factor activo (siempre por su Id): decide si basta la contraseña (spec 010 R10)
-            "src/OfiFlow.Infrastructure/Identity/IdentityService.cs"
+            "src/OfiFlow.Infrastructure/Identity/IdentityService.cs",
+            // la puerta del segundo factor obligatorio (spec 022 R5): ¿tiene la cuenta DEL TOKEN un factor confirmado? Una subconsulta (Any) dentro de la consulta de la pertenencia, filtrada por el
+            // Id de esa cuenta; no lista ni devuelve nada, solo un booleano. Está aquí y no en MfaService para no añadir una ida a la base de datos por petición.
+            "src/OfiFlow.Infrastructure/Identity/CurrentUser.cs"
         ],
         ["RecoveryCodes"] = [MfaServiceFile, MfaStoreFile],
         ["MfaChallenges"] = [MfaServiceFile, MfaStoreFile],

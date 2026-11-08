@@ -72,6 +72,10 @@ Content-Type: application/json
 @tokenA = {{loginA.response.body.$.accessToken}}
 @refreshA = {{loginA.response.body.$.refreshToken}}
 
+### OJO (spec 022): A es el Owner de su empresa y, hasta que active el segundo factor, su sesión SOLO sirve para ver quién es y para activarlo (secciones del segundo
+### factor, más abajo). Todo lo demás (clientes, trabajos, equipo, sesiones...) responde 403 mfa.enrollment_required. Activa el factor de A (setup, enable, y vuelve a entrar
+### con login + mfa/verify) antes de probar las secciones de clientes; las de los demás roles (Manager, Technician, Employee) no lo exigen.
+
 ### Renovar la sesión de A (rota el token: el refreshToken anterior deja de valer)
 # @name refreshA
 POST {{host}}/api/v1/auth/refresh

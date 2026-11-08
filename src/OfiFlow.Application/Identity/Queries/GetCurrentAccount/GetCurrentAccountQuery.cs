@@ -9,4 +9,6 @@ namespace OfiFlow.Application.Identity.Queries.GetCurrentAccount;
 /// validado, nunca de la petición, así que nadie puede preguntar por otra persona por aquí.
 /// </summary>
 [RequiresPermission(Permission.AccountRead)]
+// Spec 022 R3: una de las CUATRO operaciones que puede hacer quien debe activar el segundo factor y aún no lo tiene (quién soy: la interfaz necesita saberlo precisamente para llevar a la persona a activar el factor).
+[AllowedWithoutSecondFactor]
 public sealed record GetCurrentAccountQuery : IRequest<CurrentAccountDto>;
