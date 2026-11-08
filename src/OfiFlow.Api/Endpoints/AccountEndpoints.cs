@@ -1,5 +1,6 @@
 using MediatR;
 using OfiFlow.Api.Common;
+using OfiFlow.Application.Identity.Commands.ChangePassword;
 using OfiFlow.Application.Identity.Commands.CloseAllSessions;
 using OfiFlow.Application.Identity.Commands.CloseSession;
 using OfiFlow.Application.Identity.Queries.GetCurrentAccount;
@@ -34,6 +35,21 @@ public static class AccountEndpoints
             })
             .WithName("GetCurrentAccount")
             .WithSummary("Quién eres: tu nombre y email, tu empresa, el Id de tu pertenencia, tu rol EFECTIVO (el de la base de datos, no el del token) y los permisos de ese rol. Los permisos sirven para pintar la interfaz; quien decide es siempre la API.");
+
+        // Cambiar mi contraseña estando dentro (spec 019). La cuenta sale del token, nunca del cuerpo: un «userId» o un «tenantId» que llegara en él se ignora (el comando no tiene ese campo). Exige la contraseña
+        // actual y, con el segundo factor activo, un código. Va en este grupo (autenticado) y NO está en la lista cerrada de operaciones permitidas sin el segundo factor (spec 022): primero se activa el factor.
+        group.MapPut("/password", async (ChangePasswordCommand command, ISender sender, HttpContext httpContext, CancellationToken cancellationToken) =>
+            {
+                await sender.Send(command, cancellationToken);
+
+                // No devuelve nada (ni tokens: la sesión actual sigue valiendo) y ninguna caché debe guardar la respuesta.
+                httpContext.Response.Headers.CacheControl = "no-store";
+
+                return Results.NoContent();
+            })
+            .WithName("ChangePassword")
+            .WithSummary("Cambia TU contraseña (exige la actual y, si tu cuenta tiene el segundo factor, un código de la app o de recuperación). Cierra todas tus OTRAS sesiones y conserva esta, anula los enlaces de recuperación pendientes y envía un aviso por correo. Responde 204; 400 si la actual es errónea, el código no vale o la nueva es igual a la actual. Los fallos de la actual cuentan para el bloqueo de cuenta.")
+            .RequireRateLimiting(RateLimiting.AccountPassword);
 
         // Cerrar todas mis sesiones (spec 014). Sin Id, cuerpo ni parámetros: la cuenta sale del token. Cuelga de este grupo (autenticado)
         // y no de /auth porque el grupo /auth es anónimo y su marca gana a RequireAuthorization() (lección de la spec 013).

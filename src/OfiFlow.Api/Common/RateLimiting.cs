@@ -36,6 +36,12 @@ public static partial class RateLimiting
     /// <summary>Cerrar todas mis sesiones (autenticada, rara; una consulta y una escritura): 10 por hora y por IP, con cubo propio (spec 014).</summary>
     public const string AccountSessions = "account-sessions";
 
+    /// <summary>
+    /// Cambiar mi contraseña estando dentro (autenticada y cara: hashea con PBKDF2 dos veces): <b>10 por hora y por IP</b> (spec 019 R12), como gestionar el segundo factor. Es solo la defensa contra el
+    /// gasto de CPU: lo que frena de verdad a quien tenga una sesión robada y pruebe contraseñas es el <b>bloqueo de cuenta</b> (cada fallo de la actual cuenta, R1). Cubo propio: no gasta el de otras rutas.
+    /// </summary>
+    public const string AccountPassword = "account-password";
+
     public const string AcceptInvitation = "auth-accept-invitation";
 
     /// <summary>
@@ -81,6 +87,7 @@ public static partial class RateLimiting
             options.AddPolicy(Logout, context => PerIp(context, permitLimit: 20, TimeSpan.FromMinutes(1)));
             // Acción rara y explícita de una persona identificada: pocas por hora basta y frena una sesión robada usada para molestar (spec 014 R7).
             options.AddPolicy(AccountSessions, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
+            options.AddPolicy(AccountPassword, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
             // Anónima y cara (hashea una contraseña con PBKDF2): sin límite sería una vía de agotamiento de CPU (spec 009 D7).
             options.AddPolicy(AcceptInvitation, context => PerIp(context, permitLimit: 10, TimeSpan.FromHours(1)));
             // Anónima y con envío de correo: sin límite sería una vía de abuso (llenar de correo a un tercero) y de enumeración (spec 018 R4).
