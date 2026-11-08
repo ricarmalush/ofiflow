@@ -172,7 +172,7 @@ Una persona legítima casi nunca produce un `1508` (la pantalla esconde el botó
 - **Recuperar a un `Owner` que lo pierde todo** desde la herramienta de plataforma (límite 3d).
 - **Un periodo de gracia por cuenta** y **«recordar este dispositivo»**, cuando haya clientes reales; avisos por correo al promover a alguien.
 - **Cerrar la ventana de enrolamiento** con un canal aparte (primer factor por correo), si el riesgo lo pide.
-- **Cambiar la contraseña estando dentro** (spec 019).
+- ~~**Cambiar la contraseña estando dentro** (spec 019).~~ **Hecho en la spec 019 ([ADR-025](ADR-025-cambiar-contrasena-dentro.md)).**
 
 ---
 

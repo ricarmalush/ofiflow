@@ -1,6 +1,6 @@
 # Spec — 019-cambiar-contrasena
 
-**Estado:** Aprobada (2026-11-08). Decisiones D1–D11 aprobadas; D2 (código del segundo factor) y D3 (cerrar las demás sesiones y mantener esta) confirmadas expresamente
+**Estado:** Implementada (2026-11-09; aprobada el 2026-11-08). Decisiones D1–D11 aprobadas; D2 (código del segundo factor) y D3 (cerrar las demás sesiones y mantener esta) confirmadas expresamente
 **Fecha:** 2026-11-08
 **Bounded Context:** Identity
 **Depende de:** spec 018 y ADR-021 (restablecer la contraseña: la misma operación de fijar una contraseña nueva, el aviso por correo y la regla de cerrar sesiones; esta spec es la otra mitad, «estando dentro»), spec 010 y ADR-014 (confirmar la contraseña actual contando para el bloqueo, el segundo factor, el código que se pide en las operaciones sensibles), specs 013–016 y ADR-018 (las sesiones y su cierre: el access token muere con su sesión), spec 022 y ADR-024 (el segundo factor obligatorio: la puerta, y que esta operación **no** está en su lista cerrada), ADR-012 (la autorización por permisos)

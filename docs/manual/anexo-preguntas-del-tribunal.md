@@ -194,6 +194,29 @@ La regla pasa por una interfaz con **una sola implementación registrada en `src
 **¿Qué error real encontrasteis?**
 No un fallo del código sino **huecos de los tests**, destapados por las mutaciones: dos eventos con el mismo número no rompían nada porque ningún test fijaba que fueran únicos, y un caso del interceptor del frontend («navegar aunque la cuenta no se haya podido cargar») sobrevivía porque el test no distinguía el caso. Ambos se cerraron con un test nuevo. *(Cap. 9)*
 
+### Cambiar la contraseña estando dentro (spec 019)
+
+**¿Qué hace falta para cambiar la contraseña estando dentro, y por qué no basta con tener sesión?**
+La contraseña **actual** y, si la cuenta tiene el segundo factor, también un **código**. Estar dentro no prueba nada contra la amenaza que esta operación cubre: **una sesión robada** (un token, un navegador desatendido) que quiere quedarse con la cuenta cambiando la contraseña. Pedir la actual (y el móvil) es pedir algo que esa sesión no tiene. Es otra amenaza que la del olvido, donde quien puede estar al otro lado es quien controla el buzón. *(Cap. 6, Parte 12; ADR-025)*
+
+**¿Por qué importa el orden de las comprobaciones?**
+Primero la actual (con la función del segundo factor: el intento se reserva antes y **cuenta para el bloqueo**), después el código y después «la nueva es distinta». Un error de la actual **no gasta** una comprobación del código; un código ausente no gasta ninguna; y «igual» solo se dice a quien ya demostró la actual, así que no revela nada. Las longitudes se rechazan **antes** de gastar nada. *(Cap. 6, Parte 12)*
+
+**¿Qué se cierra y qué se conserva al cambiarla?**
+Se cierran **todas las demás sesiones** de la cuenta y se conserva la actual (si no hay Id de sesión en el token, se cierran todas: *fail-closed*). Se **revoca** y no se borra, para que un refresh token cerrado que alguien use después se siga detectando como reutilización en vez de dar un «no existe» silencioso. Y se anulan los **enlaces de recuperación pendientes**: un atacante con acceso al buzón que había pedido un restablecimiento no puede usarlo después. *(Cap. 6, Parte 12)*
+
+**¿Por qué todo en una sola confirmación?**
+Porque si se hiciera por partes, un fallo entre medias dejaría la contraseña cambiada con las sesiones ajenas vivas, justo lo que necesita quien tenía la sesión robada. Tres piezas no confirman por su cuenta y las confirma el caso de uso, una vez; un escaneo de arquitectura lo fija, y un test contra SQL Server real provoca una **carrera real** de dos cambios (gana uno, el otro recibe `400 password.current_invalid`, nunca un `500`). *(Cap. 6, Parte 12; cap. 9)*
+
+**¿Un `Owner` sin segundo factor puede cambiar su contraseña?**
+No: la operación no está en la lista cerrada de la puerta (spec 022) y recibe `403 mfa.enrollment_required`. Primero activa el factor. Mantiene la lista exacta de cuatro operaciones y la regla «lo no marcado se deniega». *(Cap. 8)*
+
+**¿Qué riesgo NO cierra?**
+Que quien tenga **la contraseña actual y una sesión** de una cuenta **sin** segundo factor (`Manager`, `Technician`, `Employee`) puede cambiarla y expulsar al dueño: la contraseña actual es justo lo que demuestra «ser quien debe». Con factor, y siempre para `Owner` y `Admin`, el código lo impide. Tampoco hay un enlace para deshacer en el aviso por correo, ni se puede elegir cerrar también la sesión actual, ni se comprueba contra una lista de contraseñas filtradas. *(Cap. 8, límite 3o)*
+
+**¿Qué error real encontrasteis?**
+Uno que no era del producto: un test de extremo a extremo **mataba su propia sesión**, porque renovaba con el refresh token de una sesión ya cerrada y la detección de reutilización cerraba también la actual. Era la protección funcionando; el test se reordenó, y es el mejor argumento a favor de revocar y no borrar. Otro: el test de «nada sensible en `me`» falló porque el nombre del permiso (`Account.ChangePassword`) contiene `password`; no se relajó, se cambió para comprobar la forma de los permisos. *(Cap. 9)*
+
 ### La agenda (spec 020)
 
 **¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
@@ -255,7 +278,7 @@ EF Core parametriza las consultas; los analizadores de seguridad del compilador 
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, una `Content-Security-Policy` muy restrictiva y `Cross-Origin-Resource-Policy`; y HSTS fuera de desarrollo. La única excepción es la pantalla de Swagger, solo en desarrollo y solo en su ruta, con tests que impiden que se extienda. *(Cap. 8)*
 
 **¿Qué se registra y qué no?**
-Hay 52 eventos de seguridad con identificador estable (`1001`...`1608`; los dos últimos, `1304` y `1508`, son del segundo factor obligatorio). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
+Hay 53 eventos de seguridad con identificador estable (`1001`...`1608`; `1304` y `1508` son del segundo factor obligatorio y `1023`, de cambiar la contraseña desde dentro). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
 
 **¿Cómo se manejan los secretos?**
 Fuera del repositorio. gitleaks escanea **todo el historial** en cada PR, GitHub bloquea el `push` si detecta uno conocido, y la aplicación **no arranca** si falta el secreto del token. *(Cap. 6, 10)*
@@ -306,7 +329,7 @@ Porque obliga a pensar antes (las decisiones difíciles se descubren al escribir
 
 **¿Qué NO está hecho? (la pregunta más importante)**
 Con honestidad y de lo más a lo menos preocupante:
-- **El TOTP no resiste al *phishing*, queda la ventana de enrolamiento y un `Owner` que lo pierde todo no se recupera solo:** el segundo factor es **obligatorio para `Owner` y `Admin`** (spec 022), pero una cuenta que aún no lo ha activado puede ser tomada por quien conozca su contraseña activándolo él, las *passkeys* son el siguiente paso, y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma. La contraseña se puede recuperar (spec 018) pero no cambiar estando dentro.
+- **El TOTP no resiste al *phishing*, queda la ventana de enrolamiento y un `Owner` que lo pierde todo no se recupera solo:** el segundo factor es **obligatorio para `Owner` y `Admin`** (spec 022), pero una cuenta que aún no lo ha activado puede ser tomada por quien conozca su contraseña activándolo él, las *passkeys* son el siguiente paso, y un `Owner` que pierde el móvil y los códigos de recuperación queda fuera hasta que intervenga el operador de la plataforma. La contraseña se puede recuperar (spec 018) y cambiar estando dentro (spec 019), aunque sin segundo factor una sesión robada que conozca la contraseña actual puede cambiarla.
 - **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Crear una cuenta (spec 021) deja abiertos los textos legales** (los redacta el dueño del proyecto), que las cuentas anteriores **no han aceptado ninguna condición**, la comprobación **anti-robots**, que el límite de 3 pedidos por hora y por IP **puede frenar a una oficina entera**, y que el límite de avisos vive **en memoria**.
@@ -320,7 +343,7 @@ Con honestidad y de lo más a lo menos preocupante:
 *(Secciones "Dónde están hoy los límites" de los capítulos 6, 8, 9 y 10)*
 
 **¿Qué cerrarías primero?**
-Una respuesta defendible: **la recuperación de un `Owner` que lo pierde todo (la herramienta de plataforma) y cambiar la contraseña estando dentro**, porque el segundo factor ya es obligatorio para `Owner` y `Admin` (spec 022) y, justo por eso, quien lo pierde todo ya no puede «quitarlo y entrar solo con la contraseña». Lo siguiente, cerrar la ventana de enrolamiento con un canal aparte y que el técnico solo vea sus trabajos. **Lo importante es poder explicar por qué eliges ese**, no cuál eliges.
+Una respuesta defendible: **la recuperación de un `Owner` que lo pierde todo (la herramienta de plataforma)**, porque el segundo factor ya es obligatorio para `Owner` y `Admin` (spec 022) y, justo por eso, quien lo pierde todo ya no puede «quitarlo y entrar solo con la contraseña». Lo siguiente, cerrar la ventana de enrolamiento con un canal aparte y que el técnico solo vea sus trabajos. **Lo importante es poder explicar por qué eliges ese**, no cuál eliges.
 
 **¿Qué no harías igual hoy?**
 Hay decisiones que se tomaron y conviene reconocer: no existe todavía una ADR que explique por qué se usa EF Core y no SQL a mano; la imagen de SQL Server de los tests está escrita en dos ficheros; y algunas listas blancas se mantienen a mano. Reconocerlo, con su plan, suma.
