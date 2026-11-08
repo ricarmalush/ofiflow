@@ -115,6 +115,12 @@ public static class SecurityEventIds
     public const int PendingRegistrationsPurged = 1022;
 
     /// <summary>
+    /// Alguien cambió su contraseña estando dentro, con la contraseña actual (y el código del segundo factor si lo tiene) (spec 019): <c>UserId</c> y cuántas sesiones ajenas se cerraron. Nunca la contraseña, el
+    /// código ni el email. Los fallos ya los registran <c>1001</c> (con el motivo <c>ReauthenticationFailed</c>) y <c>1504</c> (el código): no hay un evento aparte.
+    /// </summary>
+    public const int PasswordChangedFromSession = 1023;
+
+    /// <summary>
     /// Una persona cerró <b>una sesión concreta</b> suya (spec 016 R17), distinta de «cerrar todas» (<see cref="AllSessionsClosed"/>) y de salir de la
     /// propia (<see cref="SessionClosed"/>). Solo se registra cuando de verdad cerró algo. Lleva el UserId y si era la sesión actual; <b>nunca</b> el Id de la
     /// sesión cerrada, ni tokens ni hashes (una ráfaga de estos del mismo UserId seguida de un inicio de sesión es alguien con una sesión robada echando a su dueño).

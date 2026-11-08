@@ -221,9 +221,16 @@ public sealed class AccountMeEndToEndTests(PlatformFlowFixture fixture) : IClass
         Assert.Equal(
             ["email", "membershipId", "name", "permissions", "role", "secondFactorEnrollmentRequired", "secondFactorRequired", "tenantId", "tenantName", "userId"],
             JsonDocument.Parse(body).RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        // Las palabras prohibidas se buscan en todo MENOS en los NOMBRES de los permisos: desde la spec 019 uno de ellos es «Account.ChangePassword» (el nombre de lo que se puede hacer, no un valor).
+        // Los permisos se comprueban aparte: solo pueden ser nombres estables con la forma «Grupo.Acción», sin ningún valor.
+        using var document = JsonDocument.Parse(body);
+        var permissions = document.RootElement.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()!).ToList();
+        Assert.NotEmpty(permissions);
+        Assert.All(permissions, name => Assert.Matches(@"^[A-Z][A-Za-z]+.[A-Z][A-Za-z]+$", name));
+        var withoutThePermissionNames = string.Join(" ", document.RootElement.EnumerateObject().Where(p => p.Name != "permissions").Select(p => p.Value.ToString()));
         foreach (var forbidden in new[] { "password", "hash", "secret", "recovery", "token", "cipher" })
         {
-            Assert.DoesNotContain(forbidden, body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(forbidden, withoutThePermissionNames, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

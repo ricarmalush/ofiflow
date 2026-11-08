@@ -41,6 +41,13 @@ public interface ITokenService
     Task<int> RevokeAllRefreshTokensWithoutSavingAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Cierra <b>todas las sesiones de la cuenta menos la actual</b>, <b>sin confirmar</b> (spec 019 R6, D3): cambiar la contraseña desde dentro deja a quien la cambia en su sesión y echa a las demás
+    /// (otros dispositivos, o quien tuviera una sesión robada). La confirma el caso de uso, junto con la contraseña nueva y el resto (todo o nada). Sin Id de sesión actual (<c>null</c>) no hay «actual» que
+    /// conservar y se cierran <b>todas</b> (<i>fail-closed</i>). Devuelve cuántas cerró. Solo de la cuenta que llega del token.
+    /// </summary>
+    Task<int> RevokeOtherRefreshTokensWithoutSavingAsync(Guid userId, Guid? currentSessionId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Las sesiones <b>activas</b> de una cuenta (spec 016 R10): las que tienen un refresh token sin revocar y sin caducar, en todas sus empresas, de la más
     /// reciente a la más antigua por última actividad. Una sesión que renovó varias veces sale <b>una vez</b>. Solo lee. Devuelve los datos tal como están
     /// guardados (el navegador sin interpretar, la IP ya truncada): convertirlos para mostrarlos es cosa de Application, que nunca los devuelve crudos.

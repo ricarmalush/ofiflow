@@ -45,6 +45,15 @@ public sealed class FakePasswordResetService : IPasswordResetService
         return Task.FromResult(ConsumeResult);
     }
 
+    /// <summary>Las cuentas cuyos enlaces pendientes se anularon SIN confirmar (spec 019), en orden.</summary>
+    public List<Guid> UsersWithPendingInvalidated { get; } = [];
+
+    public Task InvalidatePendingWithoutSavingAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        UsersWithPendingInvalidated.Add(userId);
+        return Task.CompletedTask;
+    }
+
     public Task<PasswordResetIssue> IssueAsync(string email, CancellationToken cancellationToken)
     {
         Requested.Add(email);

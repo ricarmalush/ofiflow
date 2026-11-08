@@ -124,6 +124,21 @@ internal sealed class PasswordResetService(ApplicationDbContext dbContext, TimeP
         return new PasswordResetConsumption(PasswordResetConsumeOutcome.Consumed, entity.UserId);
     }
 
+    // Spec 019 D4: al cambiar la contraseña desde dentro, los enlaces de recuperación vigentes de la cuenta dejan de valer. SIN confirmar: lo confirma el caso de uso con el resto. Solo de la cuenta
+    // que llega del token (el Where por UserId es lo único que separa una cuenta de otra: la tabla no tiene filtro de empresa). Invalidate conserva la fecha del primer uso.
+    public async Task InvalidatePendingWithoutSavingAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var pending = await dbContext.PasswordResetTokens
+            .Where(t => t.UserId == userId && t.UsedAt == null && t.ExpiresAt > now)
+            .ToListAsync(cancellationToken);
+
+        foreach (var token in pending)
+        {
+            token.Invalidate(now);
+        }
+    }
+
     private static PasswordResetConsumption Rejected(string reason, Guid? userId = null) =>
         new(PasswordResetConsumeOutcome.Rejected, userId, reason);
 

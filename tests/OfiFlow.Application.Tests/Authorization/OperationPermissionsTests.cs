@@ -6,6 +6,7 @@ using OfiFlow.Application.Customers.Commands.UpdateCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomer;
 using OfiFlow.Application.Customers.Queries.GetCustomers;
 using OfiFlow.Application.Identity.Commands.AcceptInvitation;
+using OfiFlow.Application.Identity.Commands.ChangePassword;
 using OfiFlow.Application.Identity.Commands.CloseAllSessions;
 using OfiFlow.Application.Identity.Commands.CloseSession;
 using OfiFlow.Application.Identity.Commands.ForgotPassword;
@@ -94,7 +95,9 @@ public class OperationPermissionsTests
         (typeof(CloseAllSessionsCommand), Permission.AccountCloseSessions),
         // Spec 016: ver mis sesiones (leer la propia cuenta: Account.Read) y cerrar una concreta mía (el mismo permiso que cerrarlas todas). Sin permisos nuevos (D7).
         (typeof(ListMySessionsQuery), Permission.AccountRead),
-        (typeof(CloseSessionCommand), Permission.AccountCloseSessions)
+        (typeof(CloseSessionCommand), Permission.AccountCloseSessions),
+        // Spec 019: cambiar la propia contraseña estando dentro (los cinco roles; exige además la contraseña actual).
+        (typeof(ChangePasswordCommand), Permission.AccountChangePassword)
     ];
 
     private static readonly Type[] AnonymousTable =
@@ -205,7 +208,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(46, inTheTable.Count);
+        Assert.Equal(47, inTheTable.Count); // 46 + ChangePasswordCommand (spec 019): el contador obliga a declarar cada operación nueva a propósito
     }
 
     private static bool IsMediatRRequest(Type type) =>

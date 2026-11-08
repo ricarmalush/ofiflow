@@ -34,4 +34,10 @@ public static class IdentityErrors
     /// se envió, nunca de si el email tiene cuenta.
     /// </summary>
     public const string TermsNotAccepted = "registration.terms_not_accepted";
+
+    /// <summary>La contraseña actual que se pide para cambiarla no es correcta (spec 019 R1). Un <c>400</c>: la persona está autenticada y es su propia contraseña.</summary>
+    public const string PasswordCurrentInvalid = "password.current_invalid";
+
+    /// <summary>La contraseña nueva es igual a la actual (spec 019 D5): no cambiaría nada y cerraría sesiones y mandaría un correo para nada. No revela nada: quien lo recibe acaba de demostrar la actual.</summary>
+    public const string PasswordUnchanged = "password.unchanged";
 }

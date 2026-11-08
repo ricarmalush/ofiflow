@@ -58,6 +58,18 @@ public sealed class FakeTokenService : ITokenService
         return Task.FromResult(3);
     }
 
+    /// <summary>Las llamadas a «cerrar las demás sesiones SIN confirmar» (spec 019): la cuenta y la sesión que se conserva (<c>null</c> = ninguna), en orden.</summary>
+    public List<(Guid UserId, Guid? CurrentSessionId)> OtherSessionsRevokedWithoutSaving { get; } = [];
+
+    /// <summary>Cuántas sesiones ajenas dice haber cerrado el doble.</summary>
+    public int OtherSessionsClosed { get; set; } = 2;
+
+    public Task<int> RevokeOtherRefreshTokensWithoutSavingAsync(Guid userId, Guid? currentSessionId, CancellationToken cancellationToken)
+    {
+        OtherSessionsRevokedWithoutSaving.Add((userId, currentSessionId));
+        return Task.FromResult(OtherSessionsClosed);
+    }
+
     /// <summary>Las sesiones activas que devuelve «listar» (spec 016), las que el test quiera; y para qué cuentas se pidió.</summary>
     public List<ActiveSession> ActiveSessions { get; } = [];
 

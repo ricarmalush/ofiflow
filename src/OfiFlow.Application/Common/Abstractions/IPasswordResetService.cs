@@ -19,6 +19,12 @@ public interface IPasswordResetService
     /// consume nada. Dos canjes a la vez del mismo token los resuelve la versión de fila de la tabla al confirmar: gana uno.
     /// </summary>
     Task<PasswordResetConsumption> ConsumeAsync(string token, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Anula, <b>sin confirmar</b>, los enlaces de recuperación vigentes de la cuenta (spec 019 R7, D4): quien cambia su contraseña desde dentro no debe dejar una vía para cambiarla otra vez con un enlace
+    /// pedido antes (por ejemplo, por alguien con acceso al buzón). Conserva la fecha del primer uso, como al anular los demás en <see cref="ConsumeAsync"/>. La confirma el caso de uso. Solo de esa cuenta.
+    /// </summary>
+    Task InvalidatePendingWithoutSavingAsync(Guid userId, CancellationToken cancellationToken);
 }
 
 /// <summary>Qué pasó al canjear un token. Solo lo ve el caso de uso y el registro: la respuesta HTTP es el mismo error para todos los rechazos (R8).</summary>

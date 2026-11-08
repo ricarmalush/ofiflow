@@ -64,5 +64,12 @@ public enum Permission
     /// (<c>DELETE /account/sessions</c>, spec 014). Lo tienen los cinco roles: la persona decide sobre sus propias credenciales y la
     /// operación solo <i>quita</i> acceso. No es <see cref="MfaManage"/> ni <see cref="AccountRead"/>: un permiso dice <i>qué se hace</i>.
     /// </summary>
-    AccountCloseSessions
+    AccountCloseSessions,
+
+    /// <summary>
+    /// Account.ChangePassword: cambiar la <b>propia</b> contraseña estando dentro (<c>PUT /account/password</c>, spec 019). Lo tienen los cinco roles y solo sobre la propia cuenta: la persona sale
+    /// del token, nunca de la petición. Exige además la contraseña actual (y el código del segundo factor si lo tiene), así que una sesión robada no basta. No es <see cref="MfaManage"/> ni
+    /// <see cref="AccountCloseSessions"/> aunque lo tengan los mismos roles: un permiso dice <i>qué se hace</i>.
+    /// </summary>
+    AccountChangePassword
 }
