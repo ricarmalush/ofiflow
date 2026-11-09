@@ -1,8 +1,8 @@
 # Tasks — 024-perfil-fiscal-empresa
 
 **Spec relacionada:** [./spec.md](./spec.md)
-**ADR relacionadas:** [ADR-012](../../adr/ADR-012-autorizacion-rbac.md) (los dos permisos), [ADR-002](../../adr/ADR-002-multi-tenancy.md) (aislamiento por empresa), [ADR-006](../../adr/ADR-006-persistencia-domain-events.md) (entidades y `Guid`), [ADR-009](../../adr/ADR-009-seguridad-owasp.md) (datos personales y registro), [ADR-011](../../adr/ADR-011-errores-codigos-diccionario.md) (códigos de error), [ADR-024](../../adr/ADR-024-segundo-factor-obligatorio.md) (la puerta se aplica sola) y la nueva **ADR-027** («Perfil fiscal de la empresa»)
-**Estado general:** Pendiente de aprobación de la spec
+**ADR relacionadas:** [ADR-012](../../adr/ADR-012-autorizacion-rbac.md) (los dos permisos), [ADR-002](../../adr/ADR-002-multi-tenancy.md) (aislamiento por empresa), [ADR-006](../../adr/ADR-006-persistencia-domain-events.md) (entidades y `Guid`), [ADR-009](../../adr/ADR-009-seguridad-base.md) (datos personales y registro), [ADR-011](../../adr/ADR-011-errores-codigos-diccionario.md) (códigos de error), [ADR-024](../../adr/ADR-024-segundo-factor-obligatorio.md) (la puerta se aplica sola) y la nueva **ADR-027** («Perfil fiscal de la empresa»)
+**Estado general:** Implementada: los bloques 1 a 4 están hechos y commiteados salvo el commit del bloque 4, el push de las dos ramas y los PR (solo con orden expresa)
 
 ---
 
@@ -55,22 +55,22 @@
 - [x] [externo] Commit del bloque 3
 
 ### Bloque 4 — Documentación y cierre
-- [ ] **ADR-027** «Perfil fiscal de la empresa» (decisiones D4 a D8, el modelo de amenazas y los riesgos aceptados) y anotaciones «Ampliada por» en ADR-012 (los dos permisos y las 100 celdas) y ADR-002 (una entidad más de la empresa).
-- [ ] **Manual:** capítulos afectados (modelo, permisos, API, errores, eventos, tests) y anexo; recuentos (20 permisos, 100 celdas, 57 operaciones, 66 códigos de error, 54 eventos) comprobados contra el código.
-- [ ] **Spec y tasks cerradas**, `README.md` y `docs/README.md` al día; la ADR-026 y las specs siguientes renumeradas (PDF → 025, correo → 026).
+- [x] **ADR-027** «Perfil fiscal de la empresa» (decisiones D4 a D8, el modelo de amenazas y los riesgos aceptados) y anotaciones «Ampliada por» en ADR-012 (los dos permisos y las 100 celdas) y ADR-002 (una entidad más de la empresa).
+- [x] **Manual:** capítulos afectados (modelo, permisos, API, errores, eventos, tests) y anexo; recuentos (20 permisos, 100 celdas, 57 operaciones, 66 códigos de error, 54 eventos) comprobados contra el código.
+- [x] **Spec y tasks cerradas**, `README.md` y `docs/README.md` al día; la ADR-026 y las specs siguientes renumeradas (PDF → 025, correo → 026).
 - [ ] [externo] Commit del bloque 4, push de las dos ramas y PR (solo con orden expresa)
 
 ---
 
 ## Notas / bloqueos
 
-- Los recuentos del bloque 4 (códigos de error y eventos) son estimaciones por ahora: se confirman contra el código al cerrar.
+- Los recuentos del bloque 4 se **comprobaron contra el código** al cerrar: 20 permisos, 100 celdas, 57 operaciones, **66 códigos de error** y **54 eventos** (las estimaciones eran correctas).
 - El perfil de una empresa **nace al guardarlo**, no al registrarse: no hay migración de datos para las empresas existentes.
 - **Bloque 1 hecho (2026-11-09)** — Domain 615 (+150), Application 1215 (+63), Infrastructure 879 (+14), Api 965 (sin cambios); migración `AddCompanyProfile` (una tabla y un índice único, revisada a mano). Lo que se decidió o se encontró al hacerlo:
   - **`IsComplete` solo en el DTO**, no en la entidad: como el `PUT` exige los cinco obligatorios, un perfil que existe siempre está completo; el DTO vacío es el único incompleto.
   - **Los objetos de valor son los que garantizan la forma:** `SpanishTaxId` y `SpanishPostalCode` no existen sin ser válidos; `CompanyProfile` solo recibe los ya construidos. Solo se pasan a mayúscula las letras **ASCII**: con `ToUpperInvariant`, la «ſ» (s larga) se habría convertido en una «S» válida (lo destapó una mutación).
   - **Un fallo real encontrado por un test:** con el NIF ausente en el JSON (`null`), el validador lanzaba `NullReferenceException` (un `500`); ahora cada campo da un único error y un valor ausente nunca llega a la regla de forma.
-  - **NIF validado contra 8 identificadores reales y públicos** (Telefónica, Santander, Inditex, Iberdrola, Repsol y organismos) además de los calculados: 91 casos fijos en `TaxIdVectors.json` (el frontend copiará el fichero).
+  - **NIF validado contra 8 identificadores reales y públicos** (Telefónica, Santander, Inditex, Iberdrola, Repsol y organismos) además de los calculados: 89 casos fijos en `TaxIdVectors.json` (el frontend copiará el fichero).
   - **Mutaciones: 109/111 detectadas** (`mutate024b1.mjs`: el algoritmo paso a paso, los tipos de entidad, la normalización, el rango de provincias, cada cota, los seis permisos de la tabla, la carrera del alta, el registro sin datos, el esquema real de SQL Server). Dos supervivientes **equivalentes por diseño**: `IsDigit` en lugar de `IsAsciiDigit` en la primera cifra del NIF (la comprobación posterior de cifras ASCII ya lo rechaza) y en el código postal (el rango de provincia 01–52 ya rechaza cualquier cifra de otro alfabeto). Siete mutaciones se replantearon (mal escritas por mi parte, no tests flojos) y una no compilaba y se rehízo.
   - Los NIF especiales **K, L y M** (menores y extranjeros sin NIE) no se admiten por ahora (D6).
   - El perfil se probó contra **SQL Server real** con ocho rondas de cuatro altas simultáneas (queda un solo perfil y nadie recibe un error), el NIF repetido entre empresas sin diferencia observable y el plan de lectura por el índice de la empresa.
@@ -89,3 +89,8 @@
   - **Mutaciones: 66/69 detectadas** (`mutate024b3.mjs`: el algoritmo paso a paso, los tipos de entidad, la normalización, el rango de provincias, el permiso y el modo lectura, el recorte de cada campo, los errores por campo, el servicio, la ruta y el menú). Tres supervivientes **equivalentes**: la longitud normalizada que solo rechaza las largas (las cortas las rechaza la comprobación de cifras), el texto vacío que cuenta como cifras (no llega nunca vacío) y el teléfono de 21 caracteres (el patrón ya lo rechaza). Cinco supervivientes iniciales eran huecos reales de mis pruebas (el recorte del NIF, la dirección, la población y el código postal; el opcional de solo espacios) y se cerraron con dos pruebas; una mutación de la ruta (R1) estaba mal escrita y no aplicaba, se corrigió y se detecta. Una primera pasada quedó invalidada por lanzar dos copias del bucle a la vez sobre los mismos ficheros (se comprobó que las fuentes estaban restauradas y se repitió limpia).
   - **Comprobación en el navegador** (API real, base desechable, Mailpit, dos factores calculado): un `Employee` ve la pantalla en solo lectura con el aviso, sin botón; un `Technician` no tiene entrada de menú y al escribir `/company` va a «Acceso denegado»; el `Owner` ve el perfil vacío con el aviso de completarlo, un NIF con letra equivocada da su error bajo el campo y **no envía nada**, `12.345.678-z` se guarda (PUT 204 + relectura), se ve como `12345678Z` y el aviso desaparece; en la base queda una fila con el NIF de 9 caracteres; `a@b` pasa la ayuda de Angular y lo rechaza la API: su mensaje sale bajo el campo y el botón sigue usable; el registro de la API trae el evento `1409` y ni el NIF ni la dirección ni el nombre.
   - **Diferencia aceptada:** el email lo valida Angular (acepta `a@b`) y la API con su propia regla; manda la API, y su error por campo se pinta. Los `<input type="email">` además recortan los espacios al escribir el navegador, por eso el recorte del email no es observable en la pantalla.
+- **Bloque 4 hecho (2026-11-09)** — documentación, sin código. Lo que se escribió y lo que se encontró al hacerlo:
+  - **ADR-027** (decisiones D4 a D8 con sus alternativas, el modelo de amenazas, los riesgos aceptados, `Lo que cambió al implementar`, los hallazgos, las cifras y la recomendación de despliegue) y las anotaciones «Ampliada por» en **ADR-012** (los dos permisos, 20 permisos y 100 celdas) y **ADR-002** (una entidad más de la empresa, sin ninguna excepción al filtro).
+  - **Manual:** capítulos 0 (la entidad, la API y una subsección propia), 3 (las carpetas de Domain y Application), 5 (la séptima entidad de la empresa), 7 (`CompanyErrors`; **66 códigos**), 8 (los dos permisos en la tabla, una sección sobre el dato personal que no debe salir, el evento `1409`, **54 eventos**, cuatro amenazas, el límite 3q y dos preguntas), 9 (las cifras: **3752 casos** del backend y **849** del frontend, y el bloque de la spec 024), 12 (tres términos, la ADR y la spec) y el anexo (ocho preguntas, el recuento de eventos y un límite honesto).
+  - **Renumeración:** el PDF pasa a ser la spec **025** y el correo la **026** en la ADR-026 y en la spec 023.
+  - **Dos errores de la documentación que se encontraron al repasarla:** el `spec.md` de esta spec (commiteado con la spec) tenía un acento grave sobrante al principio de **cada línea** —por un fallo de mi escritura inicial— que rompía los encabezados y el bloque de código al renderizarlo, y la cabecera de `tasks.md` enlazaba la ADR-009 con un nombre de fichero que no existe (`seguridad-owasp` en vez de `seguridad-base`); la nota de las pruebas del bloque 1 decía 91 casos fijos y son **89**.

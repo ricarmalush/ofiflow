@@ -84,3 +84,4 @@ Se decide:
 - Depende de: ADR-004 (Identity) — usa el modelo `User / Tenant / TenantUser` y el JWT ya decididos allí.
 - Depende de: ADR-005 (Modular Monolith) — el `TenantContext` y el Global Query Filter viven dentro de la misma estructura de Modular Monolith.
 - Afecta a: ADR-003 (CQRS) — Commands y Queries deben recibir el `TenantContext` de forma consistente.
+- Ampliada por: **[ADR-027](ADR-027-perfil-fiscal-empresa.md)** (spec 024, perfil fiscal de la empresa) — una entidad más de la empresa, `CompanyProfile` (`ITenantOwned`, **una por empresa** con un índice único por `TenantId`), que hereda el filtro global **sin ninguna excepción nueva**: se eligió una entidad propia en vez de columnas en `Tenant` precisamente porque `Tenant` es la entidad global y solo se lee en sitios de una lista blanca. El NIF **no es único entre empresas**: un índice único global dejaría averiguar si otra empresa ya usa un NIF.
