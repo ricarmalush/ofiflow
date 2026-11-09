@@ -17,4 +17,8 @@ public sealed record UpdateQuoteCommand(
     string Title,
     string? Notes,
     DateOnly? ValidUntil,
-    IReadOnlyList<QuoteItemInput> Items) : IRequest;
+    IReadOnlyList<QuoteItemInput> Items) : IRequest
+{
+    // Como el de crear: nunca imprime su contenido.
+    public override string ToString() => nameof(UpdateQuoteCommand);
+}

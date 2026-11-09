@@ -16,4 +16,8 @@ public sealed record CreateQuoteCommand(
     string Title,
     string? Notes,
     DateOnly? ValidUntil,
-    IReadOnlyList<QuoteItemInput> Items) : IRequest<Guid>;
+    IReadOnlyList<QuoteItemInput> Items) : IRequest<Guid>
+{
+    // Un record imprimiría su título, sus notas y sus líneas si alguien lo registrara o lo metiera en un mensaje de error: datos comerciales que no se escriben en ningún sitio.
+    public override string ToString() => nameof(CreateQuoteCommand);
+}
