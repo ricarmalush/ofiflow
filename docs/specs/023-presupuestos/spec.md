@@ -1,6 +1,6 @@
 # Spec — 023-presupuestos
 
-**Estado:** Aprobada (2026-11-09). Las tres decisiones de forma (alcance, relación con cliente y trabajo, y dinero e IVA) están **confirmadas con la persona dueña del proyecto** (D1, D2 y D3); el resto (D4–D14) son recomendaciones por revisar
+**Estado:** Implementada (2026-11-09; aprobada el mismo día). Las tres decisiones de forma (alcance, relación con cliente y trabajo, y dinero e IVA) están **confirmadas con la persona dueña del proyecto** (D1, D2 y D3); el resto (D4–D14) son recomendaciones por revisar
 **Fecha:** 2026-11-09
 **Bounded Context:** Quotes (nuevo; **fase 3** del roadmap)
 **Depende de:** spec 001 (clientes: a quién se presupuesta), specs 003 y 020 (trabajos: el enlace opcional), spec 008 y ADR-012 (permisos por rol), ADR-002 (aislamiento por empresa), ADR-006 (identificadores `Guid`, cadena de herencia de entidades y borrado), ADR-011 (códigos de error), ADR-024 (la puerta del segundo factor: se aplica sola), ADR-022 (fechas: esta spec decide qué hacer con una fecha **sin hora**)

@@ -37,7 +37,7 @@ Esto se llama *multi-tenancy*. Lo importante: **los datos de la fontanera Marta 
 
 ## Los conceptos del negocio
 
-Hay cinco conceptos. Sus nombres en el código están en inglés, y conviene aprenderlos tal cual:
+Hay seis conceptos. Sus nombres en el código están en inglés, y conviene aprenderlos tal cual:
 
 | Concepto | Qué es | Ejemplo |
 |---|---|---|
@@ -46,6 +46,7 @@ Hay cinco conceptos. Sus nombres en el código están en inglés, y conviene apr
 | **TenantUser** | La relación entre un usuario y una empresa, con un **rol** | Marta es *Owner* de "Fontanería Marta"; Luis es *Technician* |
 | **Customer** | Un cliente de esa empresa (persona o empresa) | "Juan Pérez", con su teléfono y dirección |
 | **Job** | Un trabajo que se hace para un cliente | "Reparar fuga bajo el fregadero", prioridad *Urgent* |
+| **Quote** | Un presupuesto: el precio que se ofrece a un cliente, con sus líneas, su IVA y su total (spec 023) | "Reforma del baño: 87,33 €", enviado el 9 de noviembre |
 
 ¿Por qué existe `TenantUser` y no se pone el rol directamente en `User`? Porque **una misma persona puede trabajar en varias empresas con un rol distinto en cada una**. Un técnico autónomo puede ser *Owner* de la suya y *Technician* en la de un amigo. La relación entre persona y empresa es una cosa en sí misma, y por eso tiene su propia tabla.
 
@@ -82,6 +83,18 @@ El enumerado también incluye el estado `Pending`, pero **todavía no hay transi
 
 Estas reglas viven en un solo sitio, el código de [`Job`](../../src/OfiFlow.Domain/Jobs/Job.cs), de modo que da igual por dónde llegue la petición: nunca se puede completar un trabajo que no se ha empezado. En el capítulo 2 verás por qué.
 
+### El ciclo de vida de un presupuesto (spec 023)
+
+Un presupuesto nace como **borrador**: se le ponen las líneas (descripción, cantidad, precio e IVA) y se corrige las veces que haga falta. Cuando alguien con permiso lo **envía**, pasa a ser un compromiso de precio y **ya no se puede modificar ni eliminar**: si hay que corregirlo, se hace otro. Después se anota si el cliente lo **aceptó** o lo **rechazó**, y un presupuesto resuelto no se reabre.
+
+```
+Borrador ──enviar──▶ Enviado ──aceptar──▶ Aceptado
+   │                    └─────rechazar──▶ Rechazado
+   └── eliminar (solo un borrador)
+```
+
+Dos ideas que conviene tener claras desde el principio: **el total lo calcula siempre el servidor** (la pantalla enseña una vista previa mientras se edita, pero lo que manda es lo que la API devuelve al guardar) y **«enviar» solo anota** que se ha mandado (el PDF y el correo son pasos posteriores).
+
 ## Qué se puede hacer hoy
 
 Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y responde con JSON). Las pantallas viven en **otro repositorio**, `ofiflow-frontend` (Angular): hoy tiene el acceso, **crear una cuenta**, la recuperación de contraseña, clientes, trabajos, la agenda, el equipo y la seguridad de la cuenta; la app móvil llegará en una fase posterior. Estas son todas las operaciones que existen:
@@ -107,6 +120,9 @@ Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y
 | | Reiniciar el segundo factor de un miembro (spec 010) | `DELETE /api/v1/users/{id}/mfa` |
 | **Segundo factor** (requiere sesión; spec 010) | Ver el estado / pedir el secreto / confirmar / desactivar / regenerar los códigos de recuperación. **Es obligatorio para `Owner` y `Admin` (spec 022):** hasta activarlo solo pueden hacer **ver el estado, pedir el secreto y confirmarlo** (más «quién soy»); todo lo demás da `403 mfa.enrollment_required`; y **no pueden desactivarlo** (`400 mfa.required_for_role`) | `GET`, `POST /setup`, `POST /enable`, `POST /disable`, `POST /recovery-codes` en `/api/v1/account/mfa` |
 | **Trabajos** (requiere sesión) | Crear / ver uno / listar / modificar | `POST`, `GET`, `GET`, `PUT` en `/api/v1/jobs` |
+| **Presupuestos** (requiere sesión; spec 023) | Crear un borrador (el servidor pone el número y los totales; una petición nunca lleva un total) / listar (paginado, con filtros por estado y cliente) / ver uno con sus líneas y su versión | `POST`, `GET`, `GET` en `/api/v1/quotes` |
+| | Modificar un **borrador** (sustituye la cabecera y todas las líneas; exige la versión leída) / eliminarlo | `PUT`, `DELETE /api/v1/quotes/{id}` |
+| | **Enviar** (Draft → Sent), **aceptar** y **rechazar** (Sent → Accepted o Rejected): comprometen un precio y exigen `Quotes.Issue` | `POST /api/v1/quotes/{id}/send`, `/accept`, `/reject` |
 | | Empezar / completar / cancelar | `POST /api/v1/jobs/{id}/start`, `/complete`, `/cancel` |
 | | Asignar a un técnico | `POST /api/v1/jobs/{id}/assign` |
 | | Programar / reprogramar (fecha y duración) y quitar de la agenda (spec 020) | `PUT /api/v1/jobs/{id}/schedule`, `DELETE /api/v1/jobs/{id}/schedule` |
@@ -145,7 +161,7 @@ OfiFlow lo construye **una sola persona** con unas 25 horas a la semana, con un 
 Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 
 - **App móvil, y unos textos legales:** no hay todavía app móvil. Y crear una cuenta ya funciona desde la web (spec 021), pero **las condiciones de uso y la política de privacidad que se aceptan al registrarse aún no están redactadas**: las escribe el dueño del proyecto, la API solo compara su versión y la pantalla las nombra sin enlazarlas hasta que existan. Hay que tenerlas antes de abrir el registro a clientes reales.
-- **Agenda completa, presupuestos, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Presupuestos, facturas y pagos son las fases 3 y 4 del roadmap.
+- **Agenda completa, el PDF de los presupuestos, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Los **presupuestos** existen desde la spec 023 (crear, editar, enviar, aceptar y rechazar), pero faltan el **PDF**, **mandarlos por correo** al cliente, duplicar uno para corregirlo y crear el trabajo o la factura a partir de uno aceptado; aceptar es hoy una **anotación interna**, no la firma del cliente. Las facturas y los pagos son la fase 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
 - **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009) y, con el correo configurado, **se envían por correo** (spec 017; sin correo configurado el token se le entrega a quien invita, como antes). Falta elegir proveedor de correo y dominio, y que una cuenta pueda pertenecer a varias empresas: hoy cada cuenta pertenece a una sola.
 - **Del panel de operador de la plataforma** (spec 011) falta lo que la propia spec dejó fuera: plan o tarifa, el motivo y el aviso de una suspensión, buscar por nombre, varios operadores con permisos distintos y la aprobación entre dos. Lo que existe (listar, suspender y reactivar con segundo factor obligatorio) está en los capítulos 6 y 8.
