@@ -133,7 +133,8 @@ Y las **pruebas de mutación**: se rompe a propósito la jerarquía del handler 
 
 Según lo que hayas tocado:
 
-- **Una entidad nueva de una empresa** → implementa `ITenantOwned`, y añádela a la lista de entidades esperadas de los tests (capítulo 5).
+- **Una entidad nueva de una empresa** → implementa `ITenantOwned`, y añádela a la lista de entidades esperadas de los tests (capítulo 5). **Si tiene líneas propias** (como un presupuesto y sus líneas, spec 023), las líneas también la llevan, con su propio `TenantId`; y si su clave la genera el dominio (`Guid.NewGuid()`), configúrala `ValueGeneratedNever`, o EF Core marcará como «modificada» una línea nueva y el `UPDATE` fallará.
+- **Dinero** → céntimos enteros y **una sola función** que calcule los importes (ADR-026): ninguna petición lleva un total, ningún tipo de coma flotante lo toca, y una tabla de casos fijos (con los medios céntimos y el IVA por tipo) protege el redondeo; si el frontend lo repite para una vista previa, los dos prueban **los mismos casos**.
 - **Un cambio en el modelo de datos** → genera una **migración** (`dotnet ef migrations add`) y **revisa el SQL** que produce, no solo el nombre.
 - **Un permiso nuevo** → decide qué roles lo reciben en [`RolePermissions`](../../src/OfiFlow.Domain/Tenancy/RolePermissions.cs): hasta entonces, nadie lo tiene, ni el `Owner`.
 - **Una consulta que se salta el filtro de empresa** (`IgnoreQueryFilters()`) → solo con un motivo escrito, y añadiendo el fichero a la lista blanca.

@@ -28,7 +28,11 @@ public partial class PermissionNamesTests
         [Permission.AccountRead] = "Account.Read",
         [Permission.AccountCloseSessions] = "Account.CloseSessions",
         // Spec 019: varias palabras en el nombre del permiso («AccountChangePassword» → «Account.ChangePassword»).
-        [Permission.AccountChangePassword] = "Account.ChangePassword"
+        [Permission.AccountChangePassword] = "Account.ChangePassword",
+        // Spec 023: los tres permisos de los presupuestos.
+        [Permission.QuotesRead] = "Quotes.Read",
+        [Permission.QuotesWrite] = "Quotes.Write",
+        [Permission.QuotesIssue] = "Quotes.Issue"
     };
 
     public static TheoryData<Permission, string> Names()

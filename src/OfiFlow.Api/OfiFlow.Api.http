@@ -378,6 +378,109 @@ DELETE {{host}}/api/v1/customers/{{customerId}}
 Authorization: Bearer {{tokenA}}
 
 ###############################################################################
+# 3b. PRESUPUESTOS (spec 023)
+###############################################################################
+
+### Un presupuesto es de un cliente (con un trabajo opcional DEL MISMO CLIENTE). Lo crea Quotes.Write (Owner, Admin, Manager, Employee); enviar, aceptar y rechazar es
+### Quotes.Issue (Owner, Admin y Manager); un Technician no ve presupuestos. Toda la sección va con el token de A (@tokenA, el Owner).
+### Los importes van en CÉNTIMOS ENTEROS (10000 = 100,00 €), la cantidad admite hasta 3 decimales y el IVA solo 0, 4, 10 o 21.
+### LA PETICIÓN NUNCA LLEVA UN TOTAL: el servidor calcula el neto, el IVA (UNA vez por tipo, redondeando alejándose de cero) y el total. Un «totalCents», un «number», un
+### «status» o un «tenantId» en el cuerpo se IGNORAN. El número (1, 2, 3...) lo asigna el servidor y es correlativo dentro de cada empresa.
+### Aquí se crea un cliente propio para el presupuesto (así el cliente de las secciones anteriores se puede eliminar sin tropezar con la regla de abajo).
+
+### Un cliente para presupuestar
+# @name createQuoteCustomer
+POST {{host}}/api/v1/customers
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "type": 0,
+  "name": "Ana Ruiz",
+  "email": "ana.ruiz@example.com"
+}
+
+@quoteCustomerId = {{createQuoteCustomer.response.body.$.id}}
+
+### Crear un borrador (201): 2,5 x 12,34 € al 21 % y 1 x 50 € al 0 %. Neto 8085, IVA 648, total 8733 (céntimos). Un borrador puede estar vacío ("items": []).
+# @name createQuote
+POST {{host}}/api/v1/quotes
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "customerId": "{{quoteCustomerId}}",
+  "title": "Reforma del baño",
+  "notes": "Pago a 30 días. Materiales incluidos.",
+  "validUntil": "2026-12-31",
+  "items": [
+    { "description": "Mano de obra (horas)", "quantity": 2.5, "unitPriceCents": 1234, "vatPercent": 21 },
+    { "description": "Material de fontanería", "quantity": 1, "unitPriceCents": 5000, "vatPercent": 0 }
+  ]
+}
+
+@quoteId = {{createQuote.response.body.$.id}}
+
+### Ver el presupuesto: cabecera, líneas en su orden con su neto calculado, el desglose por tipo de IVA, los totales y la «version» (para modificarlo).
+### Lleva Cache-Control: no-store: los precios no se guardan en cachés.
+# @name getQuote
+GET {{host}}/api/v1/quotes/{{quoteId}}
+Authorization: Bearer {{tokenA}}
+
+@quoteVersion = {{getQuote.response.body.$.version}}
+
+### Listar (paginado, del más reciente al más antiguo, sin las líneas). Filtros opcionales: status (Draft, Sent, Accepted, Rejected), customerId, page y pageSize (1 a 100).
+GET {{host}}/api/v1/quotes?status=Draft&page=1&pageSize=25
+Authorization: Bearer {{tokenA}}
+
+### Modificar el borrador (204): SUSTITUYE la cabecera y TODAS las líneas, y exige la «version» que leíste (arriba). Solo un borrador se modifica.
+### Con una versión vieja (alguien lo cambió mientras tanto) -> 400 quote.changed_meanwhile y no se pisa nada. Repite el GET para obtener la versión nueva.
+PUT {{host}}/api/v1/quotes/{{quoteId}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "version": "{{quoteVersion}}",
+  "title": "Reforma completa del baño",
+  "notes": "Pago a 30 días.",
+  "validUntil": "2026-12-31",
+  "items": [
+    { "description": "Mano de obra (horas)", "quantity": 3, "unitPriceCents": 1234, "vatPercent": 21 },
+    { "description": "Tubería", "quantity": 4, "unitPriceCents": 800, "vatPercent": 10 }
+  ]
+}
+
+### Un tipo de IVA fuera de la lista -> 400 validation.failed (campo Items[0].VatPercent, código quote.vat_invalid)
+POST {{host}}/api/v1/quotes
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "customerId": "{{quoteCustomerId}}",
+  "title": "IVA inválido",
+  "items": [ { "description": "x", "quantity": 1, "unitPriceCents": 100, "vatPercent": 13 } ]
+}
+
+### Enviar (204): Draft -> Sent. Exige al menos una línea (si no, 400 quote.empty). NO manda nada al cliente: solo lo anota (el PDF y el correo son specs posteriores).
+### Desde ese momento el presupuesto es INMUTABLE: modificarlo -> 400 quote.not_editable, eliminarlo -> 400 quote.cannot_delete. Se corrige haciendo otro.
+POST {{host}}/api/v1/quotes/{{quoteId}}/send
+Authorization: Bearer {{tokenA}}
+
+### Aceptar (204): Sent -> Accepted. Es una anotación interna, NO la firma del cliente. Desde un borrador -> 400 quote.cannot_accept.
+POST {{host}}/api/v1/quotes/{{quoteId}}/accept
+Authorization: Bearer {{tokenA}}
+
+### Rechazar (204): Sent -> Rejected. Uno ya resuelto no se reabre -> 400 quote.cannot_reject / quote.cannot_accept.
+### POST {{host}}/api/v1/quotes/{{quoteId}}/reject
+
+### Eliminar un BORRADOR (204): crea otro y bórralo. Uno enviado no se elimina (400 quote.cannot_delete).
+### DELETE {{host}}/api/v1/quotes/{{quoteId}}
+
+### Un cliente con presupuestos NO se puede eliminar, en ningún estado (spec 023 R13) -> 400 customer.has_quotes
+DELETE {{host}}/api/v1/customers/{{quoteCustomerId}}
+Authorization: Bearer {{tokenA}}
+
+###############################################################################
 # 4. ERRORES A PROPÓSITO: qué responde la API cuando algo va mal
 ###############################################################################
 

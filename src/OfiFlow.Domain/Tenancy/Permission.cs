@@ -71,5 +71,17 @@ public enum Permission
     /// del token, nunca de la petición. Exige además la contraseña actual (y el código del segundo factor si lo tiene), así que una sesión robada no basta. No es <see cref="MfaManage"/> ni
     /// <see cref="AccountCloseSessions"/> aunque lo tengan los mismos roles: un permiso dice <i>qué se hace</i>.
     /// </summary>
-    AccountChangePassword
+    AccountChangePassword,
+
+    /// <summary>Quotes.Read: ver un presupuesto y listar los presupuestos (spec 023). Los precios son información comercial: el <c>Technician</c> no lo tiene (D11).</summary>
+    QuotesRead,
+
+    /// <summary>Quotes.Write: crear, modificar y eliminar <b>borradores</b> de presupuesto (spec 023). Preparar no compromete un precio: eso es <see cref="QuotesIssue"/>.</summary>
+    QuotesWrite,
+
+    /// <summary>
+    /// Quotes.Issue: <b>enviar, aceptar y rechazar</b> un presupuesto (spec 023). Es la acción que compromete un precio ante un cliente, así que va aparte de
+    /// <see cref="QuotesWrite"/> (el patrón de <see cref="JobsSchedule"/>): el personal de oficina prepara pero no compromete.
+    /// </summary>
+    QuotesIssue
 }

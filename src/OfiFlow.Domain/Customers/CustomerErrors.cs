@@ -14,4 +14,7 @@ public static class CustomerErrors
 
     /// <summary>No se puede eliminar un cliente con trabajos que no están completados ni cancelados.</summary>
     public const string HasActiveJobs = "customer.has_active_jobs";
+
+    /// <summary>No se puede eliminar un cliente con presupuestos: es un documento comercial y no se borra a espaldas de nadie (spec 023 R13).</summary>
+    public const string HasQuotes = "customer.has_quotes";
 }

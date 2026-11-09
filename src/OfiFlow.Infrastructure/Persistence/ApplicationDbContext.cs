@@ -6,6 +6,7 @@ using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
+using OfiFlow.Domain.Quotes;
 using OfiFlow.Domain.Tenancy;
 using OfiFlow.Infrastructure.Identity;
 
@@ -28,6 +29,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Job> Jobs => Set<Job>();
 
     public DbSet<Invitation> Invitations => Set<Invitation>();
+
+    public DbSet<Quote> Quotes => Set<Quote>();
 
     /// <summary>
     /// Not part of IApplicationDbContext on purpose — only IIdentityService/ITokenService

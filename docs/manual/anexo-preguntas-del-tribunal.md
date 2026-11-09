@@ -217,6 +217,35 @@ Que quien tenga **la contraseña actual y una sesión** de una cuenta **sin** se
 **¿Qué error real encontrasteis?**
 Uno que no era del producto: un test de extremo a extremo **mataba su propia sesión**, porque renovaba con el refresh token de una sesión ya cerrada y la detección de reutilización cerraba también la actual. Era la protección funcionando; el test se reordenó, y es el mejor argumento a favor de revocar y no borrar. Otro: el test de «nada sensible en `me`» falló porque el nombre del permiso (`Account.ChangePassword`) contiene `password`; no se relajó, se cambió para comprobar la forma de los permisos. *(Cap. 9)*
 
+### Presupuestos (spec 023)
+
+**¿Por qué el dinero va en céntimos enteros y lo calcula siempre el servidor?**
+Porque un decimal de coma flotante no representa 0,1 con exactitud y cada operación volvería a decidir el redondeo; y porque un total que llega en la petición es un campo que alguien manipulará. Una sola función del servidor (`QuoteCalculator`) calcula en céntimos enteros, y la petición nunca lleva un total: uno de más se ignora. *(Cap. 8; ADR-026)*
+
+**¿Cómo se calcula el IVA, y por qué «una vez por tipo»?**
+Cada línea da su neto (cantidad × precio, al céntimo, **alejándose de cero**); se suman los netos por tipo de IVA (0, 4, 10 o 21 %) y el IVA se calcula **una vez por tipo** sobre esa suma. Es como lo desglosa una factura, así que el presupuesto y la factura futura coincidirán al céntimo; redondear línea a línea se desvía (cinco líneas de 0,02 € al 21 %: 0,00 € por línea, 0,02 € por tipo). Una tabla de **15 casos fijos** lo protege. *(Cap. 9)*
+
+**¿Cómo se sabe que la vista previa del frontend da lo mismo que el servidor?**
+Los dos pasan los **mismos 15 casos fijos** (el JSON del backend, copiado como datos en el frontend) y, en el navegador, el total de la vista previa coincidió al céntimo con el que devolvió la API al guardar. El frontend calcula con `BigInt` porque el redondeo de un número de coma flotante no coincide. Riesgo honesto: **la copia se mantiene a mano**; no hay un test que compare los dos ficheros entre repositorios. *(Cap. 9; ADR-026)*
+
+**¿Por qué un presupuesto enviado no se puede modificar, y cómo se garantiza si dos personas actúan a la vez?**
+Porque un precio ofrecido a un cliente es un compromiso: se corrige haciendo otro. Solo un borrador se modifica o se elimina, y la fila lleva una versión (`RowVersion`) y un contador de cambios (`Revision`): una edición y un envío simultáneos nunca dejan un enviado con las líneas cambiadas, y quien edita con una versión vieja recibe `quote.changed_meanwhile` en vez de pisar nada. Un test contra SQL Server provoca la carrera de verdad, en los dos órdenes. *(Cap. 8)*
+
+**¿Por qué hace falta un contador de cambios además de la versión de fila?**
+Porque una edición que deja las mismas líneas y la misma cabecera no cambia ninguna columna de negocio: no habría `UPDATE` sobre el presupuesto y el control de concurrencia no la vigilaría. Con `Revision` la fila cambia siempre. *(Cap. 8)*
+
+**¿Cómo se numeran los presupuestos sin SQL a mano y sin repetir números?**
+`máximo + 1` **de esa empresa** (el filtro global limita la consulta), un índice único `(TenantId, Número)` y hasta tres reintentos que sacan el intento fallido del seguimiento. Límite aceptado y medido: con **diez creaciones simultáneas** de una misma empresa, ocho se crearon y dos dieron `quote.number_unavailable`, sin ningún `500` ni número repetido. *(Cap. 8, límite 3p)*
+
+**¿Quién puede hacer qué con un presupuesto?**
+Tres permisos: `Quotes.Read`, `Quotes.Write` (preparar: crear, modificar y eliminar borradores) y `Quotes.Issue` (**comprometer**: enviar, aceptar y rechazar). `Owner`, `Admin` y `Manager` los tres; `Employee` prepara pero no compromete; `Technician` no ve presupuestos (los precios son información comercial). Se prueba la matriz entera, 8 operaciones por 5 roles, con el efecto comprobado en cada celda. *(Cap. 8)*
+
+**¿Qué riesgo NO cierra?**
+Que quien tenga `Quotes.Issue` puede **aceptar «en nombre» del cliente**: aceptar es una anotación interna, no una firma. Hasta que el cliente pueda aceptar él mismo (una identidad nueva y no confiable), el sistema registra pero no prueba nada ante un tercero. Tampoco hay PDF ni correo, ni caducidad automática, y el cálculo vive en dos sitios. *(Cap. 8, límite 3p)*
+
+**¿Qué error real encontrasteis?**
+Seis mutaciones sobrevivieron y cada una era un hueco de un test, no del código: el endpoint que registra con `Console.WriteLine` (el escaneo solo buscaba `ILogger`), un DTO que no ordenaba las líneas (SQL Server ya las devolvía en orden por su índice), y en el frontend un `Employee` que veía «Aceptar», una vista previa con una línea inválida (mi test usaba un precio vacío, que suma 0) y que nada distinguía si el total venía del servidor o del cálculo local. Y un fallo de EF Core: una línea nueva con su `Guid` ya puesto se marcaba «modificada» y el `UPDATE` fallaba al sustituir las líneas (`ValueGeneratedNever`). *(Cap. 9)*
+
 ### La agenda (spec 020)
 
 **¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
@@ -333,6 +362,7 @@ Con honestidad y de lo más a lo menos preocupante:
 - **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Crear una cuenta (spec 021) deja abiertos los textos legales** (los redacta el dueño del proyecto), que las cuentas anteriores **no han aceptado ninguna condición**, la comprobación **anti-robots**, que el límite de 3 pedidos por hora y por IP **puede frenar a una oficina entera**, y que el límite de avisos vive **en memoria**.
+- **Los presupuestos (spec 023) no tienen PDF ni correo** y aceptar es una **anotación interna**, no la firma del cliente; el cálculo del dinero está en dos sitios (los casos fijos lo protegen, pero la copia del frontend se mantiene a mano); y muchas creaciones simultáneas de una empresa pueden agotar los tres intentos del número.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 - **No hay alertas ni un registro de auditoría persistente**: los eventos se escriben, pero nadie los vigila.
 - **ZAP escanea solo la superficie anónima** y solo en los PRs.

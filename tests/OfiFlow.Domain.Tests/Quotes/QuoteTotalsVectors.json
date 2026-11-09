@@ -1,0 +1,107 @@
+[
+  {
+    "name": "sin líneas: todo a cero",
+    "lines": [],
+    "net": 0, "vat": 0, "total": 0,
+    "breakdown": []
+  },
+  {
+    "name": "una línea al 21 %",
+    "lines": [ { "quantity": 1, "unitPriceCents": 10000, "vatPercent": 21 } ],
+    "net": 10000, "vat": 2100, "total": 12100,
+    "breakdown": [ { "vatPercent": 21, "baseCents": 10000, "vatCents": 2100 } ]
+  },
+  {
+    "name": "cantidad decimal exacta y IVA que hay que redondear hacia arriba (3085 × 21 % = 647,85)",
+    "lines": [ { "quantity": 2.5, "unitPriceCents": 1234, "vatPercent": 21 } ],
+    "net": 3085, "vat": 648, "total": 3733,
+    "breakdown": [ { "vatPercent": 21, "baseCents": 3085, "vatCents": 648 } ]
+  },
+  {
+    "name": "medio céntimo en una línea se redondea alejándose de cero (0,5 × 1 = 0,5 → 1)",
+    "lines": [ { "quantity": 0.5, "unitPriceCents": 1, "vatPercent": 0 } ],
+    "net": 1, "vat": 0, "total": 1,
+    "breakdown": [ { "vatPercent": 0, "baseCents": 1, "vatCents": 0 } ]
+  },
+  {
+    "name": "menos de medio céntimo se queda en cero (0,001 × 499 = 0,499 → 0)",
+    "lines": [ { "quantity": 0.001, "unitPriceCents": 499, "vatPercent": 0 } ],
+    "net": 0, "vat": 0, "total": 0,
+    "breakdown": [ { "vatPercent": 0, "baseCents": 0, "vatCents": 0 } ]
+  },
+  {
+    "name": "justo medio céntimo sube (0,001 × 500 = 0,5 → 1)",
+    "lines": [ { "quantity": 0.001, "unitPriceCents": 500, "vatPercent": 0 } ],
+    "net": 1, "vat": 0, "total": 1,
+    "breakdown": [ { "vatPercent": 0, "baseCents": 1, "vatCents": 0 } ]
+  },
+  {
+    "name": "el IVA se redondea UNA vez por tipo, no por línea (dos líneas de 5 al 10 %: 1,0, no 0,5 + 0,5 redondeados a 1 + 1)",
+    "lines": [
+      { "quantity": 1, "unitPriceCents": 5, "vatPercent": 10 },
+      { "quantity": 1, "unitPriceCents": 5, "vatPercent": 10 }
+    ],
+    "net": 10, "vat": 1, "total": 11,
+    "breakdown": [ { "vatPercent": 10, "baseCents": 10, "vatCents": 1 } ]
+  },
+  {
+    "name": "otra diferencia con redondear por línea (cinco líneas de 2 al 21 %: 2,1 → 2, no 0,42 → 0 cinco veces)",
+    "lines": [
+      { "quantity": 1, "unitPriceCents": 2, "vatPercent": 21, "repeat": 5 }
+    ],
+    "net": 10, "vat": 2, "total": 12,
+    "breakdown": [ { "vatPercent": 21, "baseCents": 10, "vatCents": 2 } ]
+  },
+  {
+    "name": "mezcla de cuatro tipos, desglose en orden de tipo",
+    "lines": [
+      { "quantity": 1, "unitPriceCents": 10000, "vatPercent": 21 },
+      { "quantity": 3, "unitPriceCents": 2500, "vatPercent": 10 },
+      { "quantity": 2, "unitPriceCents": 1999, "vatPercent": 4 },
+      { "quantity": 1, "unitPriceCents": 5000, "vatPercent": 0 }
+    ],
+    "net": 26498, "vat": 3010, "total": 29508,
+    "breakdown": [
+      { "vatPercent": 0, "baseCents": 5000, "vatCents": 0 },
+      { "vatPercent": 4, "baseCents": 3998, "vatCents": 160 },
+      { "vatPercent": 10, "baseCents": 7500, "vatCents": 750 },
+      { "vatPercent": 21, "baseCents": 10000, "vatCents": 2100 }
+    ]
+  },
+  {
+    "name": "el IVA justo en medio céntimo sube (25 al 10 % = 2,5 → 3)",
+    "lines": [ { "quantity": 1, "unitPriceCents": 25, "vatPercent": 10 } ],
+    "net": 25, "vat": 3, "total": 28,
+    "breakdown": [ { "vatPercent": 10, "baseCents": 25, "vatCents": 3 } ]
+  },
+  {
+    "name": "otro IVA en medio céntimo (15 al 10 % = 1,5 → 2)",
+    "lines": [ { "quantity": 1, "unitPriceCents": 15, "vatPercent": 10 } ],
+    "net": 15, "vat": 2, "total": 17,
+    "breakdown": [ { "vatPercent": 10, "baseCents": 15, "vatCents": 2 } ]
+  },
+  {
+    "name": "precio cero («incluido»): la línea existe y no suma nada",
+    "lines": [ { "quantity": 3, "unitPriceCents": 0, "vatPercent": 21 } ],
+    "net": 0, "vat": 0, "total": 0,
+    "breakdown": [ { "vatPercent": 21, "baseCents": 0, "vatCents": 0 } ]
+  },
+  {
+    "name": "tres decimales de cantidad (1,333 × 300 = 399,9 → 400)",
+    "lines": [ { "quantity": 1.333, "unitPriceCents": 300, "vatPercent": 21 } ],
+    "net": 400, "vat": 84, "total": 484,
+    "breakdown": [ { "vatPercent": 21, "baseCents": 400, "vatCents": 84 } ]
+  },
+  {
+    "name": "el máximo permitido de una línea no desborda (99 999,999 × 9 999 999 999 céntimos)",
+    "lines": [ { "quantity": 99999.999, "unitPriceCents": 9999999999, "vatPercent": 21 } ],
+    "net": 999999989900000, "vat": 209999997879000, "total": 1209999987779000,
+    "breakdown": [ { "vatPercent": 21, "baseCents": 999999989900000, "vatCents": 209999997879000 } ]
+  },
+  {
+    "name": "cien líneas del máximo permitido tampoco desbordan un long",
+    "lines": [ { "quantity": 99999.999, "unitPriceCents": 9999999999, "vatPercent": 21, "repeat": 100 } ],
+    "net": 99999998990000000, "vat": 20999999787900000, "total": 120999998777900000,
+    "breakdown": [ { "vatPercent": 21, "baseCents": 99999998990000000, "vatCents": 20999999787900000 } ]
+  }
+]

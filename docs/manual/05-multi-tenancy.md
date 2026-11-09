@@ -59,7 +59,7 @@ public interface ITenantOwned
 }
 ```
 
-Es una **marca**: "esta entidad pertenece a una empresa". Las cuatro entidades que la llevan hoy:
+Es una **marca**: "esta entidad pertenece a una empresa". Las seis entidades que la llevan hoy:
 
 | Entidad | ¿`ITenantOwned`? | Por qué |
 |---|---|---|
@@ -67,6 +67,8 @@ Es una **marca**: "esta entidad pertenece a una empresa". Las cuatro entidades q
 | `Job` | ✅ | Los trabajos son de una empresa |
 | `TenantUser` | ✅ | La pertenencia de una persona a **esa** empresa (con su rol) |
 | `Invitation` | ✅ | La invitación para que una persona entre en **esa** empresa (spec 009): una empresa nunca ve las invitaciones de otra |
+| `Quote` | ✅ | Los presupuestos son de una empresa (spec 023): también al **numerarlos** (el siguiente número se calcula solo con los de esa empresa) y al listarlos |
+| `QuoteItem` | ✅ | Las líneas de un presupuesto llevan **su propio `TenantId`** (el mismo del presupuesto) para que el filtro global las cubra también: una entidad hija sin la marca quedaría fuera del filtro |
 | `Tenant` | ❌ | Es la propia empresa; no pertenece a ninguna |
 | `User` | ❌ | Una persona puede estar en varias empresas, así que no es de ninguna en concreto |
 

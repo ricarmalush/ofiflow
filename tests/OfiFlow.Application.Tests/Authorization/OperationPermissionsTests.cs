@@ -36,6 +36,14 @@ using OfiFlow.Application.Jobs.Queries.GetAgenda;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
 using OfiFlow.Application.Platform.Commands.PlatformLogin;
+using OfiFlow.Application.Quotes.Commands.AcceptQuote;
+using OfiFlow.Application.Quotes.Commands.CreateQuote;
+using OfiFlow.Application.Quotes.Commands.DeleteQuote;
+using OfiFlow.Application.Quotes.Commands.RejectQuote;
+using OfiFlow.Application.Quotes.Commands.SendQuote;
+using OfiFlow.Application.Quotes.Commands.UpdateQuote;
+using OfiFlow.Application.Quotes.Queries.GetQuote;
+using OfiFlow.Application.Quotes.Queries.GetQuotes;
 using OfiFlow.Application.Platform.Commands.ReactivateTenant;
 using OfiFlow.Application.Platform.Commands.SuspendTenant;
 using OfiFlow.Application.Platform.Commands.VerifyPlatformChallenge;
@@ -97,7 +105,16 @@ public class OperationPermissionsTests
         (typeof(ListMySessionsQuery), Permission.AccountRead),
         (typeof(CloseSessionCommand), Permission.AccountCloseSessions),
         // Spec 019: cambiar la propia contraseña estando dentro (los cinco roles; exige además la contraseña actual).
-        (typeof(ChangePasswordCommand), Permission.AccountChangePassword)
+        (typeof(ChangePasswordCommand), Permission.AccountChangePassword),
+        // Spec 023: los presupuestos. Leer, preparar (crear, modificar y eliminar un borrador) y comprometer (enviar, aceptar, rechazar) son tres permisos distintos (D11).
+        (typeof(GetQuoteQuery), Permission.QuotesRead),
+        (typeof(GetQuotesQuery), Permission.QuotesRead),
+        (typeof(CreateQuoteCommand), Permission.QuotesWrite),
+        (typeof(UpdateQuoteCommand), Permission.QuotesWrite),
+        (typeof(DeleteQuoteCommand), Permission.QuotesWrite),
+        (typeof(SendQuoteCommand), Permission.QuotesIssue),
+        (typeof(AcceptQuoteCommand), Permission.QuotesIssue),
+        (typeof(RejectQuoteCommand), Permission.QuotesIssue)
     ];
 
     private static readonly Type[] AnonymousTable =
@@ -208,7 +225,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(47, inTheTable.Count); // 46 + ChangePasswordCommand (spec 019): el contador obliga a declarar cada operación nueva a propósito
+        Assert.Equal(55, inTheTable.Count); // 47 + las ocho de los presupuestos (spec 023): el contador obliga a declarar cada operación nueva a propósito
     }
 
     private static bool IsMediatRRequest(Type type) =>

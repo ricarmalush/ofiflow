@@ -4,6 +4,7 @@ using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
+using OfiFlow.Domain.Quotes;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Application.Tests.Common;
@@ -26,8 +27,13 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
 
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
+    public DbSet<Quote> Quotes => Set<Quote>();
+
     /// <summary>Si tiene valor, el siguiente SaveChanges lanza esta excepción (para simular, por ejemplo, un conflicto de concurrencia).</summary>
     public Exception? ExceptionOnSave { get; set; }
+
+    /// <summary>Las siguientes confirmaciones fallan con esta excepción, una por cada elemento de la cola (para simular, por ejemplo, una carrera por el número de un presupuesto que se resuelve al reintentar).</summary>
+    public Queue<Exception> ExceptionsOnNextSaves { get; } = new();
 
     /// <summary>Cuántas veces se ha pedido guardar, para comprobar que una operación «todo o nada» confirma una sola vez (o ninguna).</summary>
     public int SaveCount { get; private set; }
@@ -38,6 +44,11 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         SaveCount++;
+
+        if (ExceptionsOnNextSaves.TryDequeue(out var queued))
+        {
+            return Task.FromException<int>(queued);
+        }
 
         return ExceptionOnSave is { } exception ? Task.FromException<int>(exception) : base.SaveChangesAsync(cancellationToken);
     }
@@ -58,6 +69,9 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
             builder.Property(u => u.ContactEmail)
                 .HasConversion(email => email.Value, value => Email.Create(value));
         });
+
+        // Igual que en la configuración real de las líneas de un presupuesto (QuoteItemConfiguration): su clave la genera el dominio.
+        modelBuilder.Entity<QuoteItem>(builder => builder.Property(i => i.Id).ValueGeneratedNever());
 
         modelBuilder.Entity<Invitation>(builder =>
         {

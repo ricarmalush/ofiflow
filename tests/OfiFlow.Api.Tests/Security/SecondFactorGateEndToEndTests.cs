@@ -27,6 +27,9 @@ public class SecondFactorGateEndToEndTests(SecondFactorGateFixture fixture) : IC
         { "GET", "/api/v1/customers" },
         { "GET", "/api/v1/jobs" },
         { "GET", "/api/v1/jobs/agenda" },
+        // Spec 023: los presupuestos son operaciones con permiso de empresa y ninguna está en la lista de permitidas.
+        { "GET", "/api/v1/quotes" },
+        { "POST", "/api/v1/quotes/00000000-0000-0000-0000-000000000001/send" },
         { "GET", "/api/v1/users" },
         { "GET", "/api/v1/account/sessions" },
         { "DELETE", "/api/v1/account/sessions" },

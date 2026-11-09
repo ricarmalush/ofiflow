@@ -136,6 +136,7 @@ try
     app.MapAccountEndpoints();
     app.MapMfaEndpoints();
     app.MapJobEndpoints();
+    app.MapQuoteEndpoints();
 
     app.Run();
 }

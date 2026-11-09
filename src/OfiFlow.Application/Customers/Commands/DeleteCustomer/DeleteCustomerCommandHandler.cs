@@ -4,6 +4,7 @@ using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Jobs;
+using OfiFlow.Domain.Quotes;
 
 namespace OfiFlow.Application.Customers.Commands.DeleteCustomer;
 
@@ -23,6 +24,14 @@ public sealed class DeleteCustomerCommandHandler(IApplicationDbContext dbContext
         if (hasActiveJobs)
         {
             throw new BusinessRuleException(CustomerErrors.HasActiveJobs);
+        }
+
+        // Spec 023 R13: un presupuesto es un documento comercial y no se borra a espaldas de nadie. Cualquiera, en cualquier estado, impide eliminar al cliente.
+        var hasQuotes = await dbContext.Quotes.AnyAsync(q => q.CustomerId == request.Id, cancellationToken);
+
+        if (hasQuotes)
+        {
+            throw new BusinessRuleException(CustomerErrors.HasQuotes);
         }
 
         dbContext.Customers.Remove(customer);
