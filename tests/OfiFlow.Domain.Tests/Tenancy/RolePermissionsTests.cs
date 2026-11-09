@@ -37,7 +37,12 @@ public class RolePermissionsTests
         // Añadida por la spec 014: todos los roles cierran todas las sesiones de su PROPIA cuenta (solo quita acceso, nunca lo da).
         "AccountCloseSessions X   X     X       X        X",
         // Añadida por la spec 019: todos los roles cambian su PROPIA contraseña estando dentro (con la actual, y el código del segundo factor si lo tienen).
-        "AccountChangePassword X  X     X       X        X"
+        "AccountChangePassword X  X     X       X        X",
+        // Spec 023: preparar presupuestos (ver y escribir) es del personal de oficina; COMPROMETER un precio (enviar, aceptar, rechazar) es de quien gestiona, igual que programar un trabajo.
+        // Un Technician no tiene ninguno: los precios son información comercial (D11).
+        "QuotesRead         X     X     X       X        -",
+        "QuotesWrite        X     X     X       X        -",
+        "QuotesIssue        X     X     X       -        -"
     ];
 
     public static TheoryData<TenantRole, Permission, bool> Cells()

@@ -37,9 +37,9 @@ Cuatro bloques:
 
 **El presupuesto y sus líneas**
 
-- **R1. Un presupuesto es de un cliente de la empresa y puede enlazarse a un trabajo** de ese mismo cliente (D2). Con un trabajo de **otro** cliente, `400 quote.job_customer_mismatch`. Un cliente o un trabajo que no existan **o sean de otra empresa** dan el mismo `404` de siempre (`customer.not_found`, `job.not_found`): no se informa de lo que existe en otra empresa.
+- **R1. Un presupuesto es de un cliente de la empresa y puede enlazarse a un trabajo** de ese mismo cliente (D2). Con un trabajo de **otro** cliente, `400 quote.job_customer_mismatch`. El **cliente de un presupuesto no cambia** (se corrige uno hecho a un cliente equivocado eliminándolo y creando otro). Un cliente o un trabajo que no existan **o sean de otra empresa** dan el mismo `404` de siempre (`customer.not_found`, `job.not_found`): no se informa de lo que existe en otra empresa.
 - **R2. Datos de la cabecera:** `Title` (obligatorio, hasta 200), `Notes` (condiciones y observaciones **que ve el cliente**, hasta 2000), `ValidUntil` (fecha **sin hora**, opcional, entre los años 2000 y 2099; D8). Se guardan sin espacios sobrantes. `Number` lo asigna el servidor (R6), no la petición.
-- **R3. Líneas.** De **1 a 100** por presupuesto. Cada una: `Description` (obligatoria, hasta 500), `Quantity` (**mayor que 0**, hasta **3 decimales** y como máximo 99 999,999), `UnitPriceCents` (**céntimos enteros**, de 0 a 9 999 999 999; un precio 0 vale, es «incluido») y `VatPercent` (**solo 0, 4, 10 o 21**: lista cerrada en un único sitio; D3 y D10). Se guardan en el orden en que llegan y ese orden se conserva.
+- **R3. Líneas.** De **0 a 100** por presupuesto (un borrador puede estar vacío; **enviarlo** exige al menos una, R7). Cada una: `Description` (obligatoria, hasta 500), `Quantity` (**mayor que 0**, hasta **3 decimales** y como máximo 99 999,999), `UnitPriceCents` (**céntimos enteros**, de 0 a 9 999 999 999; un precio 0 vale, es «incluido») y `VatPercent` (**solo 0, 4, 10 o 21**: lista cerrada en un único sitio; D3 y D10). Un tipo de IVA o una cantidad inválidos dan un error de **campo** con su propio código (`quote.vat_invalid`, `quote.quantity_invalid`), y una validez fuera de rango `quote.valid_until_invalid`. Se guardan en el orden en que llegan y ese orden se conserva.
 - **R4. Solo un borrador se modifica.** Cambiar la cabecera, **sustituir las líneas** (D6) o eliminarlo solo se puede en `Draft`. Un presupuesto `Sent`, `Accepted` o `Rejected` es **inmutable** (NEVER). `400 quote.not_editable` / `quote.cannot_delete`.
 
 **El dinero** (D3, D4)
@@ -88,12 +88,13 @@ Quote (raíz de agregado; ITenantOwned, IAuditable)
 - Status                                       Draft | Sent | Accepted | Rejected
 - NetCents, VatCents, TotalCents               long, calculados (R5)
 - SentAt?, DecidedAt?                          instantes UTC
+- Revision                                     int: sube con CADA cambio, para que la fila siempre se actualice y la versión la vigile (R10)
 - CreatedAt, UpdatedAt                         (IAuditable)
 - RowVersion                                   concurrencia (R10)
-- Items: QuoteItem[]                           1..100, parte del agregado
+- Items: QuoteItem[]                           0..100, parte del agregado (tabla QuoteItems)
 
-QuoteItem (entidad propia del agregado; no se consulta sin su Quote)
-- Id, QuoteId, Position, Description
+QuoteItem (entidad propia del agregado; no se consulta sin su Quote; lleva su propio TenantId para el filtro global)
+- Id (la genera el dominio), TenantId, QuoteId, Position, Description
 - Quantity (decimal(9,3)), UnitPriceCents (long), VatPercent (0|4|10|21)
 
 Quote.Create / UpdateDetails / ReplaceItems / Send / Accept / Reject / Recalculate   (invariantes en el dominio)

@@ -90,6 +90,9 @@
   <data name="customer.has_active_jobs" xml:space="preserve">
     <value>No se puede eliminar un cliente con trabajos activos.</value>
   </data>
+  <data name="customer.has_quotes" xml:space="preserve">
+    <value>No se puede eliminar un cliente que tiene presupuestos.</value>
+  </data>
 
   <!-- ===== Jobs ===== -->
   <data name="job.title_required" xml:space="preserve">
@@ -121,6 +124,47 @@
   </data>
   <data name="job.not_found" xml:space="preserve">
     <value>No se ha encontrado el trabajo.</value>
+  </data>
+
+  <!-- ===== Quotes ===== -->
+  <data name="quote.not_found" xml:space="preserve">
+    <value>No se ha encontrado el presupuesto.</value>
+  </data>
+  <data name="quote.not_editable" xml:space="preserve">
+    <value>Solo se puede modificar un presupuesto en borrador.</value>
+  </data>
+  <data name="quote.cannot_delete" xml:space="preserve">
+    <value>Solo se puede eliminar un presupuesto en borrador.</value>
+  </data>
+  <data name="quote.cannot_send" xml:space="preserve">
+    <value>Solo se puede enviar un presupuesto en borrador.</value>
+  </data>
+  <data name="quote.cannot_accept" xml:space="preserve">
+    <value>Solo se puede aceptar un presupuesto enviado.</value>
+  </data>
+  <data name="quote.cannot_reject" xml:space="preserve">
+    <value>Solo se puede rechazar un presupuesto enviado.</value>
+  </data>
+  <data name="quote.empty" xml:space="preserve">
+    <value>No se puede enviar un presupuesto sin ninguna línea.</value>
+  </data>
+  <data name="quote.job_customer_mismatch" xml:space="preserve">
+    <value>El trabajo elegido es de otro cliente.</value>
+  </data>
+  <data name="quote.number_unavailable" xml:space="preserve">
+    <value>No se ha podido asignar el número del presupuesto. Inténtalo de nuevo.</value>
+  </data>
+  <data name="quote.changed_meanwhile" xml:space="preserve">
+    <value>Alguien ha modificado este presupuesto mientras tanto. Recárgalo para ver los cambios.</value>
+  </data>
+  <data name="quote.vat_invalid" xml:space="preserve">
+    <value>El tipo de IVA no es válido. Los tipos admitidos son 0, 4, 10 y 21.</value>
+  </data>
+  <data name="quote.quantity_invalid" xml:space="preserve">
+    <value>La cantidad debe ser mayor que 0, con un máximo de 3 decimales y no pasar de 99999,999.</value>
+  </data>
+  <data name="quote.valid_until_invalid" xml:space="preserve">
+    <value>La fecha de validez debe estar entre los años 2000 y 2099.</value>
   </data>
 
   <!-- ===== Tenancy ===== -->

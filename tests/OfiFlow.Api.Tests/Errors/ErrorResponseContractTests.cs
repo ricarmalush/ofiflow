@@ -16,6 +16,7 @@ using OfiFlow.Domain.Common;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
+using OfiFlow.Domain.Quotes;
 using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Api.Tests.Errors;
@@ -117,7 +118,20 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new BusinessRuleException(MfaErrors.RequiredForRole), HttpStatusCode.BadRequest, "mfa.required_for_role" },
         // Spec 019: cambiar la contraseña estando dentro. 400 (reglas de negocio de quien ya está autenticado y es su propia contraseña).
         { new BusinessRuleException(IdentityErrors.PasswordCurrentInvalid), HttpStatusCode.BadRequest, "password.current_invalid" },
-        { new BusinessRuleException(IdentityErrors.PasswordUnchanged), HttpStatusCode.BadRequest, "password.unchanged" }
+        { new BusinessRuleException(IdentityErrors.PasswordUnchanged), HttpStatusCode.BadRequest, "password.unchanged" },
+        // Spec 023: los presupuestos. Las reglas de estado son 400 (Domain), un presupuesto de otra empresa es el mismo 404 que uno inexistente y el conflicto de concurrencia
+        // es un 400 de negocio (no un 409 nuevo, D9).
+        { new NotFoundException(QuoteErrors.NotFound, Guid.NewGuid()), HttpStatusCode.NotFound, "quote.not_found" },
+        { new DomainException(QuoteErrors.NotEditable, QuoteStatus.Sent), HttpStatusCode.BadRequest, "quote.not_editable" },
+        { new DomainException(QuoteErrors.CannotDelete, QuoteStatus.Sent), HttpStatusCode.BadRequest, "quote.cannot_delete" },
+        { new DomainException(QuoteErrors.CannotSend, QuoteStatus.Sent), HttpStatusCode.BadRequest, "quote.cannot_send" },
+        { new DomainException(QuoteErrors.CannotAccept, QuoteStatus.Draft), HttpStatusCode.BadRequest, "quote.cannot_accept" },
+        { new DomainException(QuoteErrors.CannotReject, QuoteStatus.Draft), HttpStatusCode.BadRequest, "quote.cannot_reject" },
+        { new DomainException(QuoteErrors.Empty), HttpStatusCode.BadRequest, "quote.empty" },
+        { new BusinessRuleException(QuoteErrors.JobCustomerMismatch), HttpStatusCode.BadRequest, "quote.job_customer_mismatch" },
+        { new BusinessRuleException(QuoteErrors.NumberUnavailable), HttpStatusCode.BadRequest, "quote.number_unavailable" },
+        { new BusinessRuleException(QuoteErrors.ChangedMeanwhile), HttpStatusCode.BadRequest, "quote.changed_meanwhile" },
+        { new BusinessRuleException(CustomerErrors.HasQuotes), HttpStatusCode.BadRequest, "customer.has_quotes" }
     };
 
     [Theory]

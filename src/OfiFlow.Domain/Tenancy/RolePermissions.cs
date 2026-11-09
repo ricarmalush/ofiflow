@@ -16,28 +16,33 @@ public static class RolePermissions
         [TenantRole.Owner] = Set(
             Permission.CustomersRead, Permission.CustomersWrite, Permission.CustomersDelete,
             Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsSchedule, Permission.JobsCancel, Permission.JobsExecute,
-            Permission.UsersRead, Permission.UsersManage, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword),
+            Permission.UsersRead, Permission.UsersManage, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword,
+            Permission.QuotesRead, Permission.QuotesWrite, Permission.QuotesIssue),
 
         // Mismos permisos que Owner. Se diferencian en a quién pueden gestionar (ManageableRoles, spec 009):
         // el Admin no gestiona a otros Admin.
         [TenantRole.Admin] = Set(
             Permission.CustomersRead, Permission.CustomersWrite, Permission.CustomersDelete,
             Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsSchedule, Permission.JobsCancel, Permission.JobsExecute,
-            Permission.UsersRead, Permission.UsersManage, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword),
+            Permission.UsersRead, Permission.UsersManage, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword,
+            Permission.QuotesRead, Permission.QuotesWrite, Permission.QuotesIssue),
 
         // Gestiona el trabajo diario, pero no borra clientes (borrado físico e irreversible). Ve quién hay en
         // la empresa (para asignar trabajos), pero no gestiona usuarios.
         [TenantRole.Manager] = Set(
             Permission.CustomersRead, Permission.CustomersWrite,
             Permission.JobsRead, Permission.JobsWrite, Permission.JobsAssign, Permission.JobsSchedule, Permission.JobsCancel, Permission.JobsExecute,
-            Permission.UsersRead, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword),
+            Permission.UsersRead, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword,
+            Permission.QuotesRead, Permission.QuotesWrite, Permission.QuotesIssue),
 
-        // Personal de oficina: da de alta y modifica clientes y trabajos, pero no asigna, cancela ni ejecuta.
+        // Personal de oficina: da de alta y modifica clientes y trabajos, pero no asigna, cancela ni ejecuta. Prepara presupuestos (los ve y los escribe) pero no los
+        // compromete: enviar, aceptar y rechazar es Quotes.Issue (spec 023 D11).
         [TenantRole.Employee] = Set(
             Permission.CustomersRead, Permission.CustomersWrite,
-            Permission.JobsRead, Permission.JobsWrite, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword),
+            Permission.JobsRead, Permission.JobsWrite, Permission.MfaManage, Permission.AccountRead, Permission.AccountCloseSessions, Permission.AccountChangePassword,
+            Permission.QuotesRead, Permission.QuotesWrite),
 
-        // Ve clientes y trabajos y los ejecuta; no crea ni modifica. Limitación conocida (ADR-012): puede
+        // Ve clientes y trabajos y los ejecuta; no crea ni modifica. No tiene ningún permiso de presupuestos: los precios son información comercial (spec 023 D11). Limitación conocida (ADR-012): puede
         // ejecutar cualquier trabajo de su empresa, no solo los asignados a él.
         [TenantRole.Technician] = Set(
             Permission.CustomersRead,

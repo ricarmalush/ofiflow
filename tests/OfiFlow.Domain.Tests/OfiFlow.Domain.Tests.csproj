@@ -12,6 +12,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Los casos fijos del cálculo de un presupuesto (spec 023 D4): el frontend copia este mismo fichero para su vista previa. -->
+    <None Update="Quotes/QuoteTotalsVectors.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
