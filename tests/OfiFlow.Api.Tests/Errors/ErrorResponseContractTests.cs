@@ -13,6 +13,7 @@ using OfiFlow.Api.Resources;
 using OfiFlow.Api.Tests.Common;
 using OfiFlow.Application.Common.Exceptions;
 using OfiFlow.Domain.Common;
+using OfiFlow.Domain.Company;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
@@ -131,7 +132,10 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new BusinessRuleException(QuoteErrors.JobCustomerMismatch), HttpStatusCode.BadRequest, "quote.job_customer_mismatch" },
         { new BusinessRuleException(QuoteErrors.NumberUnavailable), HttpStatusCode.BadRequest, "quote.number_unavailable" },
         { new BusinessRuleException(QuoteErrors.ChangedMeanwhile), HttpStatusCode.BadRequest, "quote.changed_meanwhile" },
-        { new BusinessRuleException(CustomerErrors.HasQuotes), HttpStatusCode.BadRequest, "customer.has_quotes" }
+        { new BusinessRuleException(CustomerErrors.HasQuotes), HttpStatusCode.BadRequest, "customer.has_quotes" },
+        // Spec 024: los dos errores de campo del perfil fiscal también los puede lanzar el dominio (los objetos de valor): 400, sin el valor en el mensaje.
+        { new DomainException(CompanyErrors.TaxIdInvalid), HttpStatusCode.BadRequest, "company.tax_id_invalid" },
+        { new DomainException(CompanyErrors.PostalCodeInvalid), HttpStatusCode.BadRequest, "company.postal_code_invalid" }
     };
 
     [Theory]

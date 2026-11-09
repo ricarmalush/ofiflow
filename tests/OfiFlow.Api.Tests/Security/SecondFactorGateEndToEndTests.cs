@@ -30,6 +30,8 @@ public class SecondFactorGateEndToEndTests(SecondFactorGateFixture fixture) : IC
         // Spec 023: los presupuestos son operaciones con permiso de empresa y ninguna está en la lista de permitidas.
         { "GET", "/api/v1/quotes" },
         { "POST", "/api/v1/quotes/00000000-0000-0000-0000-000000000001/send" },
+        // Spec 024: el perfil fiscal tiene permisos de empresa y ninguna operación suya está en la lista de permitidas. (El PUT necesita cuerpo: tiene sus propios tests más abajo.)
+        { "GET", "/api/v1/company/profile" },
         { "GET", "/api/v1/users" },
         { "GET", "/api/v1/account/sessions" },
         { "DELETE", "/api/v1/account/sessions" },
@@ -88,13 +90,39 @@ public class SecondFactorGateEndToEndTests(SecondFactorGateFixture fixture) : IC
         await AssertEnrollmentRequiredAsync(response);
     }
 
+    private static object ValidProfile() =>
+        new { legalName = "Marta Gil Pérez", taxId = "12345678Z", addressLine = "Calle Mayor 1", postalCode = "28001", city = "Madrid" };
+
+    [Fact]
+    public async Task AnOwnerWithoutTheFactor_CannotSaveTheCompanyProfile_AndNothingIsStored()
+    {
+        var owner = await fixture.RegisterOwnerAsync();
+
+        var response = await fixture.SendAsync(HttpMethod.Put, "/api/v1/company/profile", ValidProfile(), owner.AccessToken);
+
+        await AssertEnrollmentRequiredAsync(response);
+        using var scope = fixture.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(0, await db.CompanyProfiles.IgnoreQueryFilters().CountAsync());
+    }
+
+    [Fact]
+    public async Task AnAdminWithoutTheFactor_CannotSaveTheCompanyProfile()
+    {
+        var (_, admin) = await OwnerWithFactorAndAdminWithoutAsync();
+
+        var response = await fixture.SendAsync(HttpMethod.Put, "/api/v1/company/profile", ValidProfile(), admin.AccessToken);
+
+        await AssertEnrollmentRequiredAsync(response);
+    }
+
     [Fact]
     public async Task ThePositiveControl_TheSameOperationsWork_ForAnOwnerWhoHasTheFactor()
     {
         // Sin este control, un «403» podría ser un fallo de la preparación (ruta mal escrita, falta de permiso) y no la puerta.
         var owner = await fixture.NewMfaAccountAsync();
 
-        foreach (var path in new[] { "/api/v1/customers", "/api/v1/jobs", "/api/v1/jobs/agenda?from=2026-11-01T00:00:00Z&to=2026-11-08T00:00:00Z", "/api/v1/users", "/api/v1/account/sessions" })
+        foreach (var path in new[] { "/api/v1/customers", "/api/v1/jobs", "/api/v1/jobs/agenda?from=2026-11-01T00:00:00Z&to=2026-11-08T00:00:00Z", "/api/v1/users", "/api/v1/account/sessions", "/api/v1/company/profile" })
         {
             Assert.Equal(HttpStatusCode.OK, (await fixture.SendAsync(HttpMethod.Get, path, bearer: owner.AccessToken)).StatusCode);
         }
@@ -140,7 +168,7 @@ public class SecondFactorGateEndToEndTests(SecondFactorGateFixture fixture) : IC
 
         // Activarlo cierra las sesiones (spec 010): se entra de nuevo con el segundo factor y ya no hay puerta.
         await fixture.LoginWithMfaAsync(owner);
-        foreach (var path in new[] { "/api/v1/customers", "/api/v1/jobs", "/api/v1/users", "/api/v1/account/sessions" })
+        foreach (var path in new[] { "/api/v1/customers", "/api/v1/jobs", "/api/v1/users", "/api/v1/account/sessions", "/api/v1/company/profile" })
         {
             Assert.Equal(HttpStatusCode.OK, (await fixture.SendAsync(HttpMethod.Get, path, bearer: owner.AccessToken)).StatusCode);
         }

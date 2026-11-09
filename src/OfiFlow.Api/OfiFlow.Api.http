@@ -481,6 +481,62 @@ DELETE {{host}}/api/v1/customers/{{quoteCustomerId}}
 Authorization: Bearer {{tokenA}}
 
 ###############################################################################
+# 3c. PERFIL FISCAL DE LA EMPRESA (spec 024)
+###############################################################################
+
+### Quién emite los documentos: nombre fiscal, NIF/NIE/CIF y dirección. Verlo exige Company.Read (Owner, Admin, Manager y Employee; un Technician no); guardarlo, Company.Manage
+### (solo Owner y Admin). Toda la sección va con el token de A (@tokenA, el Owner). La empresa sale del token: un «tenantId» o un «id» en el cuerpo se IGNORAN.
+### El NIF es un dato PERSONAL cuando la empresa es un autónomo: la lectura no se guarda en cachés (Cache-Control: no-store) y nada del perfil llega a un registro.
+
+### Ver el perfil. Una empresa que todavía no lo ha guardado recibe 200 con todos los campos a null e isComplete=false (no un error).
+GET {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+
+### Guardar el perfil (204). La primera vez lo crea; después lo SUSTITUYE ENTERO: un opcional ausente (province, phone, email) borra el valor anterior.
+### El NIF se valida con su letra o dígito de control (NIF, NIE o CIF español) y se guarda normalizado: «12.345.678-z» queda «12345678Z».
+### El código postal son 5 cifras de una provincia 01 a 52. Teléfono y email, con las reglas de los clientes.
+PUT {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "legalName": "Fontanería Marta S.L.",
+  "taxId": "A-5881850-1",
+  "addressLine": "Calle Mayor 1, 2.º B",
+  "postalCode": "28001",
+  "city": "Madrid",
+  "province": "Madrid",
+  "phone": "+34 600 123 456",
+  "email": "facturas@fontaneriamarta.example"
+}
+
+### Un NIF con el control equivocado -> 400 validation.failed con el código company.tax_id_invalid en el campo TaxId (no cambia nada)
+PUT {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "legalName": "Fontanería Marta S.L.",
+  "taxId": "12345678A",
+  "addressLine": "Calle Mayor 1, 2.º B",
+  "postalCode": "28001",
+  "city": "Madrid"
+}
+
+### Un código postal de una provincia que no existe -> 400 con company.postal_code_invalid en el campo PostalCode
+PUT {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "legalName": "Fontanería Marta S.L.",
+  "taxId": "A58818501",
+  "addressLine": "Calle Mayor 1, 2.º B",
+  "postalCode": "99999",
+  "city": "Madrid"
+}
+
+###############################################################################
 # 4. ERRORES A PROPÓSITO: qué responde la API cuando algo va mal
 ###############################################################################
 
