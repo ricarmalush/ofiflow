@@ -189,6 +189,12 @@ public static class SecurityEventIds
     /// </summary>
     public const int InvitationEmailFailed = 1408;
 
+    /// <summary>
+    /// Alguien guardó el perfil fiscal de la empresa (spec 024 R10): lleva el <c>UserId</c>, el <c>TenantId</c> y si lo <b>creó</b> o lo <b>modificó</b>. <b>Nunca</b> ningún dato del perfil
+    /// (ni el NIF, ni la dirección, ni el teléfono, ni el email, ni los valores anteriores): para un autónomo son datos personales. Deja constancia de <i>quién y cuándo</i>, no de qué valor.
+    /// </summary>
+    public const int CompanyProfileChanged = 1409;
+
     // 1500-1599: segundo factor (spec 010). Ninguno registra códigos, secretos ni emails: solo Ids, el motivo y recuentos.
 
     /// <summary>Alguien pidió el secreto para activar el segundo factor de su cuenta.</summary>

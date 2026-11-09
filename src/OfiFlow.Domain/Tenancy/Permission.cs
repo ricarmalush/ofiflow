@@ -83,5 +83,17 @@ public enum Permission
     /// Quotes.Issue: <b>enviar, aceptar y rechazar</b> un presupuesto (spec 023). Es la acción que compromete un precio ante un cliente, así que va aparte de
     /// <see cref="QuotesWrite"/> (el patrón de <see cref="JobsSchedule"/>): el personal de oficina prepara pero no compromete.
     /// </summary>
-    QuotesIssue
+    QuotesIssue,
+
+    /// <summary>
+    /// Company.Read: ver el perfil fiscal de la empresa (nombre fiscal, NIF y dirección, spec 024). Lo tienen los roles que preparan documentos: quien hace un presupuesto necesita
+    /// saber qué datos llevará. El <c>Technician</c> no (D3).
+    /// </summary>
+    CompanyRead,
+
+    /// <summary>
+    /// Company.Manage: crear y modificar el perfil fiscal (spec 024). Son los datos legales con los que se emiten los documentos, y el NIF de un autónomo es su DNI: solo <c>Owner</c> y
+    /// <c>Admin</c> (D3).
+    /// </summary>
+    CompanyManage
 }

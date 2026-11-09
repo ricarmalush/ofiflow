@@ -42,7 +42,10 @@ public class RolePermissionsTests
         // Un Technician no tiene ninguno: los precios son información comercial (D11).
         "QuotesRead         X     X     X       X        -",
         "QuotesWrite        X     X     X       X        -",
-        "QuotesIssue        X     X     X       -        -"
+        "QuotesIssue        X     X     X       -        -",
+        // Spec 024: el perfil fiscal lo ven quienes preparan documentos (necesitan saber qué datos llevarán) y lo modifican solo Owner y Admin (son datos legales; el NIF de un autónomo es su DNI).
+        "CompanyRead        X     X     X       X        -",
+        "CompanyManage      X     X     -       -        -"
     ];
 
     public static TheoryData<TenantRole, Permission, bool> Cells()

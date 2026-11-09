@@ -166,6 +166,12 @@
   <data name="quote.valid_until_invalid" xml:space="preserve">
     <value>La fecha de validez debe estar entre los años 2000 y 2099.</value>
   </data>
+  <data name="company.tax_id_invalid" xml:space="preserve">
+    <value>El NIF, NIE o CIF no es válido. Revisa los números y la letra o dígito final.</value>
+  </data>
+  <data name="company.postal_code_invalid" xml:space="preserve">
+    <value>El código postal debe tener cinco cifras y empezar por una provincia entre 01 y 52.</value>
+  </data>
 
   <!-- ===== Tenancy ===== -->
   <data name="tenant.name_required" xml:space="preserve">
