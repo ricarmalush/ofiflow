@@ -139,7 +139,7 @@ public sealed partial class TokenService(
 
     public async Task<int> RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {
-        var closed = await RevokeAllActiveAsync(userId, cancellationToken);
+        var closed = await RevokeAllActiveAsync(userId, null, cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -151,16 +151,21 @@ public sealed partial class TokenService(
     // Spec 018 D6: la misma revocación pero sin confirmar y sin evento. El restablecimiento de contraseña confirma UNA vez (contraseña, token y sesiones, todo o nada) y deja su propio
     // evento con este recuento; si confirmara aquí, un fallo después dejaría las sesiones cerradas con la contraseña vieja (o al revés).
     public Task<int> RevokeAllRefreshTokensWithoutSavingAsync(Guid userId, CancellationToken cancellationToken) =>
-        RevokeAllActiveAsync(userId, cancellationToken);
+        RevokeAllActiveAsync(userId, null, cancellationToken);
 
-    private async Task<int> RevokeAllActiveAsync(Guid userId, CancellationToken cancellationToken)
+    // Spec 019 D3: lo mismo, sin confirmar, pero dejando en pie la sesión actual (la de quien cambia su contraseña). Sin Id de sesión no hay «actual»: se cierran todas (fail-closed).
+    public Task<int> RevokeOtherRefreshTokensWithoutSavingAsync(Guid userId, Guid? currentSessionId, CancellationToken cancellationToken) =>
+        RevokeAllActiveAsync(userId, currentSessionId, cancellationToken);
+
+    private async Task<int> RevokeAllActiveAsync(Guid userId, Guid? exceptSessionId, CancellationToken cancellationToken)
     {
         // Solo las filas ACTIVAS de esta cuenta (R2): las ya revocadas conservan su fecha y las caducadas no cuentan como sesión. El
         // filtro es siempre por el UserId que llega del token, nunca por un dato de la petición (R1); RefreshTokens no tiene filtro
         // de empresa, así que este Where es lo único que separa a una cuenta de otra.
         var now = DateTime.UtcNow;
+        // exceptSessionId (spec 019): la sesión que se conserva. SessionId no admite nulos, así que «distinta de» no deja fuera ninguna fila por la lógica de tres valores de SQL.
         var active = await dbContext.RefreshTokens
-            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now)
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now && (exceptSessionId == null || rt.SessionId != exceptSessionId))
             .ToListAsync(cancellationToken);
 
         // Se revoca y no se borra, como en la spec 013: un token cerrado que alguien use después se detecta como reutilización (1003).

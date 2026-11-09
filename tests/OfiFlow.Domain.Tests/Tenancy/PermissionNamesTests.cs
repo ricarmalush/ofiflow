@@ -26,7 +26,9 @@ public partial class PermissionNamesTests
         [Permission.UsersManage] = "Users.Manage",
         [Permission.MfaManage] = "Mfa.Manage",
         [Permission.AccountRead] = "Account.Read",
-        [Permission.AccountCloseSessions] = "Account.CloseSessions"
+        [Permission.AccountCloseSessions] = "Account.CloseSessions",
+        // Spec 019: varias palabras en el nombre del permiso («AccountChangePassword» → «Account.ChangePassword»).
+        [Permission.AccountChangePassword] = "Account.ChangePassword"
     };
 
     public static TheoryData<Permission, string> Names()
@@ -73,7 +75,7 @@ public partial class PermissionNamesTests
     {
         var names = PermissionNames.For(TenantRole.Technician);
 
-        Assert.Equal(["Account.CloseSessions", "Account.Read", "Customers.Read", "Jobs.Execute", "Jobs.Read", "Mfa.Manage"], names);
+        Assert.Equal(["Account.ChangePassword", "Account.CloseSessions", "Account.Read", "Customers.Read", "Jobs.Execute", "Jobs.Read", "Mfa.Manage"], names);
         Assert.Equal(names.Order(StringComparer.Ordinal), names); // orden estable: la respuesta no cambia de una petición a otra
     }
 

@@ -199,7 +199,7 @@ La diferencia (≈ 3,4 ms) es **menor que la de la recuperación de contraseña*
 - **Correo en varios idiomas** y que el correo diga el nombre de la empresa o de la persona.
 - **Los límites compartidos entre instancias**, si se despliega más de una (incluido el del aviso).
 - **Revisar los valores iniciales** (3 por hora y por IP para pedir, 10 para completar, 3 por email, 24 horas, 250 ms, 7 días de purga) con datos reales.
-- **Cambiar la contraseña estando dentro** (spec 019).
+- ~~**Cambiar la contraseña estando dentro** (spec 019).~~ **Hecho en la spec 019 ([ADR-025](ADR-025-cambiar-contrasena-dentro.md)).**
 
 ---
 

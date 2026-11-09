@@ -105,3 +105,4 @@ Cada sesión (un inicio de sesión y todas sus renovaciones) tiene un Id estable
 - Amplía: ADR-009 (un evento de seguridad nuevo, `1009`; la lectura de `RefreshTokens` sigue dentro de la lista blanca).
 - Resuelve: el límite conocido de las specs 010 (R14), 013 y 014, y el de ADR-014.
 - Ampliada por: ADR-019 (cierra el pendiente de la **purga** y de listar y cerrar sesiones concretas; la lista usa este mismo `SessionId` como Id público, y la purga nunca toca una sesión activa).
+- Ampliada por: la [ADR-025](ADR-025-cambiar-contrasena-dentro.md) (spec 019): **cerrar «las demás» sesiones y conservar la actual** (`RevokeOtherRefreshTokensWithoutSavingAsync`). Revoca, no borra, de modo que el access token de una sesión cerrada deja de valer en su siguiente petición y su refresh token se sigue detectando como reutilización; sin Id de sesión actual en el token se cierran **todas** (*fail-closed*).

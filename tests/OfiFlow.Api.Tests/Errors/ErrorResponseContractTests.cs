@@ -114,7 +114,10 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         // Spec 022: el rol exige el segundo factor y la cuenta no lo tiene activo. 403, con su propio código y su mensaje del diccionario.
         { new ForbiddenException(MfaErrors.EnrollmentRequired), HttpStatusCode.Forbidden, "mfa.enrollment_required" },
         // Spec 022 R7: con un rol que exige el factor no se puede desactivar. 400 (regla de negocio): tiene el permiso, la regla es la que lo impide.
-        { new BusinessRuleException(MfaErrors.RequiredForRole), HttpStatusCode.BadRequest, "mfa.required_for_role" }
+        { new BusinessRuleException(MfaErrors.RequiredForRole), HttpStatusCode.BadRequest, "mfa.required_for_role" },
+        // Spec 019: cambiar la contraseña estando dentro. 400 (reglas de negocio de quien ya está autenticado y es su propia contraseña).
+        { new BusinessRuleException(IdentityErrors.PasswordCurrentInvalid), HttpStatusCode.BadRequest, "password.current_invalid" },
+        { new BusinessRuleException(IdentityErrors.PasswordUnchanged), HttpStatusCode.BadRequest, "password.unchanged" }
     };
 
     [Theory]

@@ -174,7 +174,7 @@ La diferencia (≈ 12,5 ms) es el trabajo de crear el token (buscar, contar, anu
 
 - **Obligar el segundo factor a `Owner` y `Admin`** (límite 3b de ADR-014): es el remedio de fondo del buzón comprometido.
 - **Confirmar el email al registrarse**, que cierra la enumeración por el registro.
-- **Cambiar la contraseña estando dentro** (spec 019): otra amenaza (una sesión robada), por eso exige la contraseña actual.
+- ~~**Cambiar la contraseña estando dentro** (spec 019): otra amenaza (una sesión robada), por eso exige la contraseña actual.~~ **Hecho en la spec 019 ([ADR-025](ADR-025-cambiar-contrasena-dentro.md)):** exige la contraseña actual y, con segundo factor, un código; cierra las demás sesiones y **conserva** esta; y **anula los enlaces de recuperación pendientes**.
 - **Cola de correo persistida con reintentos**, con el primer correo que no lleve un secreto.
 - **Comprobar la contraseña contra listas de contraseñas filtradas** y una política más exigente que 8 a 128.
 - **Recuperación de operadores de la plataforma**, con la consola de administración.
@@ -187,4 +187,5 @@ La diferencia (≈ 12,5 ms) es el trabajo de crear el token (buscar, contar, anu
 
 - Amplía: **ADR-020** (segundo uso del puerto de correo; la cola en memoria que allí se dejó abierta para el primer correo con un secreto no interactivo), **ADR-009** (eventos `1012`–`1017`; el email, la contraseña y el token siguen sin aparecer en ningún registro; límites por IP), **ADR-007** (restablecer cierra todas las sesiones; la reutilización de un refresh token cerrado), **ADR-014** (el bloqueo de cuenta se reinicia al restablecer; el segundo factor no se toca; el límite 3b es el remedio de fondo).
 - Relacionada con: ADR-013 (el token con solo su hash; el rol), ADR-018 (los access tokens mueren con su sesión), ADR-019 (la purga y el segundo servicio en segundo plano), ADR-016 (los operadores son otra identidad), ADR-011 (código de error nuevo `password_reset.invalid`), ADR-008 (servidor SMTP de pruebas), ADR-010 (versiones fijadas).
-- Prepara: la spec 019 (cambiar la contraseña estando dentro) y la confirmación de email.
+- Ampliada por: la [ADR-025](ADR-025-cambiar-contrasena-dentro.md) (spec 019), la otra mitad: cambiar la contraseña **estando dentro**, con el mismo aviso por correo (`PasswordChangedEmail`) y fijando la contraseña con la misma operación. Un enlace de recuperación vigente **deja de servir** cuando la persona la cambia desde dentro.
+- Prepara: la confirmación de email.

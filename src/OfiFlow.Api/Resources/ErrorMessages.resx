@@ -199,6 +199,12 @@
   <data name="mfa.required_for_role" xml:space="preserve">
     <value>Tu rol exige el segundo factor, así que no se puede desactivar.</value>
   </data>
+  <data name="password.current_invalid" xml:space="preserve">
+    <value>La contraseña actual no es correcta.</value>
+  </data>
+  <data name="password.unchanged" xml:space="preserve">
+    <value>La contraseña nueva debe ser distinta de la actual.</value>
+  </data>
 
   <!-- ===== Identity ===== -->
   <data name="user.name_required" xml:space="preserve">
