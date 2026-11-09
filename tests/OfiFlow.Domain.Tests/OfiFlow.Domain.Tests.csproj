@@ -14,6 +14,8 @@
   <ItemGroup>
     <!-- Los casos fijos del cálculo de un presupuesto (spec 023 D4): el frontend copia este mismo fichero para su vista previa. -->
     <None Update="Quotes/QuoteTotalsVectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Los casos fijos del NIF, NIE y CIF (spec 024 R3): el frontend copia este mismo fichero para su ayuda al teclear. -->
+    <None Update="Company/TaxIdVectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

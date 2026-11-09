@@ -10,7 +10,7 @@
 
 Hasta ahora OfiFlow era una lista de clientes y trabajos. El flujo de valor del documento maestro es **cliente → trabajo → presupuesto → cita → factura → cobro**, y el presupuesto es el primer documento **con dinero** del producto: el momento en que una empresa de oficios gana o pierde un cliente. Hoy se hace fuera (una hoja de cálculo, Word) y se pierde la trazabilidad: qué se ofreció, a quién, cuándo y qué respondió.
 
-Esta spec es **pequeña a propósito**: no genera el PDF ni manda el correo (las specs 024 y 025). Lo que cierra es **el modelo del dinero**, que es lo que no se puede arreglar después sin migrar datos de clientes reales, y la regla que da valor a un presupuesto: **un precio ofrecido a un cliente no se reescribe a posteriori**. Y es la base de la factura (fase 4): el modelo de líneas, el IVA por tipo y el redondeo se deciden aquí una sola vez.
+Esta spec es **pequeña a propósito**: no genera el PDF ni manda el correo (las specs 025 y 026: la 024 se intercaló para guardar los datos de la empresa, que el PDF necesita; ver la [ADR-027](ADR-027-perfil-fiscal-empresa.md)). Lo que cierra es **el modelo del dinero**, que es lo que no se puede arreglar después sin migrar datos de clientes reales, y la regla que da valor a un presupuesto: **un precio ofrecido a un cliente no se reescribe a posteriori**. Y es la base de la factura (fase 4): el modelo de líneas, el IVA por tipo y el redondeo se deciden aquí una sola vez.
 
 ## Problema
 
@@ -164,7 +164,7 @@ Un listado y una pantalla de un presupuesto, sin librerías nuevas. **Mientras s
 
 ### Qué queda abierto para revisar más adelante
 
-- **El PDF** (spec 024, con los datos de la empresa: nombre fiscal, NIF, dirección, logotipo) y **el envío por correo** (spec 025).
+- **El PDF** (spec 025; el nombre fiscal, el NIF y la dirección de la empresa ya existen desde la spec 024 y el logotipo queda abierto) y **el envío por correo** (spec 026).
 - **Crear el trabajo o la factura** a partir de un presupuesto aceptado; **duplicar** uno (la forma de corregir uno enviado); descuentos; caducidad automática; plantillas o catálogo de servicios.
 - **La aceptación del cliente final en línea** (una identidad nueva y no confiable) y la firma.
 - **Otras monedas y otros países;** adjuntos; **un borrador generado por IA** (fase 6).
@@ -177,4 +177,4 @@ Un listado y una pantalla de un presupuesto, sin librerías nuevas. **Mientras s
 
 - Amplía: **[ADR-012](ADR-012-autorizacion-rbac.md)** (tres permisos nuevos y la matriz de 90 celdas), **[ADR-006](ADR-006-persistencia-domain-events.md)** (una entidad con líneas, la clave que genera el dominio y el control de concurrencia optimista), **[ADR-022](ADR-022-agenda.md)** (una fecha de calendario sin hora), **[ADR-011](ADR-011-errores-codigos-diccionario.md)** (14 códigos nuevos; ya hay 64).
 - Relacionada con: **[ADR-002](ADR-002-multi-tenancy.md)** (las líneas llevan su propio `TenantId`; el número y el listado respetan el filtro), **[ADR-024](ADR-024-segundo-factor-obligatorio.md)** (la puerta se aplica sola), **[ADR-009](ADR-009-seguridad-base.md)** (nada de un presupuesto llega al registro), **[ADR-008](ADR-008-testing-integracion.md)** (el SQL Server real que prueba las carreras y los planes).
-- Prepara: el PDF y el correo del presupuesto (specs 024 y 025), y la factura (fase 4), que reutilizará el modelo de líneas, el IVA por tipo y el redondeo.
+- Prepara: el PDF y el correo del presupuesto (specs 025 y 026), y la factura (fase 4), que reutilizará el modelo de líneas, el IVA por tipo y el redondeo.

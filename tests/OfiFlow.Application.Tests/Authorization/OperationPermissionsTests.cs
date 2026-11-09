@@ -36,6 +36,8 @@ using OfiFlow.Application.Jobs.Queries.GetAgenda;
 using OfiFlow.Application.Jobs.Queries.GetJob;
 using OfiFlow.Application.Jobs.Queries.GetJobs;
 using OfiFlow.Application.Platform.Commands.PlatformLogin;
+using OfiFlow.Application.Company.Commands.UpsertCompanyProfile;
+using OfiFlow.Application.Company.Queries.GetCompanyProfile;
 using OfiFlow.Application.Quotes.Commands.AcceptQuote;
 using OfiFlow.Application.Quotes.Commands.CreateQuote;
 using OfiFlow.Application.Quotes.Commands.DeleteQuote;
@@ -114,7 +116,11 @@ public class OperationPermissionsTests
         (typeof(DeleteQuoteCommand), Permission.QuotesWrite),
         (typeof(SendQuoteCommand), Permission.QuotesIssue),
         (typeof(AcceptQuoteCommand), Permission.QuotesIssue),
-        (typeof(RejectQuoteCommand), Permission.QuotesIssue)
+        (typeof(RejectQuoteCommand), Permission.QuotesIssue),
+
+        // Spec 024: el perfil fiscal. Verlo lo tienen los roles que preparan documentos; guardarlo, solo Owner y Admin.
+        (typeof(GetCompanyProfileQuery), Permission.CompanyRead),
+        (typeof(UpsertCompanyProfileCommand), Permission.CompanyManage)
     ];
 
     private static readonly Type[] AnonymousTable =
@@ -225,7 +231,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(55, inTheTable.Count); // 47 + las ocho de los presupuestos (spec 023): el contador obliga a declarar cada operación nueva a propósito
+        Assert.Equal(57, inTheTable.Count); // 47 + las ocho de los presupuestos (spec 023) + las dos del perfil fiscal (spec 024): el contador obliga a declarar cada operación nueva a propósito
     }
 
     private static bool IsMediatRRequest(Type type) =>

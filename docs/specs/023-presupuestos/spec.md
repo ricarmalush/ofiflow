@@ -26,8 +26,8 @@ Cuatro bloques:
 
 ## Alcance — Qué NO incluye
 
-- **NEXT (spec 024):** el **PDF** del presupuesto. Exige antes los **datos de la empresa** en el documento (nombre fiscal, NIF, dirección, logotipo) que hoy no existen.
-- **NEXT (spec 025):** **enviarlo por correo** al cliente (con el PDF adjunto). En esta spec «Enviar» **solo marca el presupuesto como enviado**: la persona lo ha mandado por el medio que sea.
+- **NEXT (spec 025):** el **PDF** del presupuesto. Exige antes los **datos de la empresa** en el documento (nombre fiscal, NIF, dirección, logotipo) que hoy no existen: la **spec 024** (perfil fiscal de la empresa) se intercaló para guardarlos, así que el PDF pasó de la 024 a la 025.
+- **NEXT (spec 026):** **enviarlo por correo** al cliente (con el PDF adjunto). En esta spec «Enviar» **solo marca el presupuesto como enviado**: la persona lo ha mandado por el medio que sea.
 - **NEXT:** crear el **trabajo** (o la factura) a partir de un presupuesto aceptado; **duplicar** un presupuesto (la forma de «corregir» uno ya enviado); descuentos por línea o globales; caducidad automática; plantillas o catálogo de servicios y materiales; notas internas distintas de las que ve el cliente.
 - **LATER:** que **el cliente final lo acepte en línea** (hoy un `Customer` es un dato de la empresa, no un usuario: sería una identidad nueva, anónima y no confiable, y un riesgo propio); firma; otras monedas y otros países (otros tipos de IVA); adjuntos; **generar el borrador con IA** (fase 6).
 - **NEVER:** modificar un presupuesto **ya enviado** (ni su precio ni sus líneas). Un precio ofrecido a un cliente es un compromiso: se corrige haciendo uno nuevo, no reescribiendo el anterior (R4).
@@ -170,7 +170,7 @@ Caso multi-tenant obligatorio: la empresa sale **solo del token**; un presupuest
 
 ## Fuera de alcance / Backlog relacionado
 
-- El PDF y los datos de la empresa en el documento (spec 024); enviarlo por correo (spec 025).
+- El PDF y los datos de la empresa en el documento (spec 025, con los datos que guarda la spec 024); enviarlo por correo (spec 026).
 - Crear el trabajo o la factura desde un presupuesto aceptado; duplicar; descuentos; caducidad automática; plantillas y catálogo.
 - Aceptación en línea por el cliente final (una identidad nueva y no confiable); firma.
 - Otras monedas y otros países; adjuntos; borrador generado por IA.

@@ -55,6 +55,7 @@ La carpeta de primer nivel es siempre un **contexto de negocio** (capítulo 2, s
 | Carpeta | Qué contiene | Por qué está ahí |
 |---|---|---|
 | `Common/` | `Entity`, `AggregateRoot`, `IDomainEvent`, `DomainException`, `Email`, `ITenantOwned`, `IAuditable`, `CommonErrors` | Lo que comparten todos los contextos. `Email` está aquí porque lo usan a la vez Customers e Identity (*shared kernel*) |
+| `Company/` | `CompanyProfile`, `SpanishTaxId`, `SpanishPostalCode`, `CompanyErrors` | El perfil fiscal de la empresa (spec 024): dos **objetos de valor** que no existen sin ser válidos (el NIF/NIE/CIF con su dígito o letra de control, y el código postal) y la entidad, que solo los recibe ya construidos |
 | `Customers/` | `Customer`, `CustomerType`, `PhoneNumber`, `CustomerErrors` | Todo lo que es un cliente |
 | `Jobs/` | `Job`, `JobStatus`, `JobPriority`, `JobErrors` | Todo lo que es un trabajo y sus transiciones de estado |
 | `Quotes/` | `Quote`, `QuoteItem`, `QuoteItemInput`, `QuoteCalculator`, `QuoteTotals`, `VatRates`, `QuoteStatus`, `QuoteErrors` | Un presupuesto y sus líneas (spec 023): **la única función que calcula el dinero** (`QuoteCalculator`), la lista cerrada de tipos de IVA, los estados y sus transiciones |
@@ -127,6 +128,7 @@ Cada caso de uso es una carpeta autocontenida: lo que hace falta para entenderlo
 
 | Carpeta | Contenido |
 |---|---|
+| `Company/` | Ver el perfil fiscal (`Queries/GetCompanyProfile`, que devuelve uno vacío si no existe) y crearlo o sustituirlo entero (`Commands/UpsertCompanyProfile`), con su `CompanyProfileDto` (spec 024). El validador repite las reglas de forma del dominio, y **ni el comando ni el DTO imprimen su contenido**: el NIF y la dirección son datos personales de un autónomo |
 | `Customers/` | Crear, ver, listar, modificar y eliminar clientes |
 | `Jobs/` | Crear, ver, listar, modificar, empezar, completar, cancelar y asignar trabajos |
 | `Quotes/` | Crear, ver, listar (paginado), modificar y eliminar un borrador, y enviar, aceptar y rechazar un presupuesto (spec 023). Las reglas de forma de la cabecera y las líneas viven una sola vez en `QuoteRules`, y la versión de fila en `QuoteVersion` |

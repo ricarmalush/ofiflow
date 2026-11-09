@@ -32,7 +32,9 @@ public partial class PermissionNamesTests
         // Spec 023: los tres permisos de los presupuestos.
         [Permission.QuotesRead] = "Quotes.Read",
         [Permission.QuotesWrite] = "Quotes.Write",
-        [Permission.QuotesIssue] = "Quotes.Issue"
+        [Permission.QuotesIssue] = "Quotes.Issue",
+        [Permission.CompanyRead] = "Company.Read",
+        [Permission.CompanyManage] = "Company.Manage"
     };
 
     public static TheoryData<Permission, string> Names()
