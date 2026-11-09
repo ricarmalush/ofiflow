@@ -431,7 +431,7 @@ public class QuoteEndToEndTests(TwoTenantsFixture fixture) : IClassFixture<TwoTe
     }
 
     [Fact]
-    public async Task EditingAndSendingAtTheSameTime_NeverLeaveASentQuoteWithChangedLines_NorA500()
+    public async Task EditingAndSendingAtTheSameTime_LeaveAStateConsistentWithWhatEachOneReported_NorA500()
     {
         for (var round = 0; round < 8; round++)
         {
@@ -443,16 +443,23 @@ public class QuoteEndToEndTests(TwoTenantsFixture fixture) : IClassFixture<TwoTe
                 A.PostAsync($"/api/v1/quotes/{id}/send", null));
 
             Assert.DoesNotContain(responses, r => (int)r.StatusCode >= 500);
+            var (editResponse, sendResponse) = (responses[0], responses[1]);
+            var edited = editResponse.StatusCode == HttpStatusCode.NoContent;
+            var sent = sendResponse.StatusCode == HttpStatusCode.NoContent;
             var stored = await GetAsync(A, id);
-            if (stored.GetProperty("status").GetString() == "Sent")
+
+            // El estado final tiene que ser COHERENTE con lo que respondió la API a cada una (el resultado depende de quién llegó antes):
+            //   edición 204 y envío 204 -> la edición fue primero y se envió el presupuesto YA editado (Sent, con las líneas nuevas);
+            //   edición 204 y envío rechazado -> sigue siendo un borrador con las líneas nuevas;
+            //   edición rechazada y envío 204 -> el envío fue primero: Sent con las líneas ORIGINALES (la edición no se coló);
+            //   las dos rechazadas -> un borrador intacto (no puede ocurrir con estas dos, pero no se da por supuesto).
+            Assert.Equal(sent ? "Sent" : "Draft", stored.GetProperty("status").GetString());
+            Assert.Equal(edited ? 1 : 10000, stored.GetProperty("items")[0].GetProperty("unitPriceCents").GetInt64());
+            Assert.Equal(edited ? "Reescrito" : "Reforma del baño", stored.GetProperty("title").GetString());
+            if (!edited)
             {
-                Assert.Equal(10000, stored.GetProperty("items")[0].GetProperty("unitPriceCents").GetInt64());
-                Assert.Equal("Reforma del baño", stored.GetProperty("title").GetString());
-            }
-            else
-            {
-                Assert.Equal("Draft", stored.GetProperty("status").GetString());
-                Assert.Equal(1, stored.GetProperty("items")[0].GetProperty("unitPriceCents").GetInt64());
+                var problem = await Dictionary.ReadProblemAsync(editResponse);
+                Assert.Contains(problem.GetProperty("code").GetString(), new[] { "quote.changed_meanwhile", "quote.not_editable" });
             }
         }
     }

@@ -466,9 +466,10 @@ public class QuotePersistenceTests(SqlServerContainerFixture fixture) : IClassFi
     }
 
     [Fact]
-    public async Task EditingAndSendingAtTheSameTime_NeverLeaveASentQuoteWithChangedLines()
+    public async Task EditingAndSendingAtTheSameTime_LeaveAStateThatIsConsistentWithWhatEachOneReported()
     {
-        // Las dos operaciones, de verdad a la vez y varias veces: sea quien sea el que gane, un presupuesto enviado conserva SUS líneas.
+        // Las dos operaciones, de verdad a la vez y varias veces. Si la edición llega primero, el envío envía el presupuesto YA editado (Sent con las líneas nuevas: es correcto);
+        // si el envío llega primero, la edición se rechaza y NO se cuela (Sent con las líneas originales). Lo que no puede pasar es un estado que contradiga lo que respondió cada una.
         for (var round = 0; round < 12; round++)
         {
             var tenantId = Guid.NewGuid();
@@ -488,29 +489,27 @@ public class QuotePersistenceTests(SqlServerContainerFixture fixture) : IClassFi
                 await new SendQuoteCommandHandler(db, new FakeTimeProvider(Now)).Handle(new SendQuoteCommand(id), CancellationToken.None);
             });
 
-            // Cualquiera de las dos puede perder: el error es de negocio (nunca un 500) y lo que queda es coherente.
-            foreach (var task in new[] { edit, send })
-            {
-                try
-                {
-                    await task;
-                }
-                catch (Exception exception) when (exception is BusinessRuleException or DomainException)
-                {
-                }
-            }
+            // Cualquiera de las dos puede perder: el error es de negocio (nunca otra excepción) y se anota si salió bien.
+            var edited = await SucceededAsync(edit);
+            var sent = await SucceededAsync(send);
 
             var stored = await LoadAsync(tenantId, id);
-            if (stored.Status == QuoteStatus.Sent)
-            {
-                Assert.Equal([10000L], stored.Items.Select(i => i.UnitPriceCents));
-                Assert.Equal("Reforma del baño", stored.Title);
-            }
-            else
-            {
-                Assert.Equal(QuoteStatus.Draft, stored.Status);
-                Assert.Equal([1L], stored.Items.Select(i => i.UnitPriceCents));
-            }
+            Assert.Equal(sent ? QuoteStatus.Sent : QuoteStatus.Draft, stored.Status);
+            Assert.Equal([edited ? 1L : 10000L], stored.Items.Select(i => i.UnitPriceCents));
+            Assert.Equal(edited ? "Reescrito" : "Reforma del baño", stored.Title);
+        }
+    }
+
+    private static async Task<bool> SucceededAsync(Task task)
+    {
+        try
+        {
+            await task;
+            return true;
+        }
+        catch (Exception exception) when (exception is BusinessRuleException or DomainException)
+        {
+            return false;
         }
     }
 
