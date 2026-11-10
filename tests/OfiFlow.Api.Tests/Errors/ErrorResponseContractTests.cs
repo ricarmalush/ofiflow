@@ -129,6 +129,7 @@ public class ExceptionMappingContractTests(ExceptionMappingContractTests.Configu
         { new DomainException(QuoteErrors.CannotAccept, QuoteStatus.Draft), HttpStatusCode.BadRequest, "quote.cannot_accept" },
         { new DomainException(QuoteErrors.CannotReject, QuoteStatus.Draft), HttpStatusCode.BadRequest, "quote.cannot_reject" },
         { new DomainException(QuoteErrors.Empty), HttpStatusCode.BadRequest, "quote.empty" },
+        { new BusinessRuleException(QuoteErrors.CompanyProfileIncomplete), HttpStatusCode.BadRequest, "quote.company_profile_incomplete" },
         { new BusinessRuleException(QuoteErrors.JobCustomerMismatch), HttpStatusCode.BadRequest, "quote.job_customer_mismatch" },
         { new BusinessRuleException(QuoteErrors.NumberUnavailable), HttpStatusCode.BadRequest, "quote.number_unavailable" },
         { new BusinessRuleException(QuoteErrors.ChangedMeanwhile), HttpStatusCode.BadRequest, "quote.changed_meanwhile" },

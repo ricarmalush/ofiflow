@@ -127,6 +127,9 @@ public static class DependencyInjection
     {
         services.AddSingleton<IQuotePdfRenderer, PdfSharpQuotePdfRenderer>();
 
+        // Un servidor al que le falta la zona horaria o las fuentes no arranca (spec 025 D12).
+        services.AddHostedService<QuotePdfStartupCheck>();
+
         return services;
     }
 

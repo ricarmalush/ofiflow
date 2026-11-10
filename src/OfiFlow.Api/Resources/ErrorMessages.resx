@@ -166,6 +166,9 @@
   <data name="quote.valid_until_invalid" xml:space="preserve">
     <value>La fecha de validez debe estar entre los años 2000 y 2099.</value>
   </data>
+  <data name="quote.company_profile_incomplete" xml:space="preserve">
+    <value>Para generar el PDF hay que completar antes los datos de la empresa (nombre fiscal, NIF y dirección).</value>
+  </data>
   <data name="company.tax_id_invalid" xml:space="preserve">
     <value>El NIF, NIE o CIF no es válido. Revisa los números y la letra o dígito final.</value>
   </data>

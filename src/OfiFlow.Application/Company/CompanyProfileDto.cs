@@ -1,3 +1,5 @@
+using OfiFlow.Domain.Company;
+
 namespace OfiFlow.Application.Company;
 
 /// <summary>
@@ -17,6 +19,23 @@ public sealed record CompanyProfileDto(
 {
     /// <summary>El perfil de una empresa que todavía no ha guardado nada.</summary>
     public static CompanyProfileDto Empty { get; } = new(null, null, null, null, null, null, null, null, IsComplete: false);
+
+    /// <summary>El perfil guardado, tal como lo ven la consulta del perfil y el PDF de un presupuesto: un perfil que existe está completo (los cinco obligatorios).</summary>
+    public static CompanyProfileDto From(CompanyProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        return new CompanyProfileDto(
+            profile.LegalName,
+            profile.TaxId.Value,
+            profile.AddressLine,
+            profile.PostalCode.Value,
+            profile.City,
+            profile.Province,
+            profile.Phone?.Value,
+            profile.Email?.Value,
+            IsComplete: true);
+    }
 
     // Datos personales cuando la empresa es un autónomo: el `ToString` del `record` los imprimiría (ADR-009 R5).
     public override string ToString() => nameof(CompanyProfileDto);

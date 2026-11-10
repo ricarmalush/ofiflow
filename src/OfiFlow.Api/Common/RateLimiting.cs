@@ -71,6 +71,12 @@ public static partial class RateLimiting
     /// <summary>Las operaciones del panel con sesión de plataforma (listar, suspender, reactivar): 30 por minuto y por IP (spec 011, valor inicial).</summary>
     public const string PlatformOperations = "platform-operations";
 
+    /// <summary>
+    /// Descargar el PDF de un presupuesto (autenticada y costosa: maqueta un documento de hasta 100 líneas, con CPU y memoria): <b>30 por minuto y por IP</b> (spec 025 R14, D9, valor inicial), como las
+    /// operaciones del panel de plataforma. Frena a una sesión robada usada para agotar el servidor; una persona que descarga a mano no se acerca. Cubo propio: no gasta el de otras rutas.
+    /// </summary>
+    public const string QuotePdf = "quote-pdf";
+
     public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services)
     {
         services.AddRateLimiter(options =>
@@ -104,6 +110,8 @@ public static partial class RateLimiting
             options.AddPolicy(PlatformVerify, context => PerIp(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
             // Ya autenticadas, pero cada una toca la base de datos de todas las empresas: un tope por IP frena una sesión robada usada como mangueras.
             options.AddPolicy(PlatformOperations, context => PerIp(context, permitLimit: 30, TimeSpan.FromMinutes(1)));
+            // Generar un PDF cuesta CPU y memoria aunque haya sesión: un tope por IP frena una sesión robada usada para agotarlas (spec 025 R14, valor inicial).
+            options.AddPolicy(QuotePdf, context => PerIp(context, permitLimit: 30, TimeSpan.FromMinutes(1)));
 
             options.OnRejected = async (rejected, cancellationToken) =>
             {

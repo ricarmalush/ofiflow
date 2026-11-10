@@ -38,6 +38,9 @@ public class QuotePdfRegistrationTests
         var services = new ServiceCollection();
 
         Assert.Same(services, services.AddQuotePdf());
-        Assert.Single(services);
+
+        // El generador y la comprobación de arranque: nada más, y ninguna opción que configurar.
+        Assert.Equal(2, services.Count);
+        Assert.Contains(services, s => s.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService) && s.ImplementationType == typeof(QuotePdfStartupCheck));
     }
 }

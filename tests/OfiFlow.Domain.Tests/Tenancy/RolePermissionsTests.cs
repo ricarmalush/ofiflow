@@ -131,4 +131,17 @@ public class RolePermissionsTests
         Assert.Throws<NotSupportedException>(() => set.Add(Permission.CustomersDelete));
         Assert.False(RolePermissions.Has(TenantRole.Technician, Permission.CustomersDelete));
     }
+
+    [Fact]
+    public void EveryRoleThatCanReadQuotesCanAlsoReadTheCompanyProfile()
+    {
+        // Spec 025 R11, D6: el PDF de un presupuesto enseña los datos fiscales de la empresa y lo descarga quien tiene Quotes.Read, sin permiso propio. Es seguro solo mientras todo rol que lee
+        // presupuestos pueda ver esos datos de todas formas: si un rol perdiera Company.Read y conservara Quotes.Read, el PDF se los enseñaría. Este test lo impide.
+        var readers = Enum.GetValues<TenantRole>().Where(role => RolePermissions.Has(role, Permission.QuotesRead)).ToList();
+
+        Assert.Equal(
+            [TenantRole.Owner, TenantRole.Admin, TenantRole.Manager, TenantRole.Employee],
+            readers);
+        Assert.All(readers, role => Assert.True(RolePermissions.Has(role, Permission.CompanyRead), $"{role} lee presupuestos pero no los datos de la empresa."));
+    }
 }

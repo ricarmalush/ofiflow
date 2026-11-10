@@ -26,7 +26,7 @@ CORS se configura en [`Program.cs`](../../src/OfiFlow.Api/Program.cs) con una po
 2. **Validación al arrancar:** cada origen debe ser exactamente esquema, host y puerto (lo que envía el navegador en `Origin`), con `https` salvo en `localhost`/loopback, sin ruta, sin barra final, sin credenciales en la URL y sin comodines. Si no, la API no arranca (como una clave que falta, ADR-009 R8).
 3. **Verbos y cabeceras cerrados:** `GET`, `POST`, `PUT`, `DELETE`; `Authorization`, `Content-Type`, `Accept-Language`.
 4. **Sin credenciales de navegador** (`AllowCredentials`): la sesión viaja en la cabecera `Authorization`.
-5. **Expone `Retry-After`** para que el frontend pueda leer cuánto esperar tras un `429`.
+5. **Expone `Retry-After`** para que el frontend pueda leer cuánto esperar tras un `429`, y **`Content-Disposition`** (spec 025) para que lea el nombre con que la API entrega el PDF de un presupuesto («presupuesto-P-0012.pdf», solo el número). Nada más: un test fija que son exactamente esas dos.
 6. **Orden en el pipeline:** `UseCors` antes del rate limiter y de la autenticación, para que el *preflight* (`OPTIONS`, sin token) se conteste sin pasar por ellos y para que `429` y `500` también lleven las cabeceras.
 
 ## Alternativas descartadas

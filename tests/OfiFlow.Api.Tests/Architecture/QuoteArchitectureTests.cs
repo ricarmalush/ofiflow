@@ -110,7 +110,7 @@ public class QuoteArchitectureTests
     }
 
     [Fact]
-    public void TheQuoteEndpoints_AreExactlyTheEightOfTheSpec()
+    public void TheQuoteEndpoints_AreExactlyTheNineOfTheSpecs()
     {
         var code = Code(SourceCode.ReadText(Endpoints));
         var routes = System.Text.RegularExpressions.Regex.Matches(code, @"group\.Map(Get|Post|Put|Delete)\(""([^""]*)""")
@@ -119,7 +119,7 @@ public class QuoteArchitectureTests
             .ToList();
 
         Assert.Equal(
-            ["DELETE /{id:guid}", "GET /", "GET /{id:guid}", "POST /", "POST /{id:guid}/accept", "POST /{id:guid}/reject", "POST /{id:guid}/send", "PUT /{id:guid}"],
+            ["DELETE /{id:guid}", "GET /", "GET /{id:guid}", "GET /{id:guid}/pdf", "POST /", "POST /{id:guid}/accept", "POST /{id:guid}/reject", "POST /{id:guid}/send", "PUT /{id:guid}"],
             routes);
     }
 
@@ -150,7 +150,7 @@ public class QuoteArchitectureTests
             }
         }
 
-        Assert.Equal(8, QuoteHandlers().Count);
+        Assert.Equal(9, QuoteHandlers().Count); // los ocho de la spec 023 y el del PDF (spec 025)
     }
 
     [Fact]

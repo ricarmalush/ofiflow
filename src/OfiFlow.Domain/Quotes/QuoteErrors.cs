@@ -43,4 +43,10 @@ public static class QuoteErrors
 
     /// <summary>Un error de campo: la fecha de validez no está entre los años 2000 y 2099 (R2).</summary>
     public const string ValidUntilInvalid = "quote.valid_until_invalid";
+
+    /// <summary>
+    /// La empresa no ha guardado su perfil fiscal (spec 024), así que no hay PDF que generar (spec 025 R3): un PDF «a medias», con el emisor en blanco, no sirve para dárselo a un cliente. Es un error de
+    /// <b>negocio</b>, no de campo: no hay ningún campo de la petición que corregir.
+    /// </summary>
+    public const string CompanyProfileIncomplete = "quote.company_profile_incomplete";
 }
