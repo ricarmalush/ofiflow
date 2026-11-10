@@ -13,6 +13,13 @@ updates:
       nuget:
         patterns:
           - "*"
+    # PDFsharp y MigraDoc dejaron de ser MIT: la 6.5.0 y la 7.0.0-preview-2 (14-10-2026) son AGPL-3.0, que obliga a publicar el código de todo lo que se enlace con ellas.
+    # Se queda en la 6.2.x (MIT) hasta que se decida otra cosa en una ADR (spec 025 D2, ADR-028). Un test comprueba que este bloque existe y que el .nuspec sigue siendo MIT.
+    ignore:
+      - dependency-name: "PDFsharp"
+        versions: [">= 6.3"]
+      - dependency-name: "PDFsharp-MigraDoc"
+        versions: [">= 6.3"]
 
   # Las acciones de terceros de los workflows van fijadas por SHA de commit (ADR-010); Dependabot
   # abre el PR de actualización cuando sale una versión nueva, manteniendo el pin por SHA.
