@@ -271,6 +271,32 @@ Que quien tenga `Company.Manage` puede **cambiar el NIF o el nombre fiscal** con
 
 **¿Qué error real encontrasteis?**
 Con el NIF ausente en el JSON, el validador lanzaba una `NullReferenceException` (un `500`): lo encontró un test. Y en el frontend, `Validators.required` daba por bueno un campo con solo espacios y se enviaba un `PUT` con un obligatorio vacío: lo encontró un test del componente. Además, `ToUpperInvariant` habría convertido la «ſ» en una «S» válida: lo destapó una mutación. *(Cap. 9)*
+### El PDF del presupuesto (spec 025)
+
+**¿Por qué se genera al pedirlo y no se guarda?**
+Porque un presupuesto enviado no cambia (spec 023), así que el PDF sale igual cada vez, y guardarlo exigiría almacenamiento de ficheros, una migración y una política de retención. El precio es que, si la empresa cambia después su nombre fiscal o su NIF, el PDF de un presupuesto ya enviado sale con los datos nuevos: tolerable para presupuestos, no para facturas, que sí deben conservarse tal como se emitieron (fase 4). *(Cap. 0, ADR-028)*
+
+**¿Cómo sabéis que el PDF no puede discrepar de la pantalla?**
+Porque no calcula nada: imprime los importes que ya calculó el servidor (`QuoteDto`). Un escaneo prohíbe a la fábrica del modelo y al generador sumar, multiplicar, redondear o usar la calculadora, el dinero se formatea solo con enteros, y los 15 casos fijos de totales pasan por `Quote` → DTO → modelo → PDF y por HTTP y se comparan con la API, con un formato del importe escrito aparte en los tests. *(Cap. 8, 9)*
+
+**¿Cómo se prueba un fichero binario?**
+Leyéndolo de vuelta, nunca comparando bytes (llevan identificadores y fechas): el texto de cada página con PdfPig, la estructura con el propio PDFsharp y la caja de cada letra para comprobar que nada se sale de los márgenes. Y con controles positivos: un test que recorre los objetos del PDF buscando claves peligrosas pasa siempre si el PDF no tiene ninguna, así que hay un PDF con un enlace que demuestra que lo vería. *(Cap. 9)*
+
+**¿Qué hacéis con el texto libre?**
+Se imprime como texto, sin interpretar nada. Se quitan los caracteres de control y los que invierten el sentido de lectura (U+202E); un carácter que la fuente no tiene sale como «?» y no rompe la generación; y las palabras que no caben se parten donde dejan de caber, **midiendo el ancho real de cada letra** (un tope de caracteres dejó pasar una hilera de «W» fuera de la página). *(Cap. 8)*
+
+**¿Qué pasó con la licencia de la librería?**
+PDFsharp y MigraDoc pasaron de MIT a AGPL-3.0 en la 6.5.0 (14-10-2026): en un repositorio público, enlazarlas obligaría a publicar el código de todo lo que las use. Se comprobó en el `.nuspec` de cada versión, se fijó la 6.2.4, un test lee el `.nuspec` de lo restaurado y Dependabot lleva un bloque `ignore` (cuya sintaxis no se puede probar en local: se verá en su primer PR semanal). Cualquier cambio de versión que cambie la licencia se decide en una ADR. *(ADR-010, ADR-028)*
+
+**¿Quién puede descargarlo y por qué no hay un permiso nuevo?**
+`Quotes.Read` (`Owner`, `Admin`, `Manager` y `Employee`): descargar el PDF no enseña nada que esos roles no vean ya en pantalla. Pero el PDF enseña los datos fiscales de la empresa, así que un test fija que **todo rol con `Quotes.Read` tiene `Company.Read`**: si un rol perdiera uno y conservara el otro, el PDF se los enseñaría. El orden es sesión, permiso, presupuesto (`404`), perfil (`400`) y generación. *(Cap. 8)*
+
+**¿Qué riesgo NO cierra?**
+Que quien tenga `Quotes.Read` puede descargar todos los presupuestos de su empresa sin que quede traza (lo frena solo el límite de 30 por minuto y por IP). Tampoco está firmado el PDF, y la librería corre dentro de la API. *(Cap. 8)*
+
+**¿Qué error real encontrasteis?**
+Que el error de una petición que espera un fichero llega al frontend como un `Blob` con el JSON dentro, así que el interceptor no veía el código estable: una descarga de una empresa suspendida no cerraba la sesión y un `403` de segundo factor obligatorio no llevaba a la pantalla de seguridad. Y que el CORS no exponía `Content-Disposition`, así que un frontend en otro origen no podía leer el nombre del fichero. *(Cap. 8, 9)*
+
 ### La agenda (spec 020)
 
 **¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
@@ -387,8 +413,9 @@ Con honestidad y de lo más a lo menos preocupante:
 - **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Crear una cuenta (spec 021) deja abiertos los textos legales** (los redacta el dueño del proyecto), que las cuentas anteriores **no han aceptado ninguna condición**, la comprobación **anti-robots**, que el límite de 3 pedidos por hora y por IP **puede frenar a una oficina entera**, y que el límite de avisos vive **en memoria**.
-- **Los presupuestos (spec 023) no tienen PDF ni correo** y aceptar es una **anotación interna**, no la firma del cliente; el cálculo del dinero está en dos sitios (los casos fijos lo protegen, pero la copia del frontend se mantiene a mano); y muchas creaciones simultáneas de una empresa pueden agotar los tres intentos del número.
+- **Los presupuestos (spec 023) no se mandan por correo (el PDF existe desde la spec 025)** y aceptar es una **anotación interna**, no la firma del cliente; el cálculo del dinero está en dos sitios (los casos fijos lo protegen, pero la copia del frontend se mantiene a mano); y muchas creaciones simultáneas de una empresa pueden agotar los tres intentos del número.
 - **El perfil fiscal (spec 024) no valida que el NIF exista**, solo su dígito de control; quien tenga `Company.Manage` puede cambiarlo sin que quede el valor anterior (el registro dice quién y cuándo); gana la última escritura; y el NIF, la dirección y el teléfono de un autónomo están en claro en la base de datos. El PDF y el correo del presupuesto siguen sin existir (specs 025 y 026).
+- **El PDF del presupuesto (spec 025) no se guarda ni está firmado:** quien tenga `Quotes.Read` puede descargar todos los presupuestos de su empresa sin que quede traza (lo frena solo un límite de 30 por minuto), el de un presupuesto ya enviado sale con los datos fiscales de ahora, y el aspecto de las páginas se revisa a ojo (no hay rasterizador de PDF en el entorno de pruebas). No hay correo (spec 026) ni logotipo.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 - **No hay alertas ni un registro de auditoría persistente**: los eventos se escriben, pero nadie los vigila.
 - **ZAP escanea solo la superficie anónima** y solo en los PRs.

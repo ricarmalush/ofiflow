@@ -164,7 +164,7 @@ Un listado y una pantalla de un presupuesto, sin librerías nuevas. **Mientras s
 
 ### Qué queda abierto para revisar más adelante
 
-- **El PDF** (spec 025; el nombre fiscal, el NIF y la dirección de la empresa ya existen desde la spec 024 y el logotipo queda abierto) y **el envío por correo** (spec 026).
+- **El PDF: hecho en la spec 025 ([ADR-028](ADR-028-pdf-presupuesto.md))**, con los datos fiscales de la spec 024 (el logotipo queda abierto). Queda **el envío por correo** (spec 026).
 - **Crear el trabajo o la factura** a partir de un presupuesto aceptado; **duplicar** uno (la forma de corregir uno enviado); descuentos; caducidad automática; plantillas o catálogo de servicios.
 - **La aceptación del cliente final en línea** (una identidad nueva y no confiable) y la firma.
 - **Otras monedas y otros países;** adjuntos; **un borrador generado por IA** (fase 6).
@@ -177,4 +177,5 @@ Un listado y una pantalla de un presupuesto, sin librerías nuevas. **Mientras s
 
 - Amplía: **[ADR-012](ADR-012-autorizacion-rbac.md)** (tres permisos nuevos y la matriz de 90 celdas), **[ADR-006](ADR-006-persistencia-domain-events.md)** (una entidad con líneas, la clave que genera el dominio y el control de concurrencia optimista), **[ADR-022](ADR-022-agenda.md)** (una fecha de calendario sin hora), **[ADR-011](ADR-011-errores-codigos-diccionario.md)** (14 códigos nuevos; ya hay 64).
 - Relacionada con: **[ADR-002](ADR-002-multi-tenancy.md)** (las líneas llevan su propio `TenantId`; el número y el listado respetan el filtro), **[ADR-024](ADR-024-segundo-factor-obligatorio.md)** (la puerta se aplica sola), **[ADR-009](ADR-009-seguridad-base.md)** (nada de un presupuesto llega al registro), **[ADR-008](ADR-008-testing-integracion.md)** (el SQL Server real que prueba las carreras y los planes).
-- Prepara: el PDF y el correo del presupuesto (specs 025 y 026), y la factura (fase 4), que reutilizará el modelo de líneas, el IVA por tipo y el redondeo.
+- Ampliada por: **[ADR-028](ADR-028-pdf-presupuesto.md)** (spec 025): el PDF del presupuesto, generado al pedirlo desde los mismos importes que calculó el servidor (no se recalculan para imprimirlos), con `GET /quotes/{id}/pdf` bajo `Quotes.Read`, sin permiso nuevo.
+- Prepara: el correo del presupuesto (spec 026) y, antes, el PDF (spec 025, ya hecho), y la factura (fase 4), que reutilizará el modelo de líneas, el IVA por tipo y el redondeo.

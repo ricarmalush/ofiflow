@@ -94,7 +94,7 @@ Borrador ──enviar──▶ Enviado ──aceptar──▶ Aceptado
    └── eliminar (solo un borrador)
 ```
 
-Dos ideas que conviene tener claras desde el principio: **el total lo calcula siempre el servidor** (la pantalla enseña una vista previa mientras se edita, pero lo que manda es lo que la API devuelve al guardar) y **«enviar» solo anota** que se ha mandado (el PDF y el correo son pasos posteriores).
+Dos ideas que conviene tener claras desde el principio: **el total lo calcula siempre el servidor** (la pantalla enseña una vista previa mientras se edita, pero lo que manda es lo que la API devuelve al guardar) y **«enviar» solo anota** que se ha mandado (el correo es un paso posterior; el PDF, desde la spec 025, se descarga aparte).
 
 ### Los datos de la empresa (spec 024)
 
@@ -105,7 +105,20 @@ Hasta esta spec la empresa solo tenía un nombre, el comercial, el que se eligi�
 - **Es un dato personal.** Para un autónomo, el NIF es su DNI. Por eso solo lo ven quienes tienen `Company.Read` (todos salvo el `Technician`), solo lo cambian el `Owner` y el `Admin` (`Company.Manage`), y **nunca llega a un registro, a un evento ni a un mensaje de error** (capítulo 8).
 - **El nombre fiscal y el nombre comercial son datos distintos:** un fontanero se llama «Fontanería Marta» y factura como «Marta Gil Pérez» o «Fontanería Marta S.L.».
 
-Esta spec **no genera ningún documento**: es el prerrequisito del PDF del presupuesto.
+Esta spec **no genera ningún documento**: es el prerrequisito del PDF del presupuesto, que ya existe (spec 025).
+
+### El PDF del presupuesto (spec 025)
+
+Un presupuesto ya se puede **descargar como PDF**, a nombre de la empresa y con sus datos fiscales (los de la spec 024): `GET /api/v1/quotes/{id}/pdf`. Lo que conviene saber:
+
+- **Sale de los mismos datos que ve la pantalla.** El PDF **imprime** los importes que ya calculó el servidor: no suma, no multiplica ni redondea nada, así que no puede discrepar de lo que se ve al editar.
+- **Se genera al pedirlo y no se guarda.** No hay ficheros que conservar. Lo único que puede cambiar entre dos descargas de un presupuesto enviado son los **datos fiscales de la empresa**, si se editaron entretanto (con las facturas, fase 4, esto cambiará: una factura debe conservarse tal como se emitió).
+- **Un borrador lleva la marca «BORRADOR»** en cada página, para poder revisarlo antes de enviarlo; uno enviado, aceptado o rechazado sale sin marca.
+- **Sin los datos fiscales de la empresa no hay PDF** (`400 quote.company_profile_incomplete`): la pantalla avisa y lleva a «Datos de la empresa».
+- **De un cliente solo salen su nombre y su dirección;** sus notas (internas), su email y su teléfono, no.
+- **Lo descarga quien lee presupuestos** (`Owner`, `Admin`, `Manager` y `Employee`; un `Technician`, no) y **tiene un límite** de 30 por minuto y por IP, porque maquetar un documento cuesta CPU y memoria.
+
+Esta spec **no manda nada por correo**: es el prerrequisito de la spec 026.
 
 ## Qué se puede hacer hoy
 
@@ -135,6 +148,7 @@ Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y
 | **Presupuestos** (requiere sesión; spec 023) | Crear un borrador (el servidor pone el número y los totales; una petición nunca lleva un total) / listar (paginado, con filtros por estado y cliente) / ver uno con sus líneas y su versión | `POST`, `GET`, `GET` en `/api/v1/quotes` |
 | | Modificar un **borrador** (sustituye la cabecera y todas las líneas; exige la versión leída) / eliminarlo | `PUT`, `DELETE /api/v1/quotes/{id}` |
 | | **Enviar** (Draft → Sent), **aceptar** y **rechazar** (Sent → Accepted o Rejected): comprometen un precio y exigen `Quotes.Issue` | `POST /api/v1/quotes/{id}/send`, `/accept`, `/reject` |
+| | **Descargar el PDF** (spec 025): a nombre de la empresa y con sus datos fiscales, con la marca BORRADOR si lo es; sin los datos fiscales, `400 quote.company_profile_incomplete`; 30 por minuto y por IP | `GET /api/v1/quotes/{id}/pdf` |
 | | Empezar / completar / cancelar | `POST /api/v1/jobs/{id}/start`, `/complete`, `/cancel` |
 | | Asignar a un técnico | `POST /api/v1/jobs/{id}/assign` |
 | | Programar / reprogramar (fecha y duración) y quitar de la agenda (spec 020) | `PUT /api/v1/jobs/{id}/schedule`, `DELETE /api/v1/jobs/{id}/schedule` |
@@ -174,7 +188,7 @@ OfiFlow lo construye **una sola persona** con unas 25 horas a la semana, con un 
 Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 
 - **App móvil, y unos textos legales:** no hay todavía app móvil. Y crear una cuenta ya funciona desde la web (spec 021), pero **las condiciones de uso y la política de privacidad que se aceptan al registrarse aún no están redactadas**: las escribe el dueño del proyecto, la API solo compara su versión y la pantalla las nombra sin enlazarlas hasta que existan. Hay que tenerlas antes de abrir el registro a clientes reales.
-- **Agenda completa, el PDF de los presupuestos, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Los **presupuestos** existen desde la spec 023 (crear, editar, enviar, aceptar y rechazar), pero faltan el **PDF** (los datos de la empresa que mostrará, nombre fiscal, NIF y dirección, **ya se guardan** desde la spec 024; falta el logotipo), **mandarlos por correo** al cliente, duplicar uno para corregirlo y crear el trabajo o la factura a partir de uno aceptado; aceptar es hoy una **anotación interna**, no la firma del cliente. Las facturas y los pagos son la fase 4 del roadmap.
+- **Agenda completa, presupuestos por correo, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Los **presupuestos** existen desde la spec 023 (crear, editar, enviar, aceptar y rechazar), y desde la spec 025 se **descargan en PDF** (a nombre de la empresa, con los datos fiscales de la spec 024; falta el logotipo), pero faltan **mandarlos por correo** al cliente, duplicar uno para corregirlo y crear el trabajo o la factura a partir de uno aceptado; aceptar es hoy una **anotación interna**, no la firma del cliente. Las facturas y los pagos son la fase 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
 - **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009) y, con el correo configurado, **se envían por correo** (spec 017; sin correo configurado el token se le entrega a quien invita, como antes). Falta elegir proveedor de correo y dominio, y que una cuenta pueda pertenecer a varias empresas: hoy cada cuenta pertenece a una sola.
 - **Del panel de operador de la plataforma** (spec 011) falta lo que la propia spec dejó fuera: plan o tarifa, el motivo y el aviso de una suspensión, buscar por nombre, varios operadores con permisos distintos y la aprobación entre dos. Lo que existe (listar, suspender y reactivar con segundo factor obligatorio) está en los capítulos 6 y 8.

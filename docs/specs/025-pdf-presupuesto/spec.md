@@ -1,7 +1,7 @@
 # Spec — 025-pdf-presupuesto
 
-**Estado:** En implementación (aprobada el 2026-11-10 tal como estaba escrita). Tres decisiones de forma **ya confirmadas con la persona dueña del proyecto** (D1, D2 y D3); el resto (D4–D13) se aprobaron con la spec
-**Fecha:** 2026-11-10
+**Estado:** Implementada (2026-11-11). Aprobada tal como estaba escrita el 2026-11-10: las cuatro decisiones de forma (alcance, librería, estados y no guardarlo) estaban **confirmadas con la persona dueña del proyecto** (D1, D2, D3 y D4) y el resto (D5–D13) se aprobaron con la spec. Lo que cambió al implementar, las cifras y los hallazgos están en la [ADR-028](../../adr/ADR-028-pdf-presupuesto.md)
+**Fecha:** 2026-11-10 (implementada el 2026-11-11)
 **Bounded Context:** Quotes (con lectura de Tenancy para los datos fiscales de la empresa)
 **Depende de:** spec 023 y ADR-026 (los presupuestos y su cálculo del dinero), spec 024 y ADR-027 (el perfil fiscal de la empresa: **esta spec es su razón de ser**), ADR-012 (permisos), ADR-009 (datos personales y registro), ADR-010 (dependencias y licencias), ADR-011 (códigos de error), ADR-024 (la puerta del segundo factor: se aplica sola)
 
