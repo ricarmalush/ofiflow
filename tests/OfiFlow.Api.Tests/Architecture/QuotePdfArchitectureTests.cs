@@ -69,7 +69,7 @@ public class QuotePdfArchitectureTests
     [Fact]
     public void TheMoneyFormatUsesOnlyIntegerArithmetic()
     {
-        var code = Code(SourceCode.ReadText("src/OfiFlow.Infrastructure/Documents/MoneyFormat.cs"));
+        var code = Code(SourceCode.ReadText("src/OfiFlow.Application/Quotes/MoneyFormat.cs"));
 
         Assert.False(Regex.IsMatch(code, @"\b(double|float|decimal)\b"), "MoneyFormat da formato al dinero desde céntimos enteros: ni double, ni float, ni decimal (spec 025 R5).");
         Assert.DoesNotContain("Math.Round", code, StringComparison.Ordinal);

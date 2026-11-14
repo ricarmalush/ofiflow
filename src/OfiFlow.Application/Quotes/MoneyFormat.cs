@@ -1,14 +1,14 @@
 using System.Globalization;
 using System.Text;
 
-namespace OfiFlow.Infrastructure.Documents;
+namespace OfiFlow.Application.Quotes;
 
 /// <summary>
 /// El importe en el formato español, «1.234,56 €», <b>desde céntimos enteros y solo con aritmética entera</b> (spec 025 R5 y R6): ningún <c>double</c>, <c>float</c> ni <c>decimal</c> toca el dinero, y no
 /// depende de la cultura del servidor (en un contenedor sin datos de cultura, <c>es-ES</c> ni siquiera existe). El espacio antes del € es <b>no separable</b>, para que el símbolo nunca quede solo en
 /// otra línea.
 /// </summary>
-internal static class MoneyFormat
+public static class MoneyFormat
 {
     private const char NonBreakingSpace = (char)0xA0;
 

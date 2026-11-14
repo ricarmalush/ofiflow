@@ -1,4 +1,5 @@
 using System.Globalization;
+using OfiFlow.Application.Quotes;
 using OfiFlow.Infrastructure.Documents;
 
 namespace OfiFlow.Infrastructure.Tests.Documents;
