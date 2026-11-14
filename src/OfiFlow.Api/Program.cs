@@ -21,6 +21,7 @@ try
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddRefreshTokenPurge(builder.Configuration);
     builder.Services.AddEmail(builder.Configuration);
+    builder.Services.AddQuotePdf();
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
@@ -76,8 +77,9 @@ try
         // Solo los verbos que usa la API y las cabeceras que el cliente envía de verdad (sesión, cuerpo JSON, idioma).
         .WithMethods(HttpMethods.Get, HttpMethods.Post, HttpMethods.Put, HttpMethods.Delete)
         .WithHeaders("Authorization", "Content-Type", "Accept-Language")
-        // Sin esto el navegador esconde Retry-After al JavaScript y el cliente no sabría cuánto esperar tras un 429.
-        .WithExposedHeaders("Retry-After")
+        // Sin esto el navegador esconde Retry-After al JavaScript y el cliente no sabría cuánto esperar tras un 429. Content-Disposition, por lo mismo: el nombre del PDF de un presupuesto
+        // («presupuesto-P-0012.pdf», spec 025 R15) va ahí, y el frontend solo lo puede leer si se expone (si no, construye el mismo nombre con el número).
+        .WithExposedHeaders("Retry-After", "Content-Disposition")
         .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
 
     var app = builder.Build();

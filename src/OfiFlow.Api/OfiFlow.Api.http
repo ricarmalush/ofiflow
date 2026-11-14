@@ -476,6 +476,13 @@ Authorization: Bearer {{tokenA}}
 ### Eliminar un BORRADOR (204): crea otro y bórralo. Uno enviado no se elimina (400 quote.cannot_delete).
 ### DELETE {{host}}/api/v1/quotes/{{quoteId}}
 
+### Descargar el PDF (200, application/pdf; spec 025). Lo pide quien tiene Quotes.Read (Owner, Admin, Manager y Employee; un Technician -> 403). Sale a nombre de la empresa, con los importes que calculó el servidor.
+### Un BORRADOR lleva la marca BORRADOR en cada página; uno enviado, aceptado o rechazado, no. Se descarga como adjunto («presupuesto-P-0001.pdf»: solo el número, nunca texto del presupuesto) y no se guarda en cachés (no-store).
+### Sin los datos fiscales de la empresa (sección 3c) -> 400 quote.company_profile_incomplete. Otra empresa o un presupuesto inexistente -> 404 quote.not_found. Límite: 30 por minuto y por IP (429 con Retry-After).
+### En un cliente de REST se puede guardar la respuesta a un fichero (en Visual Studio, «Guardar respuesta»).
+GET {{host}}/api/v1/quotes/{{quoteId}}/pdf
+Authorization: Bearer {{tokenA}}
+
 ### Un cliente con presupuestos NO se puede eliminar, en ningún estado (spec 023 R13) -> 400 customer.has_quotes
 DELETE {{host}}/api/v1/customers/{{quoteCustomerId}}
 Authorization: Bearer {{tokenA}}

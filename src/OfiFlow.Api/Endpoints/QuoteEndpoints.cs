@@ -1,4 +1,5 @@
 using MediatR;
+using OfiFlow.Api.Common;
 using OfiFlow.Application.Quotes.Commands.AcceptQuote;
 using OfiFlow.Application.Quotes.Commands.CreateQuote;
 using OfiFlow.Application.Quotes.Commands.DeleteQuote;
@@ -6,6 +7,7 @@ using OfiFlow.Application.Quotes.Commands.RejectQuote;
 using OfiFlow.Application.Quotes.Commands.SendQuote;
 using OfiFlow.Application.Quotes.Commands.UpdateQuote;
 using OfiFlow.Application.Quotes.Queries.GetQuote;
+using OfiFlow.Application.Quotes.Queries.GetQuotePdf;
 using OfiFlow.Application.Quotes.Queries.GetQuotes;
 using OfiFlow.Domain.Quotes;
 
@@ -49,6 +51,20 @@ public static class QuoteEndpoints
             })
             .WithName("GetQuote")
             .WithSummary("Consulta un presupuesto con sus líneas, el desglose de IVA y su versión (para modificarlo).");
+
+        group.MapGet("/{id:guid}/pdf", async (Guid id, HttpContext httpContext, ISender sender, CancellationToken cancellationToken) =>
+            {
+                // Los precios y los datos fiscales no se guardan en cachés intermedias ni en la del navegador; se pone antes de responder, también para los errores.
+                httpContext.Response.Headers.CacheControl = "no-store";
+                var file = await sender.Send(new GetQuotePdfQuery(id), cancellationToken);
+
+                // attachment + un nombre que sale solo del número («presupuesto-P-0012.pdf»): nunca texto del usuario en una cabecera (spec 025 R15, D11).
+                return Results.File(file.Content, "application/pdf", file.FileName);
+            })
+            .RequireRateLimiting(RateLimiting.QuotePdf)
+            .WithName("GetQuotePdf")
+            .WithSummary("Descarga el presupuesto como PDF, a nombre de la empresa y con sus datos fiscales. Un borrador lleva la marca BORRADOR. Sin perfil fiscal de la empresa: 400 quote.company_profile_incomplete. Límite: 30 por minuto y por IP.")
+            .Produces<byte[]>(StatusCodes.Status200OK, "application/pdf");
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateQuoteRequest request, ISender sender, CancellationToken cancellationToken) =>
             {

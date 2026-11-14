@@ -160,7 +160,7 @@ Una pantalla **«Datos de la empresa»** (`/company`, entrada de menú en «Admi
 
 ### Qué queda abierto para revisar más adelante
 
-- **El PDF del presupuesto** (spec 025), con un aviso en la pantalla de presupuestos cuando falten los datos, y **el envío por correo** (spec 026).
+- **El PDF del presupuesto: hecho en la spec 025 ([ADR-028](ADR-028-pdf-presupuesto.md))**, con el aviso en la pantalla del presupuesto cuando faltan estos datos (`400 quote.company_profile_incomplete`). Queda **el envío por correo** (spec 026).
 - **El logotipo** (imágenes: almacenamiento, tamaño y seguridad del fichero), otros países y un NIF-IVA europeo, **varias sedes**, el **IBAN**, el régimen fiscal y la serie de numeración de las facturas.
 - **Una auditoría persistente de los cambios del perfil** (con los valores anteriores), que pedirá la factura (fase 4), y quizá **control de concurrencia**.
 - **Los NIF K, L y M.**
@@ -173,4 +173,5 @@ Una pantalla **«Datos de la empresa»** (`/company`, entrada de menú en «Admi
 
 - Amplía: **[ADR-012](ADR-012-autorizacion-rbac.md)** (dos permisos nuevos y la matriz de 100 celdas), **[ADR-002](ADR-002-multi-tenancy.md)** (una entidad más de la empresa, sin ninguna excepción al filtro), **[ADR-011](ADR-011-errores-codigos-diccionario.md)** (dos códigos nuevos; ya hay 66).
 - Relacionada con: **[ADR-009](ADR-009-seguridad-base.md)** (datos personales: ni el NIF ni la dirección llegan a un registro), **[ADR-024](ADR-024-segundo-factor-obligatorio.md)** (la puerta se aplica sola), **[ADR-026](ADR-026-presupuestos.md)** (los presupuestos son los primeros documentos que necesitan estos datos), **[ADR-008](ADR-008-testing-integracion.md)** (el SQL Server real que prueba la carrera del alta).
-- Prepara: el PDF y el correo del presupuesto (specs 025 y 026) y la factura (fase 4), que exigirá una auditoría persistente de estos datos.
+- Ampliada por: **[ADR-028](ADR-028-pdf-presupuesto.md)** (spec 025): estos datos son lo que imprime el emisor del PDF del presupuesto; sin ellos no hay PDF.
+- Prepara: el PDF (spec 025, ya hecho) y el correo del presupuesto (spec 026) y la factura (fase 4), que exigirá una auditoría persistente de estos datos.

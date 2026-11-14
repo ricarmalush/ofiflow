@@ -139,6 +139,9 @@ public class CorsTests
         Assert.Equal(Frontend, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
         // Sin esta, el navegador escondería Retry-After al JavaScript y el cliente no sabría cuánto esperar tras un 429.
         Assert.Contains("Retry-After", response.Headers.GetValues("Access-Control-Expose-Headers").Single());
+        // Y sin esta, el frontend no podría leer el nombre de la descarga del PDF de un presupuesto (spec 025): solo se expone lo que hace falta, nada más.
+        var exposed = response.Headers.GetValues("Access-Control-Expose-Headers").Single().Split(',', StringSplitOptions.TrimEntries).Order().ToArray();
+        Assert.Equal(["Content-Disposition", "Retry-After"], exposed);
     }
 
     [Fact]
