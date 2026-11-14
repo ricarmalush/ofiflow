@@ -122,6 +122,8 @@ public class SendQuoteEmailCommandHandlerTests
         Assert.Equal("Presupuesto P-0012", message.Subject);
         Assert.Contains(CompanyName, message.TextBody, StringComparison.Ordinal);
         Assert.Contains("P-0012", message.TextBody, StringComparison.Ordinal);
+        // La validez que guardó el presupuesto (2026-12-31) sale en el cuerpo con el formato fijo.
+        Assert.Contains("Es válido hasta el 31/12/2026.", message.TextBody, StringComparison.Ordinal);
         Assert.Equal("presupuesto-P-0012.pdf", message.Attachment!.FileName);
         Assert.Equal("application/pdf", message.Attachment.ContentType);
         Assert.Equal([0x25, 0x50, 0x44, 0x46, 0x2D], message.Attachment.Content);

@@ -24,9 +24,9 @@ public sealed class SendQuoteEmailCommandValidator : AbstractValidator<SendQuote
     }
 
     /// <summary>
-    /// Una dirección sola: con la forma de un email, <b>sin</b> caracteres de control, espacios ni nada que separe o envuelva direcciones (<c>, ; &lt; &gt; "</c> y los corchetes y paréntesis de un
+    /// Una dirección sola: con la forma de un email (que ya rechaza los espacios: <see cref="Email.IsValid"/> no los admite), <b>sin</b> caracteres de control ni nada que separe o envuelva direcciones (<c>, ; &lt; &gt; "</c> y los corchetes y paréntesis de un
     /// comentario o una lista). Es la misma lista que el transporte rechaza antes de la red, más lo que no tiene sentido en una dirección de un cliente.
     /// </summary>
     public static bool IsSingleAddress(string value) =>
-        Email.IsValid(value) && !value.Any(c => char.IsControl(c) || char.IsWhiteSpace(c) || c is ',' or ';' or '<' or '>' or '"' or '(' or ')' or '[' or ']' or '\\');
+        Email.IsValid(value) && !value.Any(c => char.IsControl(c) || c is ',' or ';' or '<' or '>' or '"' or '(' or ')' or '[' or ']' or '\\');
 }
