@@ -1,7 +1,7 @@
 # Spec — 026-presupuesto-por-correo
 
-**Estado:** En implementación (aprobada el 2026-11-14 tal como estaba escrita). Cuatro decisiones de forma **confirmadas con la persona dueña del proyecto** (D1, D2, D3 y D4); el resto (D5–D16) se aprobaron con la spec
-**Fecha:** 2026-11-14
+**Estado:** Implementada (2026-11-15). Aprobada tal como estaba escrita el 2026-11-14: cuatro decisiones de forma **confirmadas con la persona dueña del proyecto** (D1, D2, D3 y D4) y el resto (D5–D16) aprobadas con la spec. Lo que cambió al implementar, las cifras y los hallazgos están en la [ADR-029](../../adr/ADR-029-presupuesto-por-correo.md)
+**Fecha:** 2026-11-14 (implementada el 2026-11-15)
 **Bounded Context:** Quotes (con el puerto de correo de Application/Common y su transporte en Infrastructure/Mail)
 **Depende de:** spec 025 y ADR-028 (el PDF, que esta spec adjunta), spec 023 y ADR-026 (presupuestos), spec 024 y ADR-027 (el perfil fiscal), spec 017 y ADR-020 (el correo saliente: **esta spec rompe dos de sus reglas cerradas, «sin adjuntos» y «nada de fuera entra en el correo», y las enmienda con motivo**), ADR-012 (permisos), ADR-009 (datos personales y registro), ADR-011 (códigos de error), ADR-024 (la puerta del segundo factor: se aplica sola)
 

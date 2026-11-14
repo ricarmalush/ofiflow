@@ -357,7 +357,7 @@ public class QuoteEmailEndToEndTests(TwoTenantsFixture fixture) : IClassFixture<
 
         var message = Assert.Single(_email.Sent);
         Assert.Null(message.ReplyTo);
-        Assert.Contains($"contacta con {LegalNameOfA}", message.TextBody, StringComparison.Ordinal);
+        Assert.Contains($"contacta con la empresa ({LegalNameOfA})", message.TextBody, StringComparison.Ordinal);
     }
 
     // ---------- Cuando el servidor de correo falla ----------

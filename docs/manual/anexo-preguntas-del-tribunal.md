@@ -297,6 +297,32 @@ Que quien tenga `Quotes.Read` puede descargar todos los presupuestos de su empre
 **¿Qué error real encontrasteis?**
 Que el error de una petición que espera un fichero llega al frontend como un `Blob` con el JSON dentro, así que el interceptor no veía el código estable: una descarga de una empresa suspendida no cerraba la sesión y un `403` de segundo factor obligatorio no llevaba a la pantalla de seguridad. Y que el CORS no exponía `Content-Disposition`, así que un frontend en otro origen no podía leer el nombre del fichero. *(Cap. 8, 9)*
 
+### El presupuesto por correo (spec 026)
+
+**¿Por qué una acción aparte y no mandarlo al «Enviar»?**
+Porque «Enviar» solo anota el estado y se quería poder reenviar, mandar un borrador para que el cliente lo vea y, sobre todo, que un fallo del correo no deje el estado a medias: no hay estado que deshacer. El coste es un clic más si se quieren las dos cosas. *(Cap. 0, ADR-029)*
+
+**¿Qué es lo peor que puede pasar con este correo?**
+Que una cuenta robada use el dominio de OfiFlow para mandar *spam* o *phishing*, con un PDF de texto libre, a cualquier dirección. Lo limitan el permiso y el segundo factor, una plantilla fija sin texto de la persona, un PDF inerte, **20 por hora y por persona** y 30 por minuto y por IP, y un rastro con persona y presupuesto para suspender la empresa. Lo que no se cierra es que la dirección la elige quien lo manda: limitarla a la de la ficha del cliente sería el siguiente endurecimiento. *(Cap. 8)*
+
+**¿Por qué no se puede escribir un mensaje en el correo?**
+Porque convertiría a la plataforma en un enviador de correo libre desde su dominio. La regla de la ADR-020 («nada que escriba la persona entra en el correo») se mantiene entera; el texto libre del presupuesto va **dentro del PDF**, que es un documento. *(ADR-020, ADR-029)*
+
+**¿Por qué se abrió el puerto de correo a un adjunto si estaba prohibido?**
+Porque la alternativa era adjuntarlo a mano desde otro programa. Se abrió en su forma mínima: **uno**, un **PDF**, con nombre y tamaño acotados, validado **al construirse** (un adjunto que no cumple no llega a existir) y construido solo por la plantilla del presupuesto. *(Cap. 8)*
+
+**¿Qué pasa con la dirección del cliente, que es un dato personal de un tercero?**
+No se guarda (solo cuándo y quién), no se registra, no vuelve en la respuesta y no sale en un error. Se comprobó marcando una dirección única y buscándola en todos los registros, también cuando todo falla. *(Cap. 8, 9)*
+
+**¿Por qué el límite por persona se mira después del permiso?**
+Para que quien no tiene el permiso reciba su `403` y no gaste un cupo que no va a usar (ni reciba un `429` que le haría creer que sí podría). Un test pide 25 veces como `Employee`. *(Cap. 8)*
+
+**¿Y si el servidor de correo acepta el mensaje pero falla guardar que se mandó?**
+Se envía antes de anotar y la respuesta es `200` igualmente: un `409` con el correo ya entregado llevaría a reenviarlo. El evento `1410` dice si se anotó. No se reintenta: la ventana es de milisegundos. *(ADR-029)*
+
+**¿Qué error real encontrasteis?**
+Que la expresión de `Email` deja pasar `<ana@ejemplo.es>` y `ana,otra@ejemplo.es`: vale para el campo de una ficha, no para una cabecera de correo. Y que un `record` imprime todas sus propiedades en `ToString()`, incluido el destinatario y el cuerpo de un mensaje; lo destapó escribir el test de «nada llega a un registro». *(Cap. 7, 8)*
+
 ### La agenda (spec 020)
 
 **¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
@@ -413,9 +439,10 @@ Con honestidad y de lo más a lo menos preocupante:
 - **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Crear una cuenta (spec 021) deja abiertos los textos legales** (los redacta el dueño del proyecto), que las cuentas anteriores **no han aceptado ninguna condición**, la comprobación **anti-robots**, que el límite de 3 pedidos por hora y por IP **puede frenar a una oficina entera**, y que el límite de avisos vive **en memoria**.
-- **Los presupuestos (spec 023) no se mandan por correo (el PDF existe desde la spec 025)** y aceptar es una **anotación interna**, no la firma del cliente; el cálculo del dinero está en dos sitios (los casos fijos lo protegen, pero la copia del frontend se mantiene a mano); y muchas creaciones simultáneas de una empresa pueden agotar los tres intentos del número.
+- **Los presupuestos (spec 023) se mandan por correo desde la spec 026 (el PDF existe desde la 025), pero sin historial ni acuse** y aceptar es una **anotación interna**, no la firma del cliente; el cálculo del dinero está en dos sitios (los casos fijos lo protegen, pero la copia del frontend se mantiene a mano); y muchas creaciones simultáneas de una empresa pueden agotar los tres intentos del número.
 - **El perfil fiscal (spec 024) no valida que el NIF exista**, solo su dígito de control; quien tenga `Company.Manage` puede cambiarlo sin que quede el valor anterior (el registro dice quién y cuándo); gana la última escritura; y el NIF, la dirección y el teléfono de un autónomo están en claro en la base de datos. El PDF y el correo del presupuesto siguen sin existir (specs 025 y 026).
-- **El PDF del presupuesto (spec 025) no se guarda ni está firmado:** quien tenga `Quotes.Read` puede descargar todos los presupuestos de su empresa sin que quede traza (lo frena solo un límite de 30 por minuto), el de un presupuesto ya enviado sale con los datos fiscales de ahora, y el aspecto de las páginas se revisa a ojo (no hay rasterizador de PDF en el entorno de pruebas). No hay correo (spec 026) ni logotipo.
+- **El PDF del presupuesto (spec 025) no se guarda ni está firmado:** quien tenga `Quotes.Read` puede descargar todos los presupuestos de su empresa sin que quede traza (lo frena solo un límite de 30 por minuto), el de un presupuesto ya enviado sale con los datos fiscales de ahora, y el aspecto de las páginas se revisa a ojo (no hay rasterizador de PDF en el entorno de pruebas). No hay logotipo.
+- **El presupuesto por correo (spec 026) no es una prueba de entrega ni deja historial:** `200` significa «el servidor de correo lo aceptó», sin rebotes ni confirmación de lectura; solo se anota el último envío (cuándo y quién, nunca a quién); la dirección la elige quien lo manda (limitarla a la de la ficha sería el siguiente endurecimiento si se ve abuso); y todas las empresas comparten la reputación del remitente. Antes de mandar a clientes reales faltan, fuera del código, SMTP con dominio propio (SPF, DKIM y DMARC), el contrato de encargado del tratamiento y los textos legales.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 - **No hay alertas ni un registro de auditoría persistente**: los eventos se escriben, pero nadie los vigila.
 - **ZAP escanea solo la superficie anónima** y solo en los PRs.

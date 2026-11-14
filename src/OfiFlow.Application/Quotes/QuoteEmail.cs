@@ -54,10 +54,10 @@ public static class QuoteEmail
         lines.Add("Lo encontrarás en el PDF adjunto.");
         lines.Add("");
         lines.Add(companyEmail is null
-            ? $"Para cualquier duda, contacta con {company}."
-            : "Para cualquier duda, responde a este correo: te contestará " + company + ".");
+            ? $"Para cualquier duda, contacta con la empresa ({company})."
+            : "Para cualquier duda, responde a este correo (te contestará " + company + ").");
         lines.Add("");
-        lines.Add($"Este correo lo envía OfiFlow a petición de {company}. Si no esperabas este presupuesto, puedes ignorarlo.");
+        lines.Add("Este correo lo envía OfiFlow a petición de la empresa emisora. Si no esperabas este presupuesto, puedes ignorarlo.");
         lines.Add("");
         lines.Add("OfiFlow");
 

@@ -96,8 +96,18 @@ public class QuoteEmailTests
         var message = Build(companyEmail: null);
 
         Assert.Null(message.ReplyTo);
-        Assert.Contains("contacta con Fontanería Pérez S.L.", message.TextBody, StringComparison.Ordinal);
+        Assert.Contains("contacta con la empresa (Fontanería Pérez S.L.).", message.TextBody, StringComparison.Ordinal);
         Assert.DoesNotContain("responde a este correo", message.TextBody, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ACompanyNameEndingInADot_NeverLeavesADoubledPeriod(bool withReplyTo)
+    {
+        var body = Build(company: "Fontanería Pérez S.L.", companyEmail: withReplyTo ? CompanyEmail : null).TextBody;
+
+        Assert.DoesNotContain("..", body, StringComparison.Ordinal);
     }
 
     [Fact]
