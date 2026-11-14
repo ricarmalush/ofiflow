@@ -49,4 +49,17 @@ public static class QuoteErrors
     /// <b>negocio</b>, no de campo: no hay ningún campo de la petición que corregir.
     /// </summary>
     public const string CompanyProfileIncomplete = "quote.company_profile_incomplete";
+
+    /// <summary>
+    /// Con <c>Email:Provider = None</c> no hay servidor de correo y la operación no tiene alternativa útil (spec 026 R10, D8). Es un error de <b>negocio</b> (400) de configuración del despliegue, no de la persona.
+    /// </summary>
+    public const string EmailDisabled = "quote.email_disabled";
+
+    /// <summary>Un presupuesto sin ninguna línea no se manda por correo (spec 026 R3): la tabla del PDF saldría vacía.</summary>
+    public const string EmailRequiresItems = "quote.email_requires_items";
+
+    /// <summary>
+    /// El servidor de correo no aceptó el mensaje (spec 026 R9). Es un error de un <b>servicio externo</b> (502, <c>ExternalServiceException</c>), sin el motivo ni la dirección: la categoría va al evento de seguridad.
+    /// </summary>
+    public const string EmailNotSent = "quote.email_not_sent";
 }

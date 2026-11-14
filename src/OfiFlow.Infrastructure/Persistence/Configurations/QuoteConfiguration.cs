@@ -23,6 +23,7 @@ public sealed class QuoteConfiguration : IEntityTypeConfiguration<Quote>
         builder.Property(q => q.CreatedAt).HasConversion(value => value, value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
         builder.Property(q => q.UpdatedAt).HasConversion(value => value, value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value);
         builder.Property(q => q.SentAt).HasConversion(value => value, value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value);
+        builder.Property(q => q.EmailedAt).HasConversion(value => value, value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value);
         builder.Property(q => q.DecidedAt).HasConversion(value => value, value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value);
 
         // Control de concurrencia optimista (D9, R10): la versión de fila la rellena SQL Server y viaja en el WHERE de cada UPDATE y DELETE.

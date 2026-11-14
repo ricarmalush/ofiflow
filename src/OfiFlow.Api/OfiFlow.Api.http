@@ -483,6 +483,18 @@ Authorization: Bearer {{tokenA}}
 GET {{host}}/api/v1/quotes/{{quoteId}}/pdf
 Authorization: Bearer {{tokenA}}
 
+### Mandar el presupuesto por correo con su PDF adjunto (200 { emailedAt }; spec 026). Lo pide quien tiene Quotes.Issue (Owner, Admin y Manager; Employee y Technician -> 403): es comprometer un precio ante un cliente.
+### NO cambia el estado (un borrador se puede mandar, con la marca BORRADOR, y se puede reenviar). Plantilla fija: el asunto es «Presupuesto P-0001» y nada de lo que se teclea en el presupuesto entra en el correo. El remitente es el de OfiFlow; la respuesta va al email de la empresa.
+### Una sola dirección (lo demás -> 400 de campo). Sin servidor de correo (Email:Provider = None) -> 400 quote.email_disabled; sin líneas -> 400 quote.email_requires_items; sin datos fiscales -> 400 quote.company_profile_incomplete;
+### el servidor de correo no lo acepta -> 502 quote.email_not_sent (sin el motivo ni la dirección). Límites: 20 por hora y por persona, 30 por minuto y por IP (429 con Retry-After). Queda anotado cuándo (emailedAt en el presupuesto), nunca a quién.
+POST {{host}}/api/v1/quotes/{{quoteId}}/email
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "recipient": "cliente@example.com"
+}
+
 ### Un cliente con presupuestos NO se puede eliminar, en ningún estado (spec 023 R13) -> 400 customer.has_quotes
 DELETE {{host}}/api/v1/customers/{{quoteCustomerId}}
 Authorization: Bearer {{tokenA}}

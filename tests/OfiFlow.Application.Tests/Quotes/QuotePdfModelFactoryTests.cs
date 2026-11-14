@@ -44,6 +44,7 @@ public class QuotePdfModelFactoryTests
             items ?? [new QuoteItemDto(Guid.NewGuid(), 0, "Caldera", 1m, 10_000, 21, 10_000)],
             SentAt: null,
             DecidedAt: null,
+            EmailedAt: null,
             createdAt ?? new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc),
             "AAAA");
 
