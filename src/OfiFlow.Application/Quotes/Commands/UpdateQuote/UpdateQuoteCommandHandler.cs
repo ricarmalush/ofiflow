@@ -29,7 +29,7 @@ public sealed class UpdateQuoteCommandHandler(IApplicationDbContext dbContext) :
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException dbg)
+        catch (DbUpdateConcurrencyException)
         {
             // Otra petición (otra edición, un envío, un borrado) cambió la fila entre que se leyó y se guardó: gana una y esta no deja nada (R10).
             throw new BusinessRuleException(QuoteErrors.ChangedMeanwhile);
