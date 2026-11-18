@@ -5,6 +5,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- La fuente del PDF (spec 025 D8): va dentro del ensamblado; un servidor Linux no trae fuentes del sistema. Ver Documents/Fonts/README.md. -->
+    <EmbeddedResource Include="Documents\Fonts\*.ttf" LogicalName="OfiFlow.Fonts.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\OfiFlow.Domain\OfiFlow.Domain.csproj" />
     <ProjectReference Include="..\OfiFlow.Application\OfiFlow.Application.csproj" />
   </ItemGroup>
@@ -16,6 +21,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="MailKit" Version="4.18.2" />
+    <!--
+      El PDF del presupuesto (spec 025 D2). Licencia MIT SOLO hasta la 6.2.4: la 6.5.0 y la 7.0.0-preview-2 (14-10-2026) pasaron a AGPL-3.0, que obligaría a
+      publicar el código de todo lo que se enlace con ellas. Por eso se fija esta versión y .github/dependabot.yml ignora las posteriores a la 6.2.
+      Un test (QuotePdfDependencyLicenseTests) comprueba en el .nuspec que los paquetes usados siguen siendo MIT.
+    -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
     <!--
       Dependencia transitiva (Microsoft.Data.SqlClient, incluida la 6.1.7, pide la 9.0.11) con una

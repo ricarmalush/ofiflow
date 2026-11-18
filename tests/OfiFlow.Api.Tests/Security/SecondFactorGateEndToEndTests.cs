@@ -30,6 +30,8 @@ public class SecondFactorGateEndToEndTests(SecondFactorGateFixture fixture) : IC
         // Spec 023: los presupuestos son operaciones con permiso de empresa y ninguna está en la lista de permitidas.
         { "GET", "/api/v1/quotes" },
         { "POST", "/api/v1/quotes/00000000-0000-0000-0000-000000000001/send" },
+        // Spec 025: el PDF de un presupuesto es una lectura con permiso de empresa y no está en la lista de permitidas.
+        { "GET", "/api/v1/quotes/00000000-0000-0000-0000-000000000001/pdf" },
         // Spec 024: el perfil fiscal tiene permisos de empresa y ninguna operación suya está en la lista de permitidas. (El PUT necesita cuerpo: tiene sus propios tests más abajo.)
         { "GET", "/api/v1/company/profile" },
         { "GET", "/api/v1/users" },

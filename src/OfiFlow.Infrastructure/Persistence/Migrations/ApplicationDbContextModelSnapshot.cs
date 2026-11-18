@@ -344,6 +344,12 @@ namespace OfiFlow.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DecidedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("EmailedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("EmailedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("JobId")
                         .HasColumnType("uniqueidentifier");
 

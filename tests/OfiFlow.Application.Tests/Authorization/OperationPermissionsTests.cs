@@ -42,9 +42,11 @@ using OfiFlow.Application.Quotes.Commands.AcceptQuote;
 using OfiFlow.Application.Quotes.Commands.CreateQuote;
 using OfiFlow.Application.Quotes.Commands.DeleteQuote;
 using OfiFlow.Application.Quotes.Commands.RejectQuote;
+using OfiFlow.Application.Quotes.Commands.SendQuoteEmail;
 using OfiFlow.Application.Quotes.Commands.SendQuote;
 using OfiFlow.Application.Quotes.Commands.UpdateQuote;
 using OfiFlow.Application.Quotes.Queries.GetQuote;
+using OfiFlow.Application.Quotes.Queries.GetQuotePdf;
 using OfiFlow.Application.Quotes.Queries.GetQuotes;
 using OfiFlow.Application.Platform.Commands.ReactivateTenant;
 using OfiFlow.Application.Platform.Commands.SuspendTenant;
@@ -111,10 +113,13 @@ public class OperationPermissionsTests
         // Spec 023: los presupuestos. Leer, preparar (crear, modificar y eliminar un borrador) y comprometer (enviar, aceptar, rechazar) son tres permisos distintos (D11).
         (typeof(GetQuoteQuery), Permission.QuotesRead),
         (typeof(GetQuotesQuery), Permission.QuotesRead),
+        // Spec 025: el PDF de un presupuesto es una lectura más (D6): el mismo permiso, sin permiso nuevo.
+        (typeof(GetQuotePdfQuery), Permission.QuotesRead),
         (typeof(CreateQuoteCommand), Permission.QuotesWrite),
         (typeof(UpdateQuoteCommand), Permission.QuotesWrite),
         (typeof(DeleteQuoteCommand), Permission.QuotesWrite),
         (typeof(SendQuoteCommand), Permission.QuotesIssue),
+        (typeof(SendQuoteEmailCommand), Permission.QuotesIssue),
         (typeof(AcceptQuoteCommand), Permission.QuotesIssue),
         (typeof(RejectQuoteCommand), Permission.QuotesIssue),
 
@@ -231,7 +236,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(57, inTheTable.Count); // 47 + las ocho de los presupuestos (spec 023) + las dos del perfil fiscal (spec 024): el contador obliga a declarar cada operación nueva a propósito
+        Assert.Equal(59, inTheTable.Count); // 47 + las ocho de los presupuestos (spec 023) + las dos del perfil fiscal (spec 024) + el PDF del presupuesto (spec 025) + mandarlo por correo (spec 026): el contador obliga a declarar cada operación nueva a propósito
     }
 
     private static bool IsMediatRRequest(Type type) =>

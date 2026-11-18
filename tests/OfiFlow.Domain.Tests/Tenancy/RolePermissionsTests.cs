@@ -131,4 +131,29 @@ public class RolePermissionsTests
         Assert.Throws<NotSupportedException>(() => set.Add(Permission.CustomersDelete));
         Assert.False(RolePermissions.Has(TenantRole.Technician, Permission.CustomersDelete));
     }
+
+    [Fact]
+    public void EveryRoleThatCanReadQuotesCanAlsoReadTheCompanyProfile()
+    {
+        // Spec 025 R11, D6: el PDF de un presupuesto enseña los datos fiscales de la empresa y lo descarga quien tiene Quotes.Read, sin permiso propio. Es seguro solo mientras todo rol que lee
+        // presupuestos pueda ver esos datos de todas formas: si un rol perdiera Company.Read y conservara Quotes.Read, el PDF se los enseñaría. Este test lo impide.
+        var readers = Enum.GetValues<TenantRole>().Where(role => RolePermissions.Has(role, Permission.QuotesRead)).ToList();
+
+        Assert.Equal(
+            [TenantRole.Owner, TenantRole.Admin, TenantRole.Manager, TenantRole.Employee],
+            readers);
+        Assert.All(readers, role => Assert.True(RolePermissions.Has(role, Permission.CompanyRead), $"{role} lee presupuestos pero no los datos de la empresa."));
+    }
+
+    [Fact]
+    public void EveryRoleThatCanMailAQuote_CanReadQuotesAndTheCompanyData()
+    {
+        // Spec 026 R16, D7: mandar un presupuesto por correo exige Quotes.Issue y manda un PDF con los datos fiscales de la empresa. Quien lo manda tiene que poder leer el presupuesto y esos datos de todas
+        // formas: si un rol conservara Quotes.Issue y perdiera Quotes.Read o Company.Read, mandaría a un tercero lo que no puede ver.
+        var issuers = Enum.GetValues<TenantRole>().Where(role => RolePermissions.Has(role, Permission.QuotesIssue)).ToList();
+
+        Assert.Equal([TenantRole.Owner, TenantRole.Admin, TenantRole.Manager], issuers);
+        Assert.All(issuers, role => Assert.True(RolePermissions.Has(role, Permission.QuotesRead), $"{role} compromete presupuestos pero no los lee."));
+        Assert.All(issuers, role => Assert.True(RolePermissions.Has(role, Permission.CompanyRead), $"{role} compromete presupuestos pero no ve los datos de la empresa."));
+    }
 }

@@ -16,15 +16,6 @@ public sealed class GetCompanyProfileQueryHandler(IApplicationDbContext dbContex
             return CompanyProfileDto.Empty;
         }
 
-        return new CompanyProfileDto(
-            profile.LegalName,
-            profile.TaxId.Value,
-            profile.AddressLine,
-            profile.PostalCode.Value,
-            profile.City,
-            profile.Province,
-            profile.Phone?.Value,
-            profile.Email?.Value,
-            IsComplete: true);
+        return CompanyProfileDto.From(profile);
     }
 }

@@ -10,6 +10,8 @@ using Microsoft.IdentityModel.Tokens;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Application.Identity;
+using OfiFlow.Application.Quotes.Pdf;
+using OfiFlow.Infrastructure.Documents;
 using OfiFlow.Infrastructure.Identity;
 using OfiFlow.Infrastructure.Legal;
 using OfiFlow.Infrastructure.Mail;
@@ -113,6 +115,20 @@ public static class DependencyInjection
         {
             services.AddSingleton<IEmailSender, NullEmailSender>();
         }
+
+        return services;
+    }
+
+    /// <summary>
+    /// El PDF del presupuesto (spec 025, ADR-028). Lo llama <b>solo la API</b>. Un solo generador para toda la aplicación: no guarda estado (cada llamada construye su documento) y se puede usar desde
+    /// varias peticiones a la vez. Las fuentes van dentro del ensamblado, así que no hay nada que configurar ni nada del sistema de ficheros del que depender.
+    /// </summary>
+    public static IServiceCollection AddQuotePdf(this IServiceCollection services)
+    {
+        services.AddSingleton<IQuotePdfRenderer, PdfSharpQuotePdfRenderer>();
+
+        // Un servidor al que le falta la zona horaria o las fuentes no arranca (spec 025 D12).
+        services.AddHostedService<QuotePdfStartupCheck>();
 
         return services;
     }

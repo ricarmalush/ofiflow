@@ -70,7 +70,7 @@ Y no es solo la invitación. El correo es el **prerrequisito común** de lo que 
 
 ### 1. El puerto y el transporte
 
-1. **`IEmailSender`** (Application): `SendAsync(EmailMessage)` y `IsEnabled`. Un mensaje tiene **un destinatario, un asunto y un cuerpo de texto plano**. Sin copias, sin copias ocultas, sin HTML y sin adjuntos: ningún uso previsto los necesita y cada uno es una vía más de fuga o de inyección.
+1. **`IEmailSender`** (Application): `SendAsync(EmailMessage)` y `IsEnabled`. Un mensaje tiene **un destinatario, un asunto y un cuerpo de texto plano**. Sin copias, sin copias ocultas, sin HTML y sin adjuntos: ningún uso previsto los necesita y cada uno es una vía más de fuga o de inyección. *(Enmendado por la [ADR-029](ADR-029-presupuesto-por-correo.md): desde el presupuesto por correo, un único adjunto controlado y una dirección de respuesta opcionales; sin ellos, el mensaje es el de siempre.)*
 2. **`SmtpEmailSender`** (Infrastructure, MailKit 4.18.2). Una conexión por mensaje. Lo que garantiza:
    - **Cifrado obligatorio**, STARTTLS o TLS desde el primer byte, **nunca oportunista**: si el servidor no ofrece cifrado, falla en vez de enviar en claro. Solo se admite sin cifrar un servidor de **bucle local** (desarrollo y tests). La validación del certificado es la normal del sistema y **ningún fichero del transporte la desactiva** (un test de arquitectura lo vigila).
    - **Un solo presupuesto de tiempo** para conectar, autenticar y enviar (10 segundos por defecto) y **sin reintentos**: si el servidor no contesta, la persona lo sabe ya.
@@ -160,7 +160,7 @@ Para que el correo llegue de verdad hace falta, **fuera del código**:
 - ~~**Recuperar contraseña** (spec 018)~~ **Hecho** ([ADR-021](ADR-021-recuperacion-de-contrasena.md)), y **confirmar el email**: segundo (hecho) y tercer uso del puerto.
 - **Rebotes y quejas**, según el proveedor.
 - **Reenviar una invitación** como acción propia (hoy: revocar y volver a invitar).
-- **HTML con marca** para presupuestos y facturas, y **adjuntos**.
+- **HTML con marca** para presupuestos y facturas, y **adjuntos** *(el PDF del presupuesto, hecho en la [ADR-029](ADR-029-presupuesto-por-correo.md): un único adjunto controlado; HTML y otros adjuntos siguen abiertos)*.
 - **Escribir a clientes finales** (`Customer.Email`): datos de terceros que no han firmado nada con OfiFlow; exige base legal y una baja.
 - **Una implementación por la API HTTP** de un proveedor, si hacen falta sus funciones.
 - **Varios idiomas** y **remitentes por empresa**.
@@ -176,4 +176,5 @@ Para que el correo llegue de verdad hace falta, **fuera del código**:
 - Relacionada con: ADR-017 (el limitador va antes de autenticar, y por eso el límite por persona no es una política suya), ADR-011 (código de error nuevo y estado 502), ADR-008 (servidor SMTP de pruebas en contenedor, como SQL Server), ADR-010 (versiones fijadas y auditoría de dependencias), ADR-012 (sin permisos nuevos: invitar sigue exigiendo `Users.Manage`).
 - Ampliada por: la [ADR-021](ADR-021-recuperacion-de-contrasena.md) (spec 018): segundo uso del puerto (recuperar la contraseña) y la **cola en memoria** con su servicio de envío, que cierra la restricción de «sin cola» solo para el correo cuyo secreto no puede guardarse en claro.
 - Ampliada por: la [ADR-023](ADR-023-crear-una-cuenta.md) (spec 021): **tercer uso del puerto** (crear una cuenta: el enlace para completar el registro y el aviso de «ya tienes una cuenta»), con la misma cola en memoria. **Sin correo configurado no se puede crear ninguna cuenta**: el registro está cerrado (`202` y un `Warning`), porque el enlace del correo es la única vía y crear la cuenta sin demostrar el buzón dejaría abierta una cuenta sin garantía alguna. `IEmailLinks` gana `CompleteRegistration`, y la regla de que **solo `EmailLinks` escribe los enlaces** la sigue vigilando un test de arquitectura.
+- Ampliada por: la [ADR-029](ADR-029-presupuesto-por-correo.md) (spec 026): el **primer correo a un tercero** (el cliente de una empresa) y el **primer adjunto**. La regla de «sin adjuntos» se **enmienda en su forma mínima** (un único adjunto, de tipo de una lista cerrada, con nombre y tamaño acotados, validado al construirse) y se añade una dirección de respuesta; la regla de «nada que escriba la persona entra en el correo» **se mantiene entera** (el texto libre del presupuesto va dentro del PDF, no en el cuerpo). Sigue sin haber cola persistida: el envío es síncrono, como el de la invitación.
 - Prepara: los avisos de presupuestos y facturas y la confirmación de email.
