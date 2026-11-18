@@ -360,9 +360,8 @@ public class RegistrationRequestEndToEndTests : IClassFixture<MembersFixture>, I
     [Fact]
     public void AnInvalidFloor_StopsTheApiFromStarting()
     {
-        using var factory = Open(_email, settings: [("Registration:ResponseFloor", "-00:00:01")]);
-
-        var exception = Assert.Throws<OptionsValidationException>(() => factory.CreateClient());
+        // Con la ayuda de StartupFailure: el anfitrión de pruebas a veces tapa el error de validación con un ObjectDisposedException (una carrera de Mvc.Testing, no del código).
+        var exception = StartupFailure.ExpectOptionsValidationFailure(() => Open(_email, settings: [("Registration:ResponseFloor", "-00:00:01")]));
 
         Assert.Contains("Registration", exception.Message);
     }
@@ -370,9 +369,7 @@ public class RegistrationRequestEndToEndTests : IClassFixture<MembersFixture>, I
     [Fact]
     public void AnInvalidTermsLabel_StopsTheApiFromStarting()
     {
-        using var factory = Open(_email, termsVersion: "no vale <esto>");
-
-        var exception = Assert.Throws<OptionsValidationException>(() => factory.CreateClient());
+        var exception = StartupFailure.ExpectOptionsValidationFailure(() => Open(_email, termsVersion: "no vale <esto>"));
 
         Assert.Contains("Legal", exception.Message);
         Assert.DoesNotContain("no vale <esto>", exception.Message, StringComparison.Ordinal);
