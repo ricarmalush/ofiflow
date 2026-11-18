@@ -212,11 +212,17 @@ public class ForgotPasswordEndToEndTests : IClassFixture<MembersFixture>, IAsync
     [Fact]
     public void AnInvalidFloor_StopsTheApiFromStarting()
     {
-        using var factory = _fixture.Factory.WithWebHostBuilder(builder => builder.UseSetting("ForgotPassword:ResponseFloor", "-00:00:01"));
-
-        var exception = Assert.Throws<OptionsValidationException>(() => factory.CreateClient());
+        // Con la ayuda de StartupFailure: el anfitrión de pruebas a veces tapa el error de validación con un ObjectDisposedException (una carrera de Mvc.Testing, no del código).
+        var exception = StartupFailure.ExpectOptionsValidationFailure(() => _fixture.Factory.WithWebHostBuilder(builder => builder.UseSetting("ForgotPassword:ResponseFloor", "-00:00:01")));
 
         Assert.Contains("ForgotPassword", exception.Message);
+    }
+
+    [Fact]
+    public void TheStartupHelper_NeverAcceptsAHostThatStartsWithAValidSetting()
+    {
+        // Control del ayudante: si el ajuste es válido el anfitrión arranca, y eso NO puede dar por buena la prueba de «un ajuste inválido impide arrancar».
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => StartupFailure.ExpectOptionsValidationFailure(() => _fixture.Factory.WithWebHostBuilder(builder => builder.UseSetting("ForgotPassword:ResponseFloor", "00:00:00.200"))));
     }
 
     // ===== Con cuenta: el correo llega por la cola, con un enlace que es el del token guardado =====
