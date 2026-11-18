@@ -189,6 +189,25 @@ public static class SecurityEventIds
     /// </summary>
     public const int InvitationEmailFailed = 1408;
 
+    /// <summary>
+    /// Alguien guardó el perfil fiscal de la empresa (spec 024 R10): lleva el <c>UserId</c>, el <c>TenantId</c> y si lo <b>creó</b> o lo <b>modificó</b>. <b>Nunca</b> ningún dato del perfil
+    /// (ni el NIF, ni la dirección, ni el teléfono, ni el email, ni los valores anteriores): para un autónomo son datos personales. Deja constancia de <i>quién y cuándo</i>, no de qué valor.
+    /// </summary>
+    public const int CompanyProfileChanged = 1409;
+
+    /// <summary>
+    /// Un presupuesto se mandó por correo y el servidor de correo lo aceptó (spec 026 R20). Lleva el Id del presupuesto, la empresa y quién lo mandó; <b>nunca</b> la dirección del destinatario, el asunto,
+    /// el cuerpo, el nombre del fichero ni nada del documento. Que el servidor lo aceptara no garantiza que llegue a la bandeja de entrada. Un booleano dice si <b>también</b> se pudo anotar la fecha del envío en el presupuesto (casi siempre sí; si no, el correo salió igualmente).
+    /// </summary>
+    public const int QuoteEmailSent = 1410;
+
+    /// <summary>
+    /// El servidor de correo no aceptó un presupuesto (spec 026 R9, R20). Lleva el Id del presupuesto, la empresa, quién lo intentó y la <b>categoría</b> del fallo; <b>nunca</b> la dirección ni el texto del
+    /// servidor, que suele repetirla. Es un <c>Warning</c> y no un <c>Error</c>: falla un servicio externo, no el código.
+    /// Varios seguidos con la categoría <c>Authentication</c> o <c>Unavailable</c> son la señal de que el proveedor está mal configurado o caído.
+    /// </summary>
+    public const int QuoteEmailFailed = 1411;
+
     // 1500-1599: segundo factor (spec 010). Ninguno registra códigos, secretos ni emails: solo Ids, el motivo y recuentos.
 
     /// <summary>Alguien pidió el secreto para activar el segundo factor de su cuenta.</summary>

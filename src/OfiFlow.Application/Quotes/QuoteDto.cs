@@ -29,6 +29,7 @@ public sealed record QuoteDto(
     IReadOnlyList<QuoteItemDto> Items,
     DateTime? SentAt,
     DateTime? DecidedAt,
+    DateTime? EmailedAt,
     DateTime CreatedAt,
     string Version)
 {
@@ -56,6 +57,7 @@ public sealed record QuoteDto(
                 .ToList(),
             quote.SentAt,
             quote.DecidedAt,
+            quote.EmailedAt,
             quote.CreatedAt,
             QuoteVersion.Encode(quote.RowVersion));
     }

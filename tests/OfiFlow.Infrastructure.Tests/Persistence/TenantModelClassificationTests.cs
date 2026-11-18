@@ -70,8 +70,8 @@ public class TenantModelClassificationTests
             .Order()
             .ToArray();
 
-        // Spec 023: Quote y QuoteItem (las líneas llevan su propio TenantId para que el filtro global las cubra también).
-        Assert.Equal(["Customer", "Invitation", "Job", "Quote", "QuoteItem", "TenantUser"], owned);
+        // Spec 023: Quote y QuoteItem (las líneas llevan su propio TenantId para que el filtro global las cubra también). Spec 024: CompanyProfile.
+        Assert.Equal(["CompanyProfile", "Customer", "Invitation", "Job", "Quote", "QuoteItem", "TenantUser"], owned);
     }
 
     // --- Las reglas muerden: sobre un modelo con entidades mal clasificadas deben fallar ---

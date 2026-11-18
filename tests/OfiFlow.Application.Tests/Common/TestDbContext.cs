@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Domain.Common;
+using OfiFlow.Domain.Company;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
@@ -29,11 +30,16 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
 
     public DbSet<Quote> Quotes => Set<Quote>();
 
+    public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
+
     /// <summary>Si tiene valor, el siguiente SaveChanges lanza esta excepción (para simular, por ejemplo, un conflicto de concurrencia).</summary>
     public Exception? ExceptionOnSave { get; set; }
 
     /// <summary>Las siguientes confirmaciones fallan con esta excepción, una por cada elemento de la cola (para simular, por ejemplo, una carrera por el número de un presupuesto que se resuelve al reintentar).</summary>
     public Queue<Exception> ExceptionsOnNextSaves { get; } = new();
+
+    /// <summary>Se ejecuta justo antes de fallar con una excepción de la cola: para simular que otra petición confirmó algo entre medias (el perfil fiscal que gana una carrera, por ejemplo).</summary>
+    public Action? OnQueuedFailure { get; set; }
 
     /// <summary>Cuántas veces se ha pedido guardar, para comprobar que una operación «todo o nada» confirma una sola vez (o ninguna).</summary>
     public int SaveCount { get; private set; }
@@ -47,6 +53,7 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
 
         if (ExceptionsOnNextSaves.TryDequeue(out var queued))
         {
+            OnQueuedFailure?.Invoke();
             return Task.FromException<int>(queued);
         }
 
@@ -72,6 +79,15 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbC
 
         // Igual que en la configuración real de las líneas de un presupuesto (QuoteItemConfiguration): su clave la genera el dominio.
         modelBuilder.Entity<QuoteItem>(builder => builder.Property(i => i.Id).ValueGeneratedNever());
+
+        // Igual que en la configuración real del perfil fiscal (CompanyProfileConfiguration): los objetos de valor se guardan como texto.
+        modelBuilder.Entity<CompanyProfile>(builder =>
+        {
+            builder.Property(p => p.TaxId).HasConversion(taxId => taxId.Value, value => SpanishTaxId.Create(value));
+            builder.Property(p => p.PostalCode).HasConversion(code => code.Value, value => SpanishPostalCode.Create(value));
+            builder.Property(p => p.Phone).HasConversion(phone => phone == null ? null : phone.Value, value => value == null ? null : PhoneNumber.Create(value));
+            builder.Property(p => p.Email).HasConversion(email => email == null ? null : email.Value, value => value == null ? null : Email.Create(value));
+        });
 
         modelBuilder.Entity<Invitation>(builder =>
         {

@@ -47,6 +47,7 @@ Hay seis conceptos. Sus nombres en el código están en inglés, y conviene apre
 | **Customer** | Un cliente de esa empresa (persona o empresa) | "Juan Pérez", con su teléfono y dirección |
 | **Job** | Un trabajo que se hace para un cliente | "Reparar fuga bajo el fregadero", prioridad *Urgent* |
 | **Quote** | Un presupuesto: el precio que se ofrece a un cliente, con sus líneas, su IVA y su total (spec 023) | "Reforma del baño: 87,33 €", enviado el 9 de noviembre |
+| **CompanyProfile** | El perfil fiscal de la empresa: nombre fiscal, NIF/NIE/CIF, dirección, teléfono y email; **uno por empresa**, que nace al guardarlo (spec 024) | "Marta Gil Pérez, 12345678Z, Calle Mayor 1, 28001 Madrid" |
 
 ¿Por qué existe `TenantUser` y no se pone el rol directamente en `User`? Porque **una misma persona puede trabajar en varias empresas con un rol distinto en cada una**. Un técnico autónomo puede ser *Owner* de la suya y *Technician* en la de un amigo. La relación entre persona y empresa es una cosa en sí misma, y por eso tiene su propia tabla.
 
@@ -93,7 +94,45 @@ Borrador ──enviar──▶ Enviado ──aceptar──▶ Aceptado
    └── eliminar (solo un borrador)
 ```
 
-Dos ideas que conviene tener claras desde el principio: **el total lo calcula siempre el servidor** (la pantalla enseña una vista previa mientras se edita, pero lo que manda es lo que la API devuelve al guardar) y **«enviar» solo anota** que se ha mandado (el PDF y el correo son pasos posteriores).
+Dos ideas que conviene tener claras desde el principio: **el total lo calcula siempre el servidor** (la pantalla enseña una vista previa mientras se edita, pero lo que manda es lo que la API devuelve al guardar) y **«enviar» solo anota** que se ha mandado (el PDF se descarga aparte, spec 025, y mandarlo por correo al cliente es otra acción, spec 026).
+
+### Los datos de la empresa (spec 024)
+
+Hasta esta spec la empresa solo tenía un nombre, el comercial, el que se eligió al registrarse. Pero un presupuesto, y sobre todo una factura, tienen que decir **quién los emite**: un nombre fiscal, un NIF y una dirección. El **perfil fiscal** guarda esos datos (más un teléfono y un email opcionales), y hay **uno por empresa**.
+
+- **Nace al guardarlo**, no al registrarse: una empresa recién creada no tiene perfil y leerlo no es un error, devuelve todo a `null` con `isComplete: false`. Guardar es siempre **sustituirlo entero** (un `PUT`): la pantalla trabaja con un único formulario y un campo opcional que falta **borra** el anterior.
+- **El NIF no se valida solo por su forma, sino por su dígito o letra de control** (un NIF son ocho cifras y una letra que sale de dividir entre 23; un NIE empieza por X, Y o Z; un CIF empieza por la letra de la entidad). Se guarda **normalizado**: `12.345.678-z` se guarda como `12345678Z`.
+- **Es un dato personal.** Para un autónomo, el NIF es su DNI. Por eso solo lo ven quienes tienen `Company.Read` (todos salvo el `Technician`), solo lo cambian el `Owner` y el `Admin` (`Company.Manage`), y **nunca llega a un registro, a un evento ni a un mensaje de error** (capítulo 8).
+- **El nombre fiscal y el nombre comercial son datos distintos:** un fontanero se llama «Fontanería Marta» y factura como «Marta Gil Pérez» o «Fontanería Marta S.L.».
+
+Esta spec **no genera ningún documento**: es el prerrequisito del PDF del presupuesto, que ya existe (spec 025).
+
+### El PDF del presupuesto (spec 025)
+
+Un presupuesto ya se puede **descargar como PDF**, a nombre de la empresa y con sus datos fiscales (los de la spec 024): `GET /api/v1/quotes/{id}/pdf`. Lo que conviene saber:
+
+- **Sale de los mismos datos que ve la pantalla.** El PDF **imprime** los importes que ya calculó el servidor: no suma, no multiplica ni redondea nada, así que no puede discrepar de lo que se ve al editar.
+- **Se genera al pedirlo y no se guarda.** No hay ficheros que conservar. Lo único que puede cambiar entre dos descargas de un presupuesto enviado son los **datos fiscales de la empresa**, si se editaron entretanto (con las facturas, fase 4, esto cambiará: una factura debe conservarse tal como se emitió).
+- **Un borrador lleva la marca «BORRADOR»** en cada página, para poder revisarlo antes de enviarlo; uno enviado, aceptado o rechazado sale sin marca.
+- **Sin los datos fiscales de la empresa no hay PDF** (`400 quote.company_profile_incomplete`): la pantalla avisa y lleva a «Datos de la empresa».
+- **De un cliente solo salen su nombre y su dirección;** sus notas (internas), su email y su teléfono, no.
+- **Lo descarga quien lee presupuestos** (`Owner`, `Admin`, `Manager` y `Employee`; un `Technician`, no) y **tiene un límite** de 30 por minuto y por IP, porque maquetar un documento cuesta CPU y memoria.
+
+Esta spec **no manda nada por correo**: eso es la spec 026 (la sección siguiente).
+
+### El presupuesto por correo (spec 026)
+
+Un presupuesto ya se puede **mandar por correo a un cliente, con el PDF adjunto**: `POST /api/v1/quotes/{id}/email`. Es el primer correo de OfiFlow a alguien que **no es usuario suyo** y el primero con adjunto, y por eso lo más importante son los límites. Lo que conviene saber:
+
+- **Es una acción aparte de «Enviar».** «Enviar» (Draft → Sent) sigue solo anotando; mandar por correo **no cambia el estado**. Se puede mandar un borrador (su PDF lleva la marca BORRADOR) y se puede **reenviar**.
+- **La dirección la pone quien lo manda.** El diálogo propone la de la ficha del cliente y se puede cambiar para ese envío. Es **una sola dirección**; una lista, unos ángulos o un salto de línea se rechazan.
+- **El texto del correo es siempre el mismo.** El asunto es «Presupuesto P-0012» y el cuerpo dice quién lo manda, el número, el total y la validez. **Nada de lo que se escribe en el presupuesto** (título, notas, descripciones, nombre del cliente) entra en el asunto ni en el cuerpo: ese texto va dentro del PDF, que es un documento. Y no se puede escribir un mensaje propio.
+- **El remitente es el de OfiFlow; las respuestas van a la empresa.** El nombre del remitente lo decide la configuración (la empresa podría llamarse como cualquier otra), y el email de los datos fiscales de la empresa pasa a ser la dirección de respuesta.
+- **Si sale, la persona lo ve; si no, también.** El envío espera al servidor de correo. Si lo acepta, el presupuesto muestra «Enviado por correo el…»; si no (`502`), no se anota nada y se puede reintentar o descargar el PDF y mandarlo a mano. **No se guarda a quién:** es el dato de un tercero.
+- **Lo manda quien puede comprometer un precio** (`Owner`, `Admin` y `Manager`: el permiso de «Enviar»). Un `Employee` prepara y descarga el PDF, pero no lo manda. Tiene dos límites: **20 por hora y por persona** y 30 por minuto y por IP.
+- **Sin servidor de correo configurado** no hay nada que hacer (`400 quote.email_disabled`); sin líneas o sin los datos fiscales de la empresa, tampoco.
+
+Lo que **no** hace todavía: guardar un historial de envíos, saber si el cliente lo recibió o lo leyó, ni que el cliente lo acepte desde el correo.
 
 ## Qué se puede hacer hoy
 
@@ -123,10 +162,13 @@ Este repositorio es **la API** (un servidor al que se le hacen peticiones HTTP y
 | **Presupuestos** (requiere sesión; spec 023) | Crear un borrador (el servidor pone el número y los totales; una petición nunca lleva un total) / listar (paginado, con filtros por estado y cliente) / ver uno con sus líneas y su versión | `POST`, `GET`, `GET` en `/api/v1/quotes` |
 | | Modificar un **borrador** (sustituye la cabecera y todas las líneas; exige la versión leída) / eliminarlo | `PUT`, `DELETE /api/v1/quotes/{id}` |
 | | **Enviar** (Draft → Sent), **aceptar** y **rechazar** (Sent → Accepted o Rejected): comprometen un precio y exigen `Quotes.Issue` | `POST /api/v1/quotes/{id}/send`, `/accept`, `/reject` |
+| | **Descargar el PDF** (spec 025): a nombre de la empresa y con sus datos fiscales, con la marca BORRADOR si lo es; sin los datos fiscales, `400 quote.company_profile_incomplete`; 30 por minuto y por IP | `GET /api/v1/quotes/{id}/pdf` |
+| | **Mandar el presupuesto por correo** (spec 026): una sola dirección, con el PDF adjunto y un texto fijo; no cambia el estado; solo `Owner`, `Admin` y `Manager`; 20 por hora y por persona y 30 por minuto y por IP; `400 quote.email_disabled`, `quote.email_requires_items` y `quote.company_profile_incomplete`; `502 quote.email_not_sent` | `POST /api/v1/quotes/{id}/email` |
 | | Empezar / completar / cancelar | `POST /api/v1/jobs/{id}/start`, `/complete`, `/cancel` |
 | | Asignar a un técnico | `POST /api/v1/jobs/{id}/assign` |
 | | Programar / reprogramar (fecha y duración) y quitar de la agenda (spec 020) | `PUT /api/v1/jobs/{id}/schedule`, `DELETE /api/v1/jobs/{id}/schedule` |
 | | La agenda: los trabajos con fecha en un rango de hasta 42 días (spec 020) | `GET /api/v1/jobs/agenda?from=&to=` |
+| **Datos de la empresa** (requiere sesión; spec 024) | Ver el perfil fiscal (todo a `null` e `isComplete: false` si la empresa todavía no lo ha guardado) / crearlo o sustituirlo entero (`Company.Manage`) | `GET`, `PUT` en `/api/v1/company/profile` |
 | **Plataforma** (solo operadores, otra sesión; spec 011) | Iniciar sesión en dos pasos (pública) | `POST /api/v1/platform/auth/login`, `POST /api/v1/platform/auth/verify` |
 | | Listar / suspender / reactivar empresas (requiere sesión de plataforma) | `GET /api/v1/platform/tenants`, `POST /api/v1/platform/tenants/{id}/suspend`, `/reactivate` |
 
@@ -161,7 +203,7 @@ OfiFlow lo construye **una sola persona** con unas 25 horas a la semana, con un 
 Para no hacerte una idea equivocada, esto es lo que **aún no existe**:
 
 - **App móvil, y unos textos legales:** no hay todavía app móvil. Y crear una cuenta ya funciona desde la web (spec 021), pero **las condiciones de uso y la política de privacidad que se aceptan al registrarse aún no están redactadas**: las escribe el dueño del proyecto, la API solo compara su versión y la pantalla las nombra sin enlazarlas hasta que existan. Hay que tenerlas antes de abrir el registro a clientes reales.
-- **Agenda completa, el PDF de los presupuestos, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Los **presupuestos** existen desde la spec 023 (crear, editar, enviar, aceptar y rechazar), pero faltan el **PDF**, **mandarlos por correo** al cliente, duplicar uno para corregirlo y crear el trabajo o la factura a partir de uno aceptado; aceptar es hoy una **anotación interna**, no la firma del cliente. Las facturas y los pagos son la fase 4 del roadmap.
+- **Agenda completa, facturas y pagos:** la agenda **mínima** existe desde la spec 020 (programar un trabajo y ver la semana), pero faltan los conflictos de horario, el huso horario por empresa, la vista de mes y arrastrar y soltar. Los **presupuestos** existen desde la spec 023 (crear, editar, enviar, aceptar y rechazar), y desde la spec 025 se **descargan en PDF** (a nombre de la empresa, con los datos fiscales de la spec 024; falta el logotipo), y desde la spec 026 se **mandan por correo** al cliente con el PDF adjunto (a una dirección que elige quien lo manda, con un texto fijo), pero faltan un historial de envíos, saber si el cliente lo recibió, duplicar uno para corregirlo y crear el trabajo o la factura a partir de uno aceptado; aceptar es hoy una **anotación interna**, no la firma del cliente. Las facturas y los pagos son la fase 4 del roadmap.
 - **Inteligencia artificial, WhatsApp y voz:** fases 6 a 9.
 - **Invitar por email, y que una persona pertenezca a varias empresas:** las invitaciones funcionan (spec 009) y, con el correo configurado, **se envían por correo** (spec 017; sin correo configurado el token se le entrega a quien invita, como antes). Falta elegir proveedor de correo y dominio, y que una cuenta pueda pertenecer a varias empresas: hoy cada cuenta pertenece a una sola.
 - **Del panel de operador de la plataforma** (spec 011) falta lo que la propia spec dejó fuera: plan o tarifa, el motivo y el aviso de una suspensión, buscar por nombre, varios operadores con permisos distintos y la aprobación entre dos. Lo que existe (listar, suspender y reactivar con segundo factor obligatorio) está en los capítulos 6 y 8.

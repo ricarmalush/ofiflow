@@ -476,9 +476,84 @@ Authorization: Bearer {{tokenA}}
 ### Eliminar un BORRADOR (204): crea otro y bórralo. Uno enviado no se elimina (400 quote.cannot_delete).
 ### DELETE {{host}}/api/v1/quotes/{{quoteId}}
 
+### Descargar el PDF (200, application/pdf; spec 025). Lo pide quien tiene Quotes.Read (Owner, Admin, Manager y Employee; un Technician -> 403). Sale a nombre de la empresa, con los importes que calculó el servidor.
+### Un BORRADOR lleva la marca BORRADOR en cada página; uno enviado, aceptado o rechazado, no. Se descarga como adjunto («presupuesto-P-0001.pdf»: solo el número, nunca texto del presupuesto) y no se guarda en cachés (no-store).
+### Sin los datos fiscales de la empresa (sección 3c) -> 400 quote.company_profile_incomplete. Otra empresa o un presupuesto inexistente -> 404 quote.not_found. Límite: 30 por minuto y por IP (429 con Retry-After).
+### En un cliente de REST se puede guardar la respuesta a un fichero (en Visual Studio, «Guardar respuesta»).
+GET {{host}}/api/v1/quotes/{{quoteId}}/pdf
+Authorization: Bearer {{tokenA}}
+
+### Mandar el presupuesto por correo con su PDF adjunto (200 { emailedAt }; spec 026). Lo pide quien tiene Quotes.Issue (Owner, Admin y Manager; Employee y Technician -> 403): es comprometer un precio ante un cliente.
+### NO cambia el estado (un borrador se puede mandar, con la marca BORRADOR, y se puede reenviar). Plantilla fija: el asunto es «Presupuesto P-0001» y nada de lo que se teclea en el presupuesto entra en el correo. El remitente es el de OfiFlow; la respuesta va al email de la empresa.
+### Una sola dirección (lo demás -> 400 de campo). Sin servidor de correo (Email:Provider = None) -> 400 quote.email_disabled; sin líneas -> 400 quote.email_requires_items; sin datos fiscales -> 400 quote.company_profile_incomplete;
+### el servidor de correo no lo acepta -> 502 quote.email_not_sent (sin el motivo ni la dirección). Límites: 20 por hora y por persona, 30 por minuto y por IP (429 con Retry-After). Queda anotado cuándo (emailedAt en el presupuesto), nunca a quién.
+POST {{host}}/api/v1/quotes/{{quoteId}}/email
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "recipient": "cliente@example.com"
+}
+
 ### Un cliente con presupuestos NO se puede eliminar, en ningún estado (spec 023 R13) -> 400 customer.has_quotes
 DELETE {{host}}/api/v1/customers/{{quoteCustomerId}}
 Authorization: Bearer {{tokenA}}
+
+###############################################################################
+# 3c. PERFIL FISCAL DE LA EMPRESA (spec 024)
+###############################################################################
+
+### Quién emite los documentos: nombre fiscal, NIF/NIE/CIF y dirección. Verlo exige Company.Read (Owner, Admin, Manager y Employee; un Technician no); guardarlo, Company.Manage
+### (solo Owner y Admin). Toda la sección va con el token de A (@tokenA, el Owner). La empresa sale del token: un «tenantId» o un «id» en el cuerpo se IGNORAN.
+### El NIF es un dato PERSONAL cuando la empresa es un autónomo: la lectura no se guarda en cachés (Cache-Control: no-store) y nada del perfil llega a un registro.
+
+### Ver el perfil. Una empresa que todavía no lo ha guardado recibe 200 con todos los campos a null e isComplete=false (no un error).
+GET {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+
+### Guardar el perfil (204). La primera vez lo crea; después lo SUSTITUYE ENTERO: un opcional ausente (province, phone, email) borra el valor anterior.
+### El NIF se valida con su letra o dígito de control (NIF, NIE o CIF español) y se guarda normalizado: «12.345.678-z» queda «12345678Z».
+### El código postal son 5 cifras de una provincia 01 a 52. Teléfono y email, con las reglas de los clientes.
+PUT {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "legalName": "Fontanería Marta S.L.",
+  "taxId": "A-5881850-1",
+  "addressLine": "Calle Mayor 1, 2.º B",
+  "postalCode": "28001",
+  "city": "Madrid",
+  "province": "Madrid",
+  "phone": "+34 600 123 456",
+  "email": "facturas@fontaneriamarta.example"
+}
+
+### Un NIF con el control equivocado -> 400 validation.failed con el código company.tax_id_invalid en el campo TaxId (no cambia nada)
+PUT {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "legalName": "Fontanería Marta S.L.",
+  "taxId": "12345678A",
+  "addressLine": "Calle Mayor 1, 2.º B",
+  "postalCode": "28001",
+  "city": "Madrid"
+}
+
+### Un código postal de una provincia que no existe -> 400 con company.postal_code_invalid en el campo PostalCode
+PUT {{host}}/api/v1/company/profile
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "legalName": "Fontanería Marta S.L.",
+  "taxId": "A58818501",
+  "addressLine": "Calle Mayor 1, 2.º B",
+  "postalCode": "99999",
+  "city": "Madrid"
+}
 
 ###############################################################################
 # 4. ERRORES A PROPÓSITO: qué responde la API cuando algo va mal

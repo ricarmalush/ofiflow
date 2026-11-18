@@ -19,6 +19,9 @@ public sealed class Quote : AggregateRoot, ITenantOwned, IAuditable
     public const int NotesMaxLength = 2000;
     public const int DescriptionMaxLength = 500;
     public const int MaxItems = 100;
+
+    /// <summary>El máximo de caracteres de la dirección a la que se manda un presupuesto por correo (spec 026 R5): el de una dirección de correo según el RFC 5321. Fuente única para el Validator.</summary>
+    public const int EmailRecipientMaxLength = 254;
     public const decimal QuantityMax = 99_999.999m;
     public const int QuantityDecimals = 3;
     public const long UnitPriceCentsMax = 9_999_999_999;
@@ -56,6 +59,12 @@ public sealed class Quote : AggregateRoot, ITenantOwned, IAuditable
     public DateTime? SentAt { get; private set; }
 
     public DateTime? DecidedAt { get; private set; }
+
+    /// <summary>El instante (UTC) del <b>último</b> envío por correo que el servidor de correo aceptó (spec 026 R19, D4). No guarda la dirección ni el documento: solo cuándo y quién.</summary>
+    public DateTime? EmailedAt { get; private set; }
+
+    /// <summary>Quién hizo ese último envío (auditoría). No sale por la API (spec 026 R19).</summary>
+    public Guid? EmailedByUserId { get; private set; }
 
     /// <summary>
     /// Sube con <b>cada</b> cambio (editar, enviar, aceptar, rechazar). Así la fila del presupuesto se actualiza siempre, aunque solo cambien
@@ -146,6 +155,18 @@ public sealed class Quote : AggregateRoot, ITenantOwned, IAuditable
         Status = QuoteStatus.Sent;
         SentAt = nowUtc;
         Revision++;
+    }
+
+    /// <summary>
+    /// Anota que se mandó por correo (spec 026 R19). Vale en <b>cualquier estado</b> y <b>no es un cambio del contenido</b>: no sube <see cref="Revision"/>, no toca las líneas ni los totales, y un presupuesto
+    /// enviado sigue siendo inmutable. Cada envío sustituye al anterior: solo se guarda el último (D4).
+    /// </summary>
+    public void RecordEmailSent(DateTime nowUtc, Guid userId)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(userId, Guid.Empty);
+
+        EmailedAt = nowUtc;
+        EmailedByUserId = userId;
     }
 
     /// <summary>Sent → Accepted (R8). Un borrador no se acepta y uno resuelto no se reabre.</summary>

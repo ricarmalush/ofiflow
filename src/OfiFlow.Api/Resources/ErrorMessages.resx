@@ -166,6 +166,24 @@
   <data name="quote.valid_until_invalid" xml:space="preserve">
     <value>La fecha de validez debe estar entre los años 2000 y 2099.</value>
   </data>
+  <data name="quote.company_profile_incomplete" xml:space="preserve">
+    <value>Para generar el PDF hay que completar antes los datos de la empresa (nombre fiscal, NIF y dirección).</value>
+  </data>
+  <data name="quote.email_disabled" xml:space="preserve">
+    <value>El envío por correo no está configurado en este servidor. Descarga el PDF y mándalo tú, o avisa a quien administre OfiFlow.</value>
+  </data>
+  <data name="quote.email_requires_items" xml:space="preserve">
+    <value>Un presupuesto sin líneas no se puede mandar por correo. Añade al menos una línea.</value>
+  </data>
+  <data name="quote.email_not_sent" xml:space="preserve">
+    <value>No se ha podido mandar el presupuesto por correo. Inténtalo de nuevo en unos minutos; si sigue fallando, descarga el PDF y envíalo tú.</value>
+  </data>
+  <data name="company.tax_id_invalid" xml:space="preserve">
+    <value>El NIF, NIE o CIF no es válido. Revisa los números y la letra o dígito final.</value>
+  </data>
+  <data name="company.postal_code_invalid" xml:space="preserve">
+    <value>El código postal debe tener cinco cifras y empezar por una provincia entre 01 y 52.</value>
+  </data>
 
   <!-- ===== Tenancy ===== -->
   <data name="tenant.name_required" xml:space="preserve">

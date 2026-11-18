@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OfiFlow.Domain.Company;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
@@ -27,6 +28,9 @@ public interface IApplicationDbContext
 
     /// <summary>Los presupuestos de la empresa (spec 023). Sus líneas se leen con <c>Include</c>: no tienen un <c>DbSet</c> propio porque no se consultan sin su presupuesto.</summary>
     DbSet<Quote> Quotes { get; }
+
+    /// <summary>El perfil fiscal de la empresa (spec 024): como mucho una fila por empresa, que el filtro global limita a la del token.</summary>
+    DbSet<CompanyProfile> CompanyProfiles { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

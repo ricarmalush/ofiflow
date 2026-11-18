@@ -110,7 +110,7 @@ public class QuoteArchitectureTests
     }
 
     [Fact]
-    public void TheQuoteEndpoints_AreExactlyTheEightOfTheSpec()
+    public void TheQuoteEndpoints_AreExactlyTheTenOfTheSpecs()
     {
         var code = Code(SourceCode.ReadText(Endpoints));
         var routes = System.Text.RegularExpressions.Regex.Matches(code, @"group\.Map(Get|Post|Put|Delete)\(""([^""]*)""")
@@ -119,7 +119,7 @@ public class QuoteArchitectureTests
             .ToList();
 
         Assert.Equal(
-            ["DELETE /{id:guid}", "GET /", "GET /{id:guid}", "POST /", "POST /{id:guid}/accept", "POST /{id:guid}/reject", "POST /{id:guid}/send", "PUT /{id:guid}"],
+            ["DELETE /{id:guid}", "GET /", "GET /{id:guid}", "GET /{id:guid}/pdf", "POST /", "POST /{id:guid}/accept", "POST /{id:guid}/email", "POST /{id:guid}/reject", "POST /{id:guid}/send", "PUT /{id:guid}"],
             routes);
     }
 
@@ -144,20 +144,23 @@ public class QuoteArchitectureTests
             var isQuery = handler.Path.Contains("/Queries/", StringComparison.Ordinal);
 
             Assert.True(saves == (isQuery ? 0 : 1), $"{handler.Path}: {saves} confirmaciones (las consultas ninguna; cada comando, una).");
-            if (isQuery)
+            // Una consulta que lee la base de datos la lee sin seguimiento. La del PDF ya no la toca: desde la spec 026 lo hace el servicio que comparte con el correo (QuotePdfBuilder, vigilado en
+            // QuotePdfArchitectureTests), y aquí solo se exige que no confirme nada.
+            if (isQuery && handler.Content.Contains("dbContext", StringComparison.Ordinal))
             {
                 Assert.Contains("AsNoTracking()", handler.Content);
             }
         }
 
-        Assert.Equal(8, QuoteHandlers().Count);
+        Assert.Equal(10, QuoteHandlers().Count); // los ocho de la spec 023, el del PDF (spec 025) y el del correo (spec 026)
     }
 
     [Fact]
     public void NothingOfAQuote_CanReachTheLogs()
     {
-        // Ningún caso de uso de presupuestos escribe en el registro: ni título, ni notas, ni descripciones, ni importes (los datos comerciales no se registran).
-        foreach (var file in QuoteApplicationFiles().Concat(SourceCode.Files("OfiFlow.Domain/Quotes")))
+        // Ningún caso de uso de presupuestos escribe en el registro: ni título, ni notas, ni descripciones, ni importes (los datos comerciales no se registran). Una única excepción, la de la spec 026:
+        // el handler de mandar el presupuesto por correo deja los eventos 1410 y 1411, con solo Ids y la categoría (R20); su contenido se vigila aparte, más abajo.
+        foreach (var file in QuoteApplicationFiles().Where(f => !f.Path.EndsWith(MailHandler, StringComparison.Ordinal)).Concat(SourceCode.Files("OfiFlow.Domain/Quotes")))
         {
             var code = Code(file.Content);
             Assert.False(code.Contains("ILogger", StringComparison.Ordinal) || code.Contains("LoggerMessage", StringComparison.Ordinal) || code.Contains("Console.Write", StringComparison.Ordinal) || code.Contains("Debug.Write", StringComparison.Ordinal) || code.Contains("Trace.Write", StringComparison.Ordinal),
@@ -169,6 +172,31 @@ public class QuoteArchitectureTests
         foreach (var way in new[] { "ILogger", "LoggerMessage", "Console.Write", "Debug.Write", "Trace.Write", "Log." })
         {
             Assert.DoesNotContain(way, endpoints);
+        }
+    }
+
+    private const string MailHandler = "Commands/SendQuoteEmail/SendQuoteEmailCommandHandler.cs";
+
+    [Fact]
+    public void TheMailHandlerLogsOnlyTheTwoEventsOfTheSpec_WithIdsAndTheCategoryAndNothingElse()
+    {
+        // Spec 026 R20 (ADR-009 R5): el correo de un presupuesto lleva la dirección de un tercero, un documento con datos fiscales y precios. Lo único que llega al registro son dos eventos con Ids.
+        var handler = QuoteApplicationFiles().Single(f => f.Path.EndsWith(MailHandler, StringComparison.Ordinal)).Content;
+        var code = Code(handler);
+
+        var eventIds = System.Text.RegularExpressions.Regex.Matches(code, @"EventId = SecurityEventIds\.(\w+)").Select(m => m.Groups[1].Value).Order().ToList();
+        Assert.Equal(["QuoteEmailFailed", "QuoteEmailSent"], eventIds);
+
+        // Los únicos datos que viajan en cada mensaje de registro: los Ids, la categoría y si se anotó. Ni dirección, ni asunto, ni cuerpo, ni nombre de fichero, ni nombre de empresa o de cliente.
+        var allowed = new HashSet<string>(["QuoteId", "TenantId", "UserId", "Category", "Recorded"]);
+        var placeholders = System.Text.RegularExpressions.Regex.Matches(code, @"Message = ""[^""]*""").SelectMany(message => System.Text.RegularExpressions.Regex.Matches(message.Value, @"\{(\w+)\}").Select(m => m.Groups[1].Value)).ToList();
+        Assert.True(placeholders.Count >= 7, "Control positivo: los mensajes de registro se están leyendo de verdad.");
+        Assert.All(placeholders, name => Assert.Contains(name, allowed));
+
+        // Y no registra nada por otro camino.
+        foreach (var way in new[] { "Console.Write", "Debug.Write", "Trace.Write", "logger.Log", "LogInformation", "LogWarning", "LogError", "LogDebug" })
+        {
+            Assert.DoesNotContain(way, code, StringComparison.Ordinal);
         }
     }
 

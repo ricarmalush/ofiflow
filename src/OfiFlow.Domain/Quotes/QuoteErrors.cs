@@ -43,4 +43,23 @@ public static class QuoteErrors
 
     /// <summary>Un error de campo: la fecha de validez no está entre los años 2000 y 2099 (R2).</summary>
     public const string ValidUntilInvalid = "quote.valid_until_invalid";
+
+    /// <summary>
+    /// La empresa no ha guardado su perfil fiscal (spec 024), así que no hay PDF que generar (spec 025 R3): un PDF «a medias», con el emisor en blanco, no sirve para dárselo a un cliente. Es un error de
+    /// <b>negocio</b>, no de campo: no hay ningún campo de la petición que corregir.
+    /// </summary>
+    public const string CompanyProfileIncomplete = "quote.company_profile_incomplete";
+
+    /// <summary>
+    /// Con <c>Email:Provider = None</c> no hay servidor de correo y la operación no tiene alternativa útil (spec 026 R10, D8). Es un error de <b>negocio</b> (400) de configuración del despliegue, no de la persona.
+    /// </summary>
+    public const string EmailDisabled = "quote.email_disabled";
+
+    /// <summary>Un presupuesto sin ninguna línea no se manda por correo (spec 026 R3): la tabla del PDF saldría vacía.</summary>
+    public const string EmailRequiresItems = "quote.email_requires_items";
+
+    /// <summary>
+    /// El servidor de correo no aceptó el mensaje (spec 026 R9). Es un error de un <b>servicio externo</b> (502, <c>ExternalServiceException</c>), sin el motivo ni la dirección: la categoría va al evento de seguridad.
+    /// </summary>
+    public const string EmailNotSent = "quote.email_not_sent";
 }

@@ -1,13 +1,18 @@
 using MediatR;
+using OfiFlow.Api.Common;
+using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Quotes.Commands.AcceptQuote;
 using OfiFlow.Application.Quotes.Commands.CreateQuote;
 using OfiFlow.Application.Quotes.Commands.DeleteQuote;
 using OfiFlow.Application.Quotes.Commands.RejectQuote;
+using OfiFlow.Application.Quotes.Commands.SendQuoteEmail;
 using OfiFlow.Application.Quotes.Commands.SendQuote;
 using OfiFlow.Application.Quotes.Commands.UpdateQuote;
 using OfiFlow.Application.Quotes.Queries.GetQuote;
+using OfiFlow.Application.Quotes.Queries.GetQuotePdf;
 using OfiFlow.Application.Quotes.Queries.GetQuotes;
 using OfiFlow.Domain.Quotes;
+using OfiFlow.Domain.Tenancy;
 
 namespace OfiFlow.Api.Endpoints;
 
@@ -50,6 +55,43 @@ public static class QuoteEndpoints
             .WithName("GetQuote")
             .WithSummary("Consulta un presupuesto con sus líneas, el desglose de IVA y su versión (para modificarlo).");
 
+        group.MapGet("/{id:guid}/pdf", async (Guid id, HttpContext httpContext, ISender sender, CancellationToken cancellationToken) =>
+            {
+                // Los precios y los datos fiscales no se guardan en cachés intermedias ni en la del navegador; se pone antes de responder, también para los errores.
+                httpContext.Response.Headers.CacheControl = "no-store";
+                var file = await sender.Send(new GetQuotePdfQuery(id), cancellationToken);
+
+                // attachment + un nombre que sale solo del número («presupuesto-P-0012.pdf»): nunca texto del usuario en una cabecera (spec 025 R15, D11).
+                return Results.File(file.Content, "application/pdf", file.FileName);
+            })
+            .RequireRateLimiting(RateLimiting.QuotePdf)
+            .WithName("GetQuotePdf")
+            .WithSummary("Descarga el presupuesto como PDF, a nombre de la empresa y con sus datos fiscales. Un borrador lleva la marca BORRADOR. Sin perfil fiscal de la empresa: 400 quote.company_profile_incomplete. Límite: 30 por minuto y por IP.")
+            .Produces<byte[]>(StatusCodes.Status200OK, "application/pdf");
+
+        group.MapPost("/{id:guid}/email", async (Guid id, SendQuoteEmailRequest request, ISender sender, ICurrentUser currentUser, QuoteEmailThrottle throttle, HttpContext httpContext, CancellationToken cancellationToken) =>
+            {
+                // Spec 026 R18: 20 por hora y por persona (mandar correo a un tercero es abusable). Va aquí y no en el limitador global porque la clave es la persona, que solo se conoce ya autenticada.
+                // Solo gasta cupo quien tiene el permiso: sin él, el 403 es el de siempre (R7) y un Employee o un Technician no agota un cupo que no va a usar.
+                if (currentUser.UserId is { } userId
+                    && currentUser.TokenRole is { } role
+                    && RolePermissions.Has(role, Permission.QuotesIssue)
+                    && !throttle.TryAcquire(userId, out var retryAfter))
+                {
+                    await RateLimiting.RejectAsync(httpContext, retryAfter, cancellationToken);
+                    return Results.Empty;
+                }
+
+                // El resultado no se guarda en cachés (D14), y se pone antes de responder: también para los errores.
+                httpContext.Response.Headers.CacheControl = "no-store";
+                var sent = await sender.Send(new SendQuoteEmailCommand(id, request.Recipient), cancellationToken);
+                return Results.Ok(sent);
+            })
+            .RequireRateLimiting(RateLimiting.QuoteEmail)
+            .WithName("SendQuoteEmail")
+            .WithSummary("Manda el presupuesto por correo, con su PDF adjunto, a una dirección (una sola). No cambia el estado del presupuesto. Plantilla fija; responde con el instante del envío, sin la dirección. Errores: 400 quote.email_disabled, quote.email_requires_items, quote.company_profile_incomplete; 502 quote.email_not_sent. Límite: 20 por hora y por persona, 30 por minuto y por IP.")
+            .Produces<QuoteEmailSentDto>(StatusCodes.Status200OK);
+
         group.MapPut("/{id:guid}", async (Guid id, UpdateQuoteRequest request, ISender sender, CancellationToken cancellationToken) =>
             {
                 await sender.Send(new UpdateQuoteCommand(id, request.Version, request.JobId, request.Title, request.Notes, request.ValidUntil, request.Items), cancellationToken);
@@ -90,6 +132,9 @@ public static class QuoteEndpoints
             .WithName("RejectQuote")
             .WithSummary("Rechaza un presupuesto enviado (Sent → Rejected).");
     }
+
+    // Una sola dirección (spec 026 R5): la valida el Validator antes de tocar nada. La empresa y el presupuesto salen del token y de la ruta.
+    internal sealed record SendQuoteEmailRequest(string Recipient);
 
     // La versión es la que devolvió la lectura (base64): sin ella no se modifica (spec 023 R10).
     internal sealed record UpdateQuoteRequest(
