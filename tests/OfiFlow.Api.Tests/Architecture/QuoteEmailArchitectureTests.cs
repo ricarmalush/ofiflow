@@ -106,8 +106,10 @@ public class QuoteEmailArchitectureTests
         Assert.DoesNotContain("Recipient", dto, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("EmailedBy", dto, StringComparison.Ordinal);
 
-        var migration = SourceCode.Files("OfiFlow.Infrastructure/Persistence/Migrations").Single(f => f.Path.EndsWith("_AddQuoteEmail.cs", StringComparison.Ordinal));
-        Assert.DoesNotContain("Recipient", migration.Content, StringComparison.OrdinalIgnoreCase);
+        // La migración se busca con FilesMatching y no con Files: Files descarta a propósito toda carpeta Migrations (código generado por EF) y, con una ruta que mezcla «/» y «\»,
+        // en Windows no la descartaba pero en Linux sí, así que el test pasaba en local y fallaba en el CI. FilesMatching no pasa por esa exclusión y da rutas con «/» en los dos.
+        var migration = Assert.Single(SourceCode.FilesMatching("OfiFlow.Infrastructure/Persistence/Migrations", "*_AddQuoteEmail.cs"));
+        Assert.DoesNotContain("Recipient", SourceCode.ReadText(migration), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
