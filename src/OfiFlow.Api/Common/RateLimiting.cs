@@ -77,6 +77,12 @@ public static partial class RateLimiting
     /// </summary>
     public const string QuotePdf = "quote-pdf";
 
+    /// <summary>
+    /// Mandar un presupuesto por correo (autenticada, costosa y con envío de correo a un tercero): <b>30 por minuto y por IP</b> (spec 026 R18, D11, valor inicial). Frena un bucle de peticiones antes de
+    /// autenticar; el límite por persona, que es el que frena el abuso lento, es <see cref="QuoteEmailThrottle"/>. Cubo propio: no gasta el de otras rutas.
+    /// </summary>
+    public const string QuoteEmail = "quote-email";
+
     public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services)
     {
         services.AddRateLimiter(options =>
@@ -112,6 +118,7 @@ public static partial class RateLimiting
             options.AddPolicy(PlatformOperations, context => PerIp(context, permitLimit: 30, TimeSpan.FromMinutes(1)));
             // Generar un PDF cuesta CPU y memoria aunque haya sesión: un tope por IP frena una sesión robada usada para agotarlas (spec 025 R14, valor inicial).
             options.AddPolicy(QuotePdf, context => PerIp(context, permitLimit: 30, TimeSpan.FromMinutes(1)));
+            options.AddPolicy(QuoteEmail, context => PerIp(context, permitLimit: 30, TimeSpan.FromMinutes(1)));
 
             options.OnRejected = async (rejected, cancellationToken) =>
             {

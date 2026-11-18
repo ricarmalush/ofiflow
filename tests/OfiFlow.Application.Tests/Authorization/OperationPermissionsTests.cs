@@ -42,6 +42,7 @@ using OfiFlow.Application.Quotes.Commands.AcceptQuote;
 using OfiFlow.Application.Quotes.Commands.CreateQuote;
 using OfiFlow.Application.Quotes.Commands.DeleteQuote;
 using OfiFlow.Application.Quotes.Commands.RejectQuote;
+using OfiFlow.Application.Quotes.Commands.SendQuoteEmail;
 using OfiFlow.Application.Quotes.Commands.SendQuote;
 using OfiFlow.Application.Quotes.Commands.UpdateQuote;
 using OfiFlow.Application.Quotes.Queries.GetQuote;
@@ -118,6 +119,7 @@ public class OperationPermissionsTests
         (typeof(UpdateQuoteCommand), Permission.QuotesWrite),
         (typeof(DeleteQuoteCommand), Permission.QuotesWrite),
         (typeof(SendQuoteCommand), Permission.QuotesIssue),
+        (typeof(SendQuoteEmailCommand), Permission.QuotesIssue),
         (typeof(AcceptQuoteCommand), Permission.QuotesIssue),
         (typeof(RejectQuoteCommand), Permission.QuotesIssue),
 
@@ -234,7 +236,7 @@ public class OperationPermissionsTests
             .ToHashSet();
 
         Assert.Equal(inTheApplication.OrderBy(t => t.Name), inTheTable.OrderBy(t => t.Name));
-        Assert.Equal(58, inTheTable.Count); // 47 + las ocho de los presupuestos (spec 023) + las dos del perfil fiscal (spec 024) + el PDF del presupuesto (spec 025): el contador obliga a declarar cada operación nueva a propósito
+        Assert.Equal(59, inTheTable.Count); // 47 + las ocho de los presupuestos (spec 023) + las dos del perfil fiscal (spec 024) + el PDF del presupuesto (spec 025) + mandarlo por correo (spec 026): el contador obliga a declarar cada operación nueva a propósito
     }
 
     private static bool IsMediatRRequest(Type type) =>

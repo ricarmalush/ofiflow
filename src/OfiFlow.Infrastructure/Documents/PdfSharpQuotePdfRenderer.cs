@@ -1,6 +1,7 @@
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
+using OfiFlow.Application.Quotes;
 using OfiFlow.Application.Quotes.Pdf;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;

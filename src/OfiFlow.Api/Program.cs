@@ -33,6 +33,8 @@ try
     builder.Services.AddAuthRateLimiting();
     // Spec 017 D10: el límite de invitaciones es por persona, no por IP, y por eso no es una política del limitador global (ver InvitationThrottle).
     builder.Services.AddSingleton<InvitationThrottle>();
+    // Spec 026 R18: el límite de envíos de presupuestos por correo es también por persona (ver QuoteEmailThrottle).
+    builder.Services.AddSingleton<QuoteEmailThrottle>();
 
     // Spec 018 D2: el suelo de tiempo de «he olvidado mi contraseña». Se valida al arrancar como el resto de secciones.
     builder.Services.AddOptions<ForgotPasswordTimingOptions>()

@@ -69,7 +69,7 @@ public class QuotePdfArchitectureTests
     [Fact]
     public void TheMoneyFormatUsesOnlyIntegerArithmetic()
     {
-        var code = Code(SourceCode.ReadText("src/OfiFlow.Infrastructure/Documents/MoneyFormat.cs"));
+        var code = Code(SourceCode.ReadText("src/OfiFlow.Application/Quotes/MoneyFormat.cs"));
 
         Assert.False(Regex.IsMatch(code, @"\b(double|float|decimal)\b"), "MoneyFormat da formato al dinero desde céntimos enteros: ni double, ni float, ni decimal (spec 025 R5).");
         Assert.DoesNotContain("Math.Round", code, StringComparison.Ordinal);
@@ -104,9 +104,10 @@ public class QuotePdfArchitectureTests
     [Fact]
     public void TheFileNameComesFromTheNumberAlone()
     {
-        var handler = Code(SourceCode.ReadText("src/OfiFlow.Application/Quotes/Queries/GetQuotePdf/GetQuotePdfQueryHandler.cs"));
+        // Desde la spec 026 el nombre lo construye el servicio compartido con el envío por correo, no el handler de la descarga.
+        var handler = Code(SourceCode.ReadText("src/OfiFlow.Application/Quotes/QuotePdfBuilder.cs"));
 
-        Assert.Contains("QuoteLabel.FileName(quote.Number)", handler, StringComparison.Ordinal);
+        Assert.Contains("QuoteLabel.FileName(source.Quote.Number)", handler, StringComparison.Ordinal);
 
         var endpoint = PdfEndpoint();
         Assert.Contains("file.FileName", endpoint, StringComparison.Ordinal);
@@ -152,8 +153,15 @@ public class QuotePdfArchitectureTests
     [Fact]
     public void ThePdfHandlerReadsOnlyThroughTheTenantFilter_AndNeverWrites()
     {
+        // Desde la spec 026 la lectura vive en el servicio que comparten la descarga y el envío por correo (QuotePdfBuilder); el handler de la descarga solo lo llama y no toca la base de datos.
         var handler = SourceCode.Files("OfiFlow.Application/Quotes/Queries/GetQuotePdf").Single(f => f.Path.EndsWith("Handler.cs", StringComparison.Ordinal));
-        var code = Code(handler.Content);
+        var queryHandlerCode = Code(handler.Content);
+        Assert.DoesNotContain("dbContext", queryHandlerCode, StringComparison.Ordinal);
+        Assert.DoesNotContain("IApplicationDbContext", queryHandlerCode, StringComparison.Ordinal);
+        Assert.Contains("builder.BuildAsync(", queryHandlerCode, StringComparison.Ordinal);
+
+        var builder = SourceCode.Files("OfiFlow.Application/Quotes").Single(f => f.Path.EndsWith("/QuotePdfBuilder.cs", StringComparison.Ordinal));
+        var code = Code(builder.Content);
 
         Assert.DoesNotContain("IgnoreQueryFilters", code, StringComparison.Ordinal);
         Assert.DoesNotContain("SaveChangesAsync", code, StringComparison.Ordinal);

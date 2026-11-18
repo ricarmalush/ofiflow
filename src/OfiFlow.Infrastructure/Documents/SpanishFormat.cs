@@ -5,7 +5,7 @@ namespace OfiFlow.Infrastructure.Documents;
 
 /// <summary>
 /// Cantidades, porcentajes y fechas en el formato español, con cultura <b>fija</b> (spec 025 R6): el resultado no cambia con la configuración regional del servidor ni del hilo. El dinero está en
-/// <see cref="MoneyFormat"/>, que solo usa enteros.
+/// <see cref="OfiFlow.Application.Quotes.MoneyFormat"/>, que solo usa enteros.
 /// </summary>
 internal static class SpanishFormat
 {

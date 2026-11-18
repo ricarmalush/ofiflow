@@ -1,4 +1,5 @@
 using OfiFlow.Application.Common.Exceptions;
+using OfiFlow.Application.Quotes;
 using OfiFlow.Application.Quotes.Pdf;
 using OfiFlow.Application.Quotes.Queries.GetQuotePdf;
 using OfiFlow.Application.Tests.Common;
@@ -65,7 +66,7 @@ public class GetQuotePdfQueryHandlerTests
     }
 
     private static Task<QuotePdfFile> RunAsync(TestDbContext db, CapturingRenderer renderer, Guid id) =>
-        new GetQuotePdfQueryHandler(db, renderer).Handle(new GetQuotePdfQuery(id), CancellationToken.None);
+        new GetQuotePdfQueryHandler(new QuotePdfBuilder(db, renderer)).Handle(new GetQuotePdfQuery(id), CancellationToken.None);
 
     [Fact]
     public async Task ItReturnsTheRenderedBytesWithTheFileNameBuiltFromTheNumberAlone()
@@ -216,7 +217,7 @@ public class GetQuotePdfQueryHandlerTests
 
         // Otro contexto sobre la misma base: es «la petición», y no arrastra lo que el alta de los datos dejó seguido en el primero.
         await using var request = TestDbContextFactory.CreateSharing(db);
-        await new GetQuotePdfQueryHandler(request, new CapturingRenderer()).Handle(new GetQuotePdfQuery(quote.Id), CancellationToken.None);
+        await new GetQuotePdfQueryHandler(new QuotePdfBuilder(request, new CapturingRenderer())).Handle(new GetQuotePdfQuery(quote.Id), CancellationToken.None);
 
         Assert.Equal(0, request.SaveCount);
         Assert.Empty(request.ChangeTracker.Entries());
@@ -255,7 +256,7 @@ public class GetQuotePdfQueryHandlerTests
     {
         var (db, _, quote) = await SeedAsync();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => new GetQuotePdfQueryHandler(db, new ThrowingRenderer()).Handle(new GetQuotePdfQuery(quote.Id), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new GetQuotePdfQueryHandler(new QuotePdfBuilder(db, new ThrowingRenderer())).Handle(new GetQuotePdfQuery(quote.Id), CancellationToken.None));
     }
 
     private sealed class ThrowingRenderer : IQuotePdfRenderer

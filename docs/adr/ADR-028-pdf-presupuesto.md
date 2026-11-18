@@ -168,7 +168,7 @@ Un botón **«Descargar PDF»** en el presupuesto guardado, para quien tiene `Qu
 
 ### Qué queda abierto para revisar más adelante
 
-- **El envío por correo con el PDF adjunto** (spec 026), que reutilizará el mismo generador.
+- **El envío por correo con el PDF adjunto: hecho en la spec 026 ([ADR-029](ADR-029-presupuesto-por-correo.md))**, con el mismo generador (un único servicio que comparten la descarga y el correo).
 - **El logotipo** (imágenes: almacenamiento, tamaño y seguridad del fichero), plantillas, otros idiomas, el PDF de la **factura** y su copia congelada (fase 4), firma digital y un QR de aceptación.
 - **Un evento de descarga,** si un analista lo pide.
 - **Una decisión sobre la licencia:** si algún día se quiere una versión posterior de PDFsharp (AGPL), habría que decidirlo en una ADR (publicar el código bajo AGPL o cambiar de librería).
@@ -181,4 +181,5 @@ Un botón **«Descargar PDF»** en el presupuesto guardado, para quien tiene `Qu
 
 - Amplía: **[ADR-026](ADR-026-presupuestos.md)** (el PDF del presupuesto, que se anunciaba), **[ADR-010](ADR-010-pipeline-devsecops.md)** (una regla nueva de dependencias: la **licencia** se comprueba en el `.nuspec` y una actualización que la cambie se bloquea), **[ADR-017](ADR-017-cors-para-el-frontend-web.md)** (se expone también `Content-Disposition`), **[ADR-011](ADR-011-errores-codigos-diccionario.md)** (un código nuevo; ya hay 67).
 - Relacionada con: **[ADR-027](ADR-027-perfil-fiscal-empresa.md)** (los datos fiscales que imprime), **[ADR-012](ADR-012-autorizacion-rbac.md)** (sin permiso nuevo y la invariante entre `Quotes.Read` y `Company.Read`), **[ADR-009](ADR-009-seguridad-base.md)** (datos personales: nada del documento llega a un registro; y el límite de peticiones), **[ADR-024](ADR-024-segundo-factor-obligatorio.md)** (la puerta se aplica sola), **[ADR-020](ADR-020-correo-saliente.md)** (el patrón de puerto + implementación).
-- Prepara: el correo del presupuesto con el PDF adjunto (spec 026) y la factura (fase 4), que reutilizará el generador y exigirá conservar el documento tal como se emitió.
+- Ampliada por: **[ADR-029](ADR-029-presupuesto-por-correo.md)** (spec 026): el PDF ya se manda por correo, con `Quotes.Issue` y dos límites; la lectura y la generación pasan a un servicio compartido (`QuotePdfBuilder`) y `MoneyFormat` a Application.
+- Prepara: la factura (fase 4), que reutilizará el generador y exigirá conservar el documento tal como se emitió.
