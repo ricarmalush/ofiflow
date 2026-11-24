@@ -5,14 +5,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.1.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="coverlet.collector" Version="10.1.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.15" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <!-- Para leer de vuelta el texto y la estructura de los PDF generados (spec 025). Apache-2.0; solo en los tests. -->
     <PackageReference Include="PdfPig" Version="0.1.14" />
-    <PackageReference Include="Testcontainers.MsSql" Version="4.15.0" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.17.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>
 
   <ItemGroup>
