@@ -414,6 +414,70 @@ public class QuotePersistenceTests(SqlServerContainerFixture fixture) : IClassFi
     }
 
     [Fact]
+    public async Task TheLastMailing_SurvivesTheRoundTrip_AsUtc_WithoutTouchingTheRevision()
+    {
+        // Spec 026 R19: se guarda cuándo y quién (nunca a quién), en UTC, y no es un cambio del contenido: la revisión no sube.
+        var tenantId = Guid.NewGuid();
+        var customerId = await SeedCustomerAsync(tenantId);
+        var id = await CreateAsync(tenantId, customerId, Line(1, 10000));
+        var person = Guid.NewGuid();
+        var mailed = new DateTime(2026, 11, 14, 12, 30, 0, DateTimeKind.Utc);
+        var before = await LoadAsync(tenantId, id);
+
+        await using (var db = Open(tenantId))
+        {
+            var quote = await db.Quotes.SingleAsync(q => q.Id == id);
+            quote.RecordEmailSent(mailed, person);
+            await db.SaveChangesAsync();
+        }
+
+        var stored = await LoadAsync(tenantId, id);
+        Assert.Equal(mailed, stored.EmailedAt);
+        Assert.Equal(DateTimeKind.Utc, stored.EmailedAt!.Value.Kind);
+        Assert.Equal(person, stored.EmailedByUserId);
+        Assert.Equal(before.Revision, stored.Revision);
+        Assert.Equal(before.Status, stored.Status);
+        Assert.Single(stored.Items);
+    }
+
+    [Fact]
+    public async Task AQuoteNeverMailed_HasNullEmailColumns()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = await SeedCustomerAsync(tenantId);
+        var id = await CreateAsync(tenantId, customerId);
+
+        var stored = await LoadAsync(tenantId, id);
+
+        Assert.Null(stored.EmailedAt);
+        Assert.Null(stored.EmailedByUserId);
+    }
+
+    [Fact]
+    public async Task AMailingAndAnEdition_OnlyOneWins_LikeAnyOtherChangeToTheRow()
+    {
+        // Anotar el envío cambia la fila (y su versión): una edición que se leyó antes recibe el conflicto y no pisa nada. Por eso el frontend vuelve a leer el presupuesto tras mandarlo.
+        var tenantId = Guid.NewGuid();
+        var customerId = await SeedCustomerAsync(tenantId);
+        var id = await CreateAsync(tenantId, customerId, Line(1, 10000));
+
+        await using var editing = Open(tenantId);
+        await using var mailing = Open(tenantId);
+        var toEdit = await editing.Quotes.Include(q => q.Items).SingleAsync(q => q.Id == id);
+        var toMail = await mailing.Quotes.SingleAsync(q => q.Id == id);
+
+        toMail.RecordEmailSent(Now, Guid.NewGuid());
+        await mailing.SaveChangesAsync(); // el envío gana
+
+        toEdit.Update(null, "Editado", null, null, [Line(1, 777)]);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => editing.SaveChangesAsync());
+
+        var stored = await LoadAsync(tenantId, id);
+        Assert.NotEqual("Editado", stored.Title);
+        Assert.NotNull(stored.EmailedAt);
+    }
+
+    [Fact]
     public async Task ADeleteAndASend_OnlyOneWins()
     {
         var tenantId = Guid.NewGuid();

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using OfiFlow.Application.Common.Abstractions;
 using OfiFlow.Application.Common.Persistence;
 using OfiFlow.Domain.Common;
+using OfiFlow.Domain.Company;
 using OfiFlow.Domain.Customers;
 using OfiFlow.Domain.Identity;
 using OfiFlow.Domain.Jobs;
@@ -31,6 +32,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
     public DbSet<Quote> Quotes => Set<Quote>();
+
+    public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
 
     /// <summary>
     /// Not part of IApplicationDbContext on purpose — only IIdentityService/ITokenService

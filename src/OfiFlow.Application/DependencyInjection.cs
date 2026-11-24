@@ -19,6 +19,9 @@ public static class DependencyInjection
 
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
+        // Lee presupuesto, cliente y perfil y genera el PDF: lo comparten la descarga (spec 025) y el envío por correo (spec 026 D5).
+        services.AddScoped<Quotes.QuotePdfBuilder>();
+
         // La hora entra por TimeProvider (no por DateTime.UtcNow) para poder probar la caducidad sin esperar.
         services.TryAddSingleton(TimeProvider.System);
 

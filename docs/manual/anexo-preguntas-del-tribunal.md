@@ -246,6 +246,83 @@ Que quien tenga `Quotes.Issue` puede **aceptar «en nombre» del cliente**: acep
 **¿Qué error real encontrasteis?**
 Seis mutaciones sobrevivieron y cada una era un hueco de un test, no del código: el endpoint que registra con `Console.WriteLine` (el escaneo solo buscaba `ILogger`), un DTO que no ordenaba las líneas (SQL Server ya las devolvía en orden por su índice), y en el frontend un `Employee` que veía «Aceptar», una vista previa con una línea inválida (mi test usaba un precio vacío, que suma 0) y que nada distinguía si el total venía del servidor o del cálculo local. Y un fallo de EF Core: una línea nueva con su `Guid` ya puesto se marcaba «modificada» y el `UPDATE` fallaba al sustituir las líneas (`ValueGeneratedNever`). *(Cap. 9)*
 
+### El perfil fiscal de la empresa (spec 024)
+
+**¿Por qué una entidad propia y no columnas nuevas en `Tenant`?**
+Porque `Tenant` es la entidad **global** (la propia empresa) y solo se lee en sitios de una lista blanca: poner ahí datos fiscales los dejaría accesibles desde ellos. `CompanyProfile` es **de la empresa** (`ITenantOwned`) y hereda el filtro global sin ninguna excepción nueva; un índice único por `TenantId` garantiza uno por empresa. *(Cap. 5, ADR-027)*
+
+**¿Cómo se valida un NIF y por qué no basta una expresión regular?**
+Una expresión regular acepta cualquier tecleo con la forma correcta; el dígito o la letra de control existe precisamente para cerrar esos errores. Un NIF son ocho cifras y una letra (el resto de dividir entre 23 elige la letra), un NIE se calcula igual tras cambiar X, Y y Z por 0, 1 y 2, y un CIF suma las cifras (las de posición impar, duplicadas) y exige un dígito, una letra o cualquiera de las dos según la entidad. Se guarda normalizado y se prueba contra **89 casos fijos** con identificadores reales y públicos. Límite honesto: valida el control, no que Hacienda **conozca** ese NIF. *(Cap. 7)*
+
+**¿Por qué el NIF no es único entre empresas?**
+Porque un índice único global dejaría **averiguar si otra empresa ya usa un NIF** simplemente probándolo. Se probó que dos empresas con el mismo NIF no notan ninguna diferencia. *(Cap. 8)*
+
+**¿Qué pasa si dos personas guardan el perfil por primera vez a la vez?**
+El índice único rechaza el segundo `INSERT`; el handler saca la entidad fallida del seguimiento, vuelve a leer, modifica el perfil que ganó y confirma; y si tras el fallo no hay nada que leer, relanza. Se probó con SQL Server real (ocho rondas de cuatro altas simultáneas dejan un perfil y ningún error) y en vivo (ocho `PUT` simultáneos, ocho `204` y una fila). *(Cap. 9)*
+
+**¿Cómo evitáis que el NIF llegue a un registro?**
+Para un autónomo es su DNI. El evento `1409` lleva solo quién, la empresa y si fue alta o modificación; el `ToString()` del comando y del DTO imprime el tipo; los errores llevan el código y no el valor; la lectura va con `no-store`; y un test de arquitectura fija que **el único fichero que escribe en el registro es el handler de guardar, con la firma exacta de tres valores**. Además se comprobó en el registro real de la API. *(Cap. 8)*
+
+**¿Quién puede ver y quién cambiar el perfil?**
+`Company.Read` lo tienen `Owner`, `Admin`, `Manager` y `Employee` (quien prepara presupuestos necesita ver qué datos llevará el documento); `Company.Manage`, solo `Owner` y `Admin`, porque son datos legales. `Technician` no tiene ninguno. Y la autorización va antes que la validación: un `Manager` con un cuerpo inválido recibe `403` y no averigua nada. *(Cap. 8)*
+
+**¿Qué riesgo NO cierra?**
+Que quien tenga `Company.Manage` puede **cambiar el NIF o el nombre fiscal** con los que se emitirán los documentos, y el registro dice quién y cuándo, **no qué valor**: no hay historial (la factura, fase 4, lo pedirá). Tampoco hay control de concurrencia (gana la última escritura) ni cifrado de columna, y los NIF K, L y M no se admiten. *(Cap. 8)*
+
+**¿Qué error real encontrasteis?**
+Con el NIF ausente en el JSON, el validador lanzaba una `NullReferenceException` (un `500`): lo encontró un test. Y en el frontend, `Validators.required` daba por bueno un campo con solo espacios y se enviaba un `PUT` con un obligatorio vacío: lo encontró un test del componente. Además, `ToUpperInvariant` habría convertido la «ſ» en una «S» válida: lo destapó una mutación. *(Cap. 9)*
+### El PDF del presupuesto (spec 025)
+
+**¿Por qué se genera al pedirlo y no se guarda?**
+Porque un presupuesto enviado no cambia (spec 023), así que el PDF sale igual cada vez, y guardarlo exigiría almacenamiento de ficheros, una migración y una política de retención. El precio es que, si la empresa cambia después su nombre fiscal o su NIF, el PDF de un presupuesto ya enviado sale con los datos nuevos: tolerable para presupuestos, no para facturas, que sí deben conservarse tal como se emitieron (fase 4). *(Cap. 0, ADR-028)*
+
+**¿Cómo sabéis que el PDF no puede discrepar de la pantalla?**
+Porque no calcula nada: imprime los importes que ya calculó el servidor (`QuoteDto`). Un escaneo prohíbe a la fábrica del modelo y al generador sumar, multiplicar, redondear o usar la calculadora, el dinero se formatea solo con enteros, y los 15 casos fijos de totales pasan por `Quote` → DTO → modelo → PDF y por HTTP y se comparan con la API, con un formato del importe escrito aparte en los tests. *(Cap. 8, 9)*
+
+**¿Cómo se prueba un fichero binario?**
+Leyéndolo de vuelta, nunca comparando bytes (llevan identificadores y fechas): el texto de cada página con PdfPig, la estructura con el propio PDFsharp y la caja de cada letra para comprobar que nada se sale de los márgenes. Y con controles positivos: un test que recorre los objetos del PDF buscando claves peligrosas pasa siempre si el PDF no tiene ninguna, así que hay un PDF con un enlace que demuestra que lo vería. *(Cap. 9)*
+
+**¿Qué hacéis con el texto libre?**
+Se imprime como texto, sin interpretar nada. Se quitan los caracteres de control y los que invierten el sentido de lectura (U+202E); un carácter que la fuente no tiene sale como «?» y no rompe la generación; y las palabras que no caben se parten donde dejan de caber, **midiendo el ancho real de cada letra** (un tope de caracteres dejó pasar una hilera de «W» fuera de la página). *(Cap. 8)*
+
+**¿Qué pasó con la licencia de la librería?**
+PDFsharp y MigraDoc pasaron de MIT a AGPL-3.0 en la 6.5.0 (14-10-2026): en un repositorio público, enlazarlas obligaría a publicar el código de todo lo que las use. Se comprobó en el `.nuspec` de cada versión, se fijó la 6.2.4, un test lee el `.nuspec` de lo restaurado y Dependabot lleva un bloque `ignore` (cuya sintaxis no se puede probar en local: se verá en su primer PR semanal). Cualquier cambio de versión que cambie la licencia se decide en una ADR. *(ADR-010, ADR-028)*
+
+**¿Quién puede descargarlo y por qué no hay un permiso nuevo?**
+`Quotes.Read` (`Owner`, `Admin`, `Manager` y `Employee`): descargar el PDF no enseña nada que esos roles no vean ya en pantalla. Pero el PDF enseña los datos fiscales de la empresa, así que un test fija que **todo rol con `Quotes.Read` tiene `Company.Read`**: si un rol perdiera uno y conservara el otro, el PDF se los enseñaría. El orden es sesión, permiso, presupuesto (`404`), perfil (`400`) y generación. *(Cap. 8)*
+
+**¿Qué riesgo NO cierra?**
+Que quien tenga `Quotes.Read` puede descargar todos los presupuestos de su empresa sin que quede traza (lo frena solo el límite de 30 por minuto y por IP). Tampoco está firmado el PDF, y la librería corre dentro de la API. *(Cap. 8)*
+
+**¿Qué error real encontrasteis?**
+Que el error de una petición que espera un fichero llega al frontend como un `Blob` con el JSON dentro, así que el interceptor no veía el código estable: una descarga de una empresa suspendida no cerraba la sesión y un `403` de segundo factor obligatorio no llevaba a la pantalla de seguridad. Y que el CORS no exponía `Content-Disposition`, así que un frontend en otro origen no podía leer el nombre del fichero. *(Cap. 8, 9)*
+
+### El presupuesto por correo (spec 026)
+
+**¿Por qué una acción aparte y no mandarlo al «Enviar»?**
+Porque «Enviar» solo anota el estado y se quería poder reenviar, mandar un borrador para que el cliente lo vea y, sobre todo, que un fallo del correo no deje el estado a medias: no hay estado que deshacer. El coste es un clic más si se quieren las dos cosas. *(Cap. 0, ADR-029)*
+
+**¿Qué es lo peor que puede pasar con este correo?**
+Que una cuenta robada use el dominio de OfiFlow para mandar *spam* o *phishing*, con un PDF de texto libre, a cualquier dirección. Lo limitan el permiso y el segundo factor, una plantilla fija sin texto de la persona, un PDF inerte, **20 por hora y por persona** y 30 por minuto y por IP, y un rastro con persona y presupuesto para suspender la empresa. Lo que no se cierra es que la dirección la elige quien lo manda: limitarla a la de la ficha del cliente sería el siguiente endurecimiento. *(Cap. 8)*
+
+**¿Por qué no se puede escribir un mensaje en el correo?**
+Porque convertiría a la plataforma en un enviador de correo libre desde su dominio. La regla de la ADR-020 («nada que escriba la persona entra en el correo») se mantiene entera; el texto libre del presupuesto va **dentro del PDF**, que es un documento. *(ADR-020, ADR-029)*
+
+**¿Por qué se abrió el puerto de correo a un adjunto si estaba prohibido?**
+Porque la alternativa era adjuntarlo a mano desde otro programa. Se abrió en su forma mínima: **uno**, un **PDF**, con nombre y tamaño acotados, validado **al construirse** (un adjunto que no cumple no llega a existir) y construido solo por la plantilla del presupuesto. *(Cap. 8)*
+
+**¿Qué pasa con la dirección del cliente, que es un dato personal de un tercero?**
+No se guarda (solo cuándo y quién), no se registra, no vuelve en la respuesta y no sale en un error. Se comprobó marcando una dirección única y buscándola en todos los registros, también cuando todo falla. *(Cap. 8, 9)*
+
+**¿Por qué el límite por persona se mira después del permiso?**
+Para que quien no tiene el permiso reciba su `403` y no gaste un cupo que no va a usar (ni reciba un `429` que le haría creer que sí podría). Un test pide 25 veces como `Employee`. *(Cap. 8)*
+
+**¿Y si el servidor de correo acepta el mensaje pero falla guardar que se mandó?**
+Se envía antes de anotar y la respuesta es `200` igualmente: un `409` con el correo ya entregado llevaría a reenviarlo. El evento `1410` dice si se anotó. No se reintenta: la ventana es de milisegundos. *(ADR-029)*
+
+**¿Qué error real encontrasteis?**
+Que la expresión de `Email` deja pasar `<ana@ejemplo.es>` y `ana,otra@ejemplo.es`: vale para el campo de una ficha, no para una cabecera de correo. Y que un `record` imprime todas sus propiedades en `ToString()`, incluido el destinatario y el cuerpo de un mensaje; lo destapó escribir el test de «nada llega a un registro». *(Cap. 7, 8)*
+
 ### La agenda (spec 020)
 
 **¿Por qué la fecha de un trabajo es un instante en UTC con desfase, y no la hora que escribe la persona?**
@@ -307,7 +384,7 @@ EF Core parametriza las consultas; los analizadores de seguridad del compilador 
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, una `Content-Security-Policy` muy restrictiva y `Cross-Origin-Resource-Policy`; y HSTS fuera de desarrollo. La única excepción es la pantalla de Swagger, solo en desarrollo y solo en su ruta, con tests que impiden que se extienda. *(Cap. 8)*
 
 **¿Qué se registra y qué no?**
-Hay 53 eventos de seguridad con identificador estable (`1001`...`1608`; `1304` y `1508` son del segundo factor obligatorio y `1023`, de cambiar la contraseña desde dentro). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
+Hay 54 eventos de seguridad con identificador estable (`1001`...`1608`; `1304` y `1508` son del segundo factor obligatorio, `1023`, de cambiar la contraseña desde dentro y `1409`, del perfil fiscal de la empresa). Llevan Ids, rol y operación; **nunca** emails, nombres, contraseñas ni tokens, y hay tests que buscan esos valores en todos los registros. **Límite honesto:** se registra, pero nadie recibe una alerta. *(Cap. 8)*
 
 **¿Cómo se manejan los secretos?**
 Fuera del repositorio. gitleaks escanea **todo el historial** en cada PR, GitHub bloquea el `push` si detecta uno conocido, y la aplicación **no arranca** si falta el secreto del token. *(Cap. 6, 10)*
@@ -362,7 +439,10 @@ Con honestidad y de lo más a lo menos preocupante:
 - **El correo existe pero no está probado contra un proveedor real, y no hay cola persistida (la de recuperar la contraseña es en memoria), ni reintentos, ni gestión de rebotes**: la invitación se envía por correo (spec 017) y se ha probado contra un servidor SMTP de pruebas. Falta elegir proveedor y dominio, y configurar SPF, DKIM y DMARC para que llegue a la bandeja. Sin correo configurado, el token sigue devolviéndose a quien invita.
 - **Una cuenta pertenece a una sola empresa**; el login toma la primera pertenencia.
 - **Crear una cuenta (spec 021) deja abiertos los textos legales** (los redacta el dueño del proyecto), que las cuentas anteriores **no han aceptado ninguna condición**, la comprobación **anti-robots**, que el límite de 3 pedidos por hora y por IP **puede frenar a una oficina entera**, y que el límite de avisos vive **en memoria**.
-- **Los presupuestos (spec 023) no tienen PDF ni correo** y aceptar es una **anotación interna**, no la firma del cliente; el cálculo del dinero está en dos sitios (los casos fijos lo protegen, pero la copia del frontend se mantiene a mano); y muchas creaciones simultáneas de una empresa pueden agotar los tres intentos del número.
+- **Los presupuestos (spec 023) se mandan por correo desde la spec 026 (el PDF existe desde la 025), pero sin historial ni acuse** y aceptar es una **anotación interna**, no la firma del cliente; el cálculo del dinero está en dos sitios (los casos fijos lo protegen, pero la copia del frontend se mantiene a mano); y muchas creaciones simultáneas de una empresa pueden agotar los tres intentos del número.
+- **El perfil fiscal (spec 024) no valida que el NIF exista**, solo su dígito de control; quien tenga `Company.Manage` puede cambiarlo sin que quede el valor anterior (el registro dice quién y cuándo); gana la última escritura; y el NIF, la dirección y el teléfono de un autónomo están en claro en la base de datos. El PDF y el correo del presupuesto siguen sin existir (specs 025 y 026).
+- **El PDF del presupuesto (spec 025) no se guarda ni está firmado:** quien tenga `Quotes.Read` puede descargar todos los presupuestos de su empresa sin que quede traza (lo frena solo un límite de 30 por minuto), el de un presupuesto ya enviado sale con los datos fiscales de ahora, y el aspecto de las páginas se revisa a ojo (no hay rasterizador de PDF en el entorno de pruebas). No hay logotipo.
+- **El presupuesto por correo (spec 026) no es una prueba de entrega ni deja historial:** `200` significa «el servidor de correo lo aceptó», sin rebotes ni confirmación de lectura; solo se anota el último envío (cuándo y quién, nunca a quién); la dirección la elige quien lo manda (limitarla a la de la ficha sería el siguiente endurecimiento si se ve abuso); y todas las empresas comparten la reputación del remitente. Antes de mandar a clientes reales faltan, fuera del código, SMTP con dominio propio (SPF, DKIM y DMARC), el contrato de encargado del tratamiento y los textos legales.
 - **Un técnico puede ver y ejecutar cualquier trabajo de su empresa**, no solo los asignados a él.
 - **No hay alertas ni un registro de auditoría persistente**: los eventos se escriben, pero nadie los vigila.
 - **ZAP escanea solo la superficie anónima** y solo en los PRs.

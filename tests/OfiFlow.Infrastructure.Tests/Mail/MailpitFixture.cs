@@ -118,7 +118,7 @@ public sealed class MailpitFixture : IAsyncLifetime
                         var id = summary.GetProperty("ID").GetString();
                         var detail = await Http.GetFromJsonAsync<JsonElement>($"http://{Host}:{ApiPort}/api/v1/message/{id}");
                         var raw = await Http.GetStringAsync($"http://{Host}:{ApiPort}/api/v1/message/{id}/raw");
-                        return new ReceivedMessage(detail, raw);
+                        return new ReceivedMessage(detail, raw, partId => Http.GetByteArrayAsync($"http://{Host}:{ApiPort}/api/v1/message/{id}/part/{partId}"));
                     }
                 }
 
@@ -133,8 +133,22 @@ public sealed class MailpitFixture : IAsyncLifetime
     }
 
     /// <summary>Un correo tal como lo guardó el servidor de pruebas: ya decodificado (<see cref="Detail"/>) y en bruto (<see cref="Raw"/>).</summary>
-    public sealed record ReceivedMessage(JsonElement Detail, string Raw)
+    public sealed record ReceivedAttachment(string FileName, string ContentType, string PartId);
+
+    public sealed record ReceivedMessage(JsonElement Detail, string Raw, Func<string, Task<byte[]>>? FetchPart = null)
     {
+        /// <summary>Las direcciones de «Reply-To» (spec 026): vacío si el mensaje no lleva.</summary>
+        public IReadOnlyList<string> ReplyToAddresses => Detail.TryGetProperty("ReplyTo", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Select(a => a.GetProperty("Address").GetString()!).ToList()
+            : [];
+
+        /// <summary>Los adjuntos que el servidor vio: nombre, tipo y el identificador de la parte para pedir sus bytes.</summary>
+        public IReadOnlyList<ReceivedAttachment> Attachments => Detail.TryGetProperty("Attachments", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Select(a => new ReceivedAttachment(a.GetProperty("FileName").GetString()!, a.GetProperty("ContentType").GetString()!, a.GetProperty("PartID").GetString()!)).ToList()
+            : [];
+
+        /// <summary>Los bytes ya decodificados (de base64) de un adjunto.</summary>
+        public Task<byte[]> ContentOfAsync(ReceivedAttachment attachment) => FetchPart!(attachment.PartId);
         public string Subject => Detail.GetProperty("Subject").GetString()!;
 
         public string Text => Detail.GetProperty("Text").GetString()!;

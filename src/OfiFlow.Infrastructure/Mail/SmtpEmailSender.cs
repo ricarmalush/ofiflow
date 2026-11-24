@@ -133,7 +133,34 @@ internal sealed class SmtpEmailSender : IEmailSender
         mime.Subject = message.Subject;
         // El identificador del mensaje por defecto usa el nombre de la máquina; con el dominio del remitente no se filtra ese dato.
         mime.MessageId = MimeUtils.GenerateMessageId(DomainOf(from));
-        mime.Body = new TextPart("plain") { Text = message.TextBody };
+
+        // Spec 026 R13: a quién responde quien reciba el correo (la empresa, no OfiFlow). Pasa por la misma comprobación que el destinatario: es una cabecera.
+        if (message.ReplyTo is { } replyTo)
+        {
+            if (!EmailOptions.IsPlainAddress(replyTo.Value))
+            {
+                throw new EmailDeliveryException(EmailFailureCategory.Rejected);
+            }
+
+            mime.ReplyTo.Add(MailboxAddress.Parse(replyTo.Value));
+        }
+
+        var text = new TextPart("plain") { Text = message.TextBody };
+        if (message.Attachment is not { } attachment)
+        {
+            // Sin adjunto, el mensaje es el de siempre: una sola parte de texto (invitación, recuperar contraseña...).
+            mime.Body = text;
+            return mime;
+        }
+
+        // Spec 026 R14: texto + un PDF. El nombre y el tipo ya los validó EmailAttachment al construirse; aquí solo se monta. Base64: el PDF es binario.
+        var pdf = new MimePart(ContentType.Parse(attachment.ContentType))
+        {
+            Content = new MimeContent(new MemoryStream(attachment.Content, writable: false)),
+            ContentDisposition = new ContentDisposition(ContentDisposition.Attachment) { FileName = attachment.FileName },
+            ContentTransferEncoding = ContentEncoding.Base64
+        };
+        mime.Body = new Multipart("mixed") { text, pdf };
 
         return mime;
     }
